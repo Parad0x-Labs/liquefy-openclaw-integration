@@ -6,7 +6,7 @@ This script provides a public reference implementation for local verification.
 It is intended for evaluation purposes and quick integrity checks.
 
 For enterprise-grade, hardened restoration, please use the sealed decoder appliance.
-Visit: https://github.com/Parad0x-Labs/liquefy/blob/master/docs/enterprise-evaluation.md
+Visit: https://github.com/Parad0x-Labs/liquefy-openclaw-integration/blob/main/docs/enterprise-evaluation.md
 """
 
 import argparse
