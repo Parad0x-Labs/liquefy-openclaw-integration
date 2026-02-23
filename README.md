@@ -166,6 +166,10 @@ The Liquefy decoder CLI/appliance path provides offline data recovery and verifi
 
 ### One-Command Installation
 ```bash
+# Fastest source install (macOS/Linux, Apple Silicon-friendly)
+git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git && cd liquefy-openclaw-integration && ./install.sh
+
+# Equivalent step-by-step:
 git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git
 cd liquefy-openclaw-integration
 # Source install (works today)
