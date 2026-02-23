@@ -70,6 +70,14 @@ python tools/tracevault_pack.py ./openclaw/runs/latest --org dev --out ./vault/l
 ### One-command OpenClaw workspace pack
 
 ```bash
+# Fastest OpenClaw source install + self-test + first safe scan (macOS/Linux)
+git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git && \
+  cd liquefy-openclaw-integration && \
+  ./install.sh && \
+  ./.venv/bin/python tools/liquefy_openclaw.py --self-test --json && \
+  ./.venv/bin/python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./openclaw-vault --json
+
+# Then (optional) use the bundled wrapper after install:
 # Whole-workspace pack with built-in credential denylist + report
 ./liquefy openclaw --workspace ~/.openclaw --out ./openclaw-vault --verify-mode full --workers 8
 ```
