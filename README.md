@@ -120,7 +120,7 @@ Status artifacts (generated):
 - `./bench/results/LIQUEFY_STATUS_REPORT.md`
 - `./bench/results/LIQUEFY_STATUS_REPORT.json`
 
-Free for private testing and research. Commercial production use requires a [license](./COMMERCIAL_LICENSE.md).
+Free for personal/private, nonprofit, and academic use (including production in those contexts). Commercial / for-profit use requires a [license](./COMMERCIAL_LICENSE.md).
 
 **Decoder is always available.** Decompression and verification never require a license, a running service, or access to this repo. Archives are self-contained. Your data is never hostage.
 
@@ -137,8 +137,8 @@ python tools/openclaw_tracevault.py pack --agent <agentId> --since-days 7 --out 
 
 ## ⚖️ License
 Liquefy is licensed under the **Business Source License 1.1 (BUSL-1.1)**:
-- **Non-production use** (testing, development, research): Permitted.
-- **Production use**: Requires a commercial license from Parad0x Labs. See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md).
+- **Free use (including production)**: Personal/private non-commercial, nonprofit, and academic/educational/research use are permitted under the Additional Use Grant (see `LICENSE`).
+- **Commercial / for-profit use**: Requires a commercial license from Parad0x Labs (including internal company use, SaaS/hosted services, embedding, and paid-client work). See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md).
 - **Change Date**: 2029-02-22 — after this date, automatically converts to **Mozilla Public License 2.0**.
 - **Decode-only recovery**: Always free. No license required to decompress or verify `.null` archives.
 
@@ -181,11 +181,11 @@ chmod +x ./liquefy
 
 ---
 
-## 📂 Complete Open Source Engine
+## 📂 Complete Source-Available Engine
 
 Unlike our previous black-box releases, this repository now contains the **complete source code** for the Liquefy compression engines, orchestrator, and safety valves.
 
-You can inspect, compile, and run the entirely open-source stack locally:
+You can inspect, compile, and run the entire source-available stack locally:
 
 ### Using the Open Source Engines
 

@@ -14,11 +14,35 @@ For legally binding terms, see the repository `LICENSE` file.
 
 ## Usage policy
 
-- **Non-production use** (testing, development, research): permitted under BUSL-1.1.
-- **Production use**: requires either:
-  - a qualifying Additional Use Grant from the Licensor, or
-  - a separate commercial agreement with Parad0x Labs.
+- **Free use (including production)** is permitted under the Additional Use Grant for:
+  - personal/private non-commercial projects,
+  - nonprofit organizations (mission use, not primarily for the benefit of a for-profit entity),
+  - academic, educational, and research use (schools, universities, public research institutions),
+  - open-source projects that do not sell access to Liquefy itself as a commercial service.
+- **Commercial / for-profit use** requires a separate commercial agreement with Parad0x Labs.
+- **Commercial use** includes (non-exhaustive):
+  - any use by or for the benefit of a for-profit entity,
+  - internal business operations (including evaluation or pre-production use at a for-profit),
+  - SaaS / hosted / managed service offerings,
+  - embedding or bundling Liquefy into a commercial product or service,
+  - consulting or services delivered for a paying client.
 - **Decode-only recovery** (`decompress`/`verify`): intended to remain available without production lock-in.
+
+## Examples (non-legal, for operator guidance)
+
+Free (no commercial license required):
+
+- Personal homelab / side project
+- University lab compressing research traces
+- School IT class using Liquefy in coursework
+- Nonprofit internal observability archive workflows
+
+Commercial license required:
+
+- Startup or enterprise using Liquefy internally (including pre-revenue startups)
+- Cloud provider / AI platform / managed service packaging Liquefy into an offering
+- Agency or contractor using Liquefy on behalf of a paying client
+- Commercial product embedding Liquefy as part of its storage/compression pipeline
 
 ## Commercial agreement scope
 

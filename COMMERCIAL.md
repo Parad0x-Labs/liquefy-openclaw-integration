@@ -12,8 +12,13 @@ For a commercial summary and contact details, see:
 
 ## Practical Usage Guidance (Non-Legal Summary)
 
-- **Non-production use** (testing, development, research, evaluation): generally permitted under BUSL-1.1.
-- **Production/commercial use**: requires a qualifying additional use grant or a commercial agreement.
+- **Free use (including production)** is intended for:
+  - personal/private non-commercial projects,
+  - nonprofits (mission use, not primarily for the benefit of a for-profit),
+  - academic/educational/research use (schools, universities, public labs),
+  - open-source projects that do not sell Liquefy itself as a commercial service.
+- **Commercial / for-profit use** requires a commercial license from Parad0x Labs.
+- **Commercial use** includes use by or for the benefit of a for-profit entity, internal business operations, hosted/SaaS offerings, embedding/bundling in a product or service, and work delivered for a paying client.
 - **Decode-only recovery**: intended to remain available so data is not hostage.
 
 ## Why This File Exists
@@ -23,5 +28,6 @@ This file provides a short, discoverable pointer for operators and integrators (
 - the legal license text
 - commercial usage guidance
 - contact path for licensing
+- practical examples of what is free vs commercial
 
 If this file conflicts with `LICENSE`, the `LICENSE` file prevails.
