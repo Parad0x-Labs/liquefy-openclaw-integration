@@ -120,7 +120,7 @@ Status artifacts (generated):
 - `./bench/results/LIQUEFY_STATUS_REPORT.md`
 - `./bench/results/LIQUEFY_STATUS_REPORT.json`
 
-Free for personal/private, nonprofit, and academic use (including production in those contexts). Commercial / for-profit use requires a [license](./COMMERCIAL_LICENSE.md).
+Free for personal/private, nonprofit, and academic use (including production in those contexts). Commercial / for-profit use requires a [license](./COMMERCIAL_LICENSE.md), including monetized hosted/API offerings and paid wrappers built on Liquefy.
 
 **Decoder is always available.** Decompression and verification never require a license, a running service, or access to this repo. Archives are self-contained. Your data is never hostage.
 

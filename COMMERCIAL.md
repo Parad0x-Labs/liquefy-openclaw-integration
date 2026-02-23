@@ -16,9 +16,9 @@ For a commercial summary and contact details, see:
   - personal/private non-commercial projects,
   - nonprofits (mission use, not primarily for the benefit of a for-profit),
   - academic/educational/research use (schools, universities, public labs),
-  - open-source projects that do not sell Liquefy itself as a commercial service.
+  - open-source projects that do not sell, license for a fee, or commercially offer Liquefy itself (or Liquefy-powered functionality).
 - **Commercial / for-profit use** requires a commercial license from Parad0x Labs.
-- **Commercial use** includes use by or for the benefit of a for-profit entity, internal business operations, hosted/SaaS offerings, embedding/bundling in a product or service, and work delivered for a paying client.
+- **Commercial use** includes use by or for the benefit of a for-profit entity, internal business operations, hosted/SaaS/API offerings, embedding/bundling in a product or service, monetized \"open-source\" wrappers/managed offerings built on Liquefy, and work delivered for a paying client.
 - **Decode-only recovery**: intended to remain available so data is not hostage.
 
 ## Why This File Exists

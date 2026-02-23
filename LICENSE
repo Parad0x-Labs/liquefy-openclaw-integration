@@ -20,11 +20,16 @@ organization use in support of its mission where the use is not primarily for
 the benefit of a for-profit entity; (iii) academic, educational, or research
 use by schools, universities, and public research institutions; and (iv)
 open-source project development and operation where access to the Licensed Work
-itself is not sold as a commercial product or service. This Additional Use
-Grant does not apply to any Commercial Use, including use by or for the benefit
-of a for-profit entity, internal business operations, hosted/SaaS offerings,
-embedding or bundling in a commercial product or service, or services delivered
-for a paying client.
+itself, or Liquefy-powered functionality, is not sold, licensed for a fee, or
+offered as part of a commercial product or service. This Additional Use Grant
+does not apply to any Commercial Use, including use by or for the benefit of a
+for-profit entity, internal business operations, hosted/SaaS/API offerings,
+embedding or bundling in a commercial product or service, monetized
+"open-source" wrappers or managed offerings that materially rely on the
+Licensed Work, or services delivered for a paying client. Commercial Use
+requires a separate commercial license from the Licensor. For clarity, this
+Additional Use Grant does not reduce the non-production rights granted by this
+License.
 
 Change Date:
 2029-02-22

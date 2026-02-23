@@ -18,13 +18,14 @@ For legally binding terms, see the repository `LICENSE` file.
   - personal/private non-commercial projects,
   - nonprofit organizations (mission use, not primarily for the benefit of a for-profit entity),
   - academic, educational, and research use (schools, universities, public research institutions),
-  - open-source projects that do not sell access to Liquefy itself as a commercial service.
+  - open-source projects that do not sell, license for a fee, or commercially offer access to Liquefy itself or Liquefy-powered functionality.
 - **Commercial / for-profit use** requires a separate commercial agreement with Parad0x Labs.
 - **Commercial use** includes (non-exhaustive):
   - any use by or for the benefit of a for-profit entity,
   - internal business operations (including evaluation or pre-production use at a for-profit),
-  - SaaS / hosted / managed service offerings,
+  - SaaS / hosted / managed service / API offerings,
   - embedding or bundling Liquefy into a commercial product or service,
+  - monetized "open-source" wrappers or managed offerings materially built on Liquefy,
   - consulting or services delivered for a paying client.
 - **Decode-only recovery** (`decompress`/`verify`): intended to remain available without production lock-in.
 
@@ -41,6 +42,7 @@ Commercial license required:
 
 - Startup or enterprise using Liquefy internally (including pre-revenue startups)
 - Cloud provider / AI platform / managed service packaging Liquefy into an offering
+- OSS project selling hosted/API access to Liquefy-powered functionality
 - Agency or contractor using Liquefy on behalf of a paying client
 - Commercial product embedding Liquefy as part of its storage/compression pipeline
 
