@@ -147,8 +147,8 @@ Liquefy is licensed under the **Business Source License 1.1 (BUSL-1.1)**:
 ## 🎖️ Enterprise Certification
 Liquefy is certified for **100% bit-perfect restoration**. Our comprehensive test suite covers 24 engine combinations and validates integrity against the Golden-Rule standard.
 
-*   [**View Ultimate Certification Report**](./REPORTS/ENTERPRISE_CERTIFICATION_V1.md)
-*   [**View Technical Test Logs**](./REPORTS/ULTIMATE_TEST_LOGS.md)
+*   [**View Enterprise Evaluation Notes**](./docs/enterprise-evaluation.md)
+*   [**View Technical Specification**](./docs/technical-specification.md)
 
 ---
 
@@ -160,8 +160,8 @@ The **$NULL Sovereign SDK** is the official tool for offline data recovery and v
 
 ### One-Command Installation
 ```bash
-git clone https://github.com/Parad0x-Labs/openclaw_liquefy.git
-cd liquefy
+git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git
+cd liquefy-openclaw-integration
 chmod +x ./liquefy
 ```
 

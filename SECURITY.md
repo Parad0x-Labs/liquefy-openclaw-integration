@@ -2,7 +2,7 @@
 
 ## Supported Security Posture
 
-This repository is under active development. Security fixes are applied to the current `master` branch first.
+This repository is under active development. Security fixes are applied to the current `main` branch first.
 
 Current notable protections:
 - LSEC v2 AEAD encryption (`AES-256-GCM`) with authenticated headers (AAD)
