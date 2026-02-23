@@ -1,0 +1,107 @@
+name: Build Release Binaries
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_suffix: linux-x64
+            sep: ":"
+            exe: ""
+          - os: macos-latest
+            artifact_suffix: macos-universal2
+            sep: ":"
+            exe: ""
+          - os: windows-latest
+            artifact_suffix: windows-x64
+            sep: ";"
+            exe: ".exe"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build deps
+        run: |
+          python -m pip install -U pip
+          pip install pyinstaller==6.11.1 zstandard==0.25.0 cryptography==41.0.7 xxhash==3.6.0 PyYAML
+      - name: Build binaries (PyInstaller)
+        shell: bash
+        env:
+          PYI_SEP: ${{ matrix.sep }}
+        run: |
+          set -euo pipefail
+          rm -rf build dist
+          COMMON_ARGS=(
+            --noconfirm
+            --clean
+            --onefile
+            --paths tools
+            --paths api
+            --add-data "api${PYI_SEP}api"
+            --add-data "tools${PYI_SEP}tools"
+            --hidden-import cli_runtime
+            --hidden-import path_policy
+            --hidden-import orchestrator.orchestrator
+            --hidden-import liquefy_security
+            --hidden-import liquefy_openclaw
+            --hidden-import tracevault_pack
+            --hidden-import tracevault_restore
+          )
+
+          python -m PyInstaller "${COMMON_ARGS[@]}" --name liquefy tools/liquefy_cli.py
+          python -m PyInstaller "${COMMON_ARGS[@]}" --name liquefy-openclaw tools/liquefy_openclaw.py
+          python -m PyInstaller "${COMMON_ARGS[@]}" --name tracevault-pack tools/tracevault_pack.py
+          python -m PyInstaller "${COMMON_ARGS[@]}" --name tracevault-restore tools/tracevault_restore.py
+      - name: Package release files + checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-dist
+          for bin in liquefy liquefy-openclaw tracevault-pack tracevault-restore; do
+            src="dist/${bin}${{ matrix.exe }}"
+            dst="release-dist/${bin}-${{ matrix.artifact_suffix }}${{ matrix.exe }}"
+            cp "$src" "$dst"
+          done
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          root = Path("release-dist")
+          lines = []
+          for p in sorted(root.iterdir()):
+              if not p.is_file():
+                  continue
+              h = hashlib.sha256()
+              with p.open("rb") as f:
+                  for chunk in iter(lambda: f.read(1 << 20), b""):
+                      h.update(chunk)
+              lines.append(f"{h.hexdigest()}  {p.name}")
+          (root / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liquefy-binaries-${{ matrix.artifact_suffix }}
+          path: release-dist/*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: liquefy-binaries-*
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*

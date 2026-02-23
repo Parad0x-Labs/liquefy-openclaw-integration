@@ -1,0 +1,16 @@
+# Demo only: this file shows how a team can store policy + explicit risky intent.
+# Leave `enabled: false` by default. Use the exact phrase on the CLI when you want to override.
+version: 1
+mode: strict
+deny:
+  - pattern: "**/openclaw.json"
+    reason: "OPENCLAW_CONFIG"
+allow:
+  - pattern: "workspace/demo_keys/**"
+allow_categories:
+  - ENV_FILE
+include_risky:
+  enabled: false
+  require_phrase: "I UNDERSTAND THIS MAY LEAK SECRETS"
+  phrase: "REPLACE_WITH_EXACT_PHRASE_AT_RUNTIME"
+redact_output: false

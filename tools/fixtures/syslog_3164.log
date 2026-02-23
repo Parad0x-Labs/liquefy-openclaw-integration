@@ -1,0 +1,3 @@
+<34>Feb 22 00:00:02 host app[123]: service started successfully
+<34>Feb 22 00:00:03 host app[123]: listening on port 8080
+<38>Feb 22 00:00:04 host kernel: TCP connection established 10.0.0.1:443

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liquefy v1 | Sovereign Data Infrastructure</title>
+    <meta name="description" content="Liquefy v1: Structure-aware, bit-perfect compression for sovereign enterprise data lakes.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #020203;
+            --bg-secondary: #0A0A0B;
+            --bg-card: rgba(255,255,255,0.02);
+            --border: rgba(255,255,255,0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.4);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+
+        nav {
+            padding: 24px 0;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: rgba(2,2,3,0.8);
+            backdrop-filter: blur(12px);
+            z-index: 100;
+        }
+        .nav-inner { display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-weight: 800; font-size: 1.25rem; text-decoration: none; color: #fff; letter-spacing: -0.02em; }
+        .nav-links { display: flex; gap: 32px; }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; font-weight: 500; }
+
+        .hero { padding: 140px 0 100px; }
+        .hero h1 { font-size: 4.5rem; line-height: 1.05; margin-bottom: 32px; font-weight: 800; letter-spacing: -0.04em; }
+        .hero h1 span { background: linear-gradient(to right, #fff, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero p { font-size: 1.25rem; color: var(--text-secondary); max-width: 600px; margin-bottom: 48px; }
+
+        .btn { display: inline-flex; align-items: center; padding: 14px 28px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 700; border-radius: 4px; transition: transform 0.2s; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px var(--accent-glow); }
+
+        .section { padding: 100px 0; border-top: 1px solid var(--border); }
+        .section-label { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 24px; display: block; }
+        .section h2 { font-size: 2.75rem; margin-bottom: 32px; font-weight: 800; letter-spacing: -0.03em; }
+
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 60px; }
+        .feature-card { border-left: 2px solid var(--border); padding-left: 32px; transition: border-color 0.3s; }
+        .feature-card:hover { border-color: var(--accent); }
+        .feature-card h3 { font-size: 1.5rem; margin-bottom: 16px; font-weight: 700; }
+        .feature-card p { font-size: 1rem; color: var(--text-secondary); }
+
+        footer { padding: 80px 0; border-top: 1px solid var(--border); text-align: center; color: var(--text-secondary); font-size: 0.8rem; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 3.25rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="container nav-inner">
+            <a href="/" class="logo">LIQUEFY v1</a>
+            <div class="nav-links">
+                <a href="/liquefy">Log Lab</a>
+                <a href="/media">Media Lab</a>
+                <a href="/roadmap">Roadmap</a>
+                <a href="/token">$NULL</a>
+                <a href="/null">.null</a>
+                <a href="/api-docs">API Docs</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <section class="hero container">
+            <span class="section-label">Enterprise-Grade Lab</span>
+            <h1>Reclaiming the <span>Sovereign</span> Data Lake.</h1>
+            <p>Liquefy v1 is a structure-aware orchestration layer designed to solve the exponential data storage crisis without sacrificing bit-perfect integrity.</p>
+            <div style="display: flex; gap: 20px;">
+                <a href="/liquefy" class="btn">Enter Log Lab</a>
+                <a href="/media" class="btn" style="background: transparent; border: 1px solid var(--border);">Media Engines</a>
+            </div>
+        </section>
+
+        <section class="section container">
+            <span class="section-label">The Mission</span>
+            <h2>Entropy is the Enemy.</h2>
+            <p style="font-size: 1.25rem; color: var(--text-secondary); max-width: 800px;">We are in the midst of an exponential data crisis. Corporate data lakes have become data swamps—unstructured, bloated, and prohibitively expensive. Liquefy v1 is our answer to the entropy problem. We don't just compress data; we structure it for the next century of compute.</p>
+
+            <div class="grid">
+                <div class="feature-card">
+                    <h3>Deep-Tech DNA</h3>
+                    <p>Born in the labs of Parad0x, Liquefy v1 was built to handle the most demanding financial and infrastructure telemetry. Our roots are in high-frequency trading and sovereign security.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Zero Trust Storage</h3>
+                    <p>We believe your data is your sovereignty. By moving compression from a generic cloud utility to a localized, structure-aware layer, we eliminate middle-man risk and restore control.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="section container">
+            <span class="section-label">Architecture</span>
+            <h2>Deterministic Intelligence.</h2>
+            <p style="font-size: 1.25rem; color: var(--text-secondary); max-width: 800px;">Liquefy v1 replaces generic compression with structure-aware entropy lifting. By understanding the underlying schema of your data, we achieve world-class density while guaranteeing byte-perfect restoration.</p>
+
+            <div class="grid">
+                <div class="feature-card">
+                    <h3>21 Specialized Engines</h3>
+                    <p>Each engine is surgically tuned for specific data types—from JSON telemetry and AWS CloudTrail to deep-system kernel logs—stripping redundancy at the semantic level.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Black-Box Security</h3>
+                    <p>Deployed as an isolated Docker environment with zero external calls. All encryption uses AES-256-GCM with multi-tenant key isolation, compliant with fintech standards.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>MRTV Protection</h3>
+                    <p>Mandatory Round-Trip Verification. Every archive undergoes an internal SHA-256 audit before completion. If integrity isn't 100%, the cycle is aborted.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Media & Documents</h3>
+                    <p>Integrated Nebula and Lazarus engines handle high-resolution imagery and complex PDF skeletonization, providing 10-20x storage efficiency for archives.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="section container" style="background: linear-gradient(to bottom, transparent, rgba(99, 102, 241, 0.02));">
+            <span class="section-label">Integration</span>
+            <h2>Pro-Corps API Baseline.</h2>
+            <p style="margin-bottom: 40px;">Ready for high-throughput production environments. Our documentation provides the full specification for multi-tenant deployment.</p>
+            <a href="/api-docs" style="color: var(--accent); font-weight: 700; text-decoration: none; font-family: 'JetBrains Mono', monospace;">VIEW API SPECIFICATION →</a>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>PARAD0X LABS | DEEP-TECH DIVISION | © 2025</p>
+        </div>
+    </footer>
+
+</body>
+</html>

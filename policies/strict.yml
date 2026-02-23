@@ -1,0 +1,9 @@
+version: 1
+mode: strict
+deny: []
+allow: []
+allow_categories: []
+include_risky:
+  enabled: false
+  require_phrase: "I UNDERSTAND THIS MAY LEAK SECRETS"
+redact_output: true

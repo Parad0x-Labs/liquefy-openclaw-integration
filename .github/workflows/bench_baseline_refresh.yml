@@ -1,0 +1,57 @@
+name: Benchmark Baseline Refresh (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Median-of-N runs for CI subset benchmark
+        required: false
+        default: "5"
+
+jobs:
+  baseline_refresh_candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -U pip
+      - run: pip install -r requirements.txt || true
+      - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
+      - run: >
+          python benchmarks/run_ci_subset.py
+          --out benchmarks/latest_ci_refresh_candidate.csv
+          --runs ${{ github.event.inputs.runs || '5' }}
+      - name: Compare candidate vs current baseline (informational)
+        run: |
+          set +e
+          python benchmarks/compare.py \
+            --baseline benchmarks/baseline_realistic_subset.csv \
+            --latest benchmarks/latest_ci_refresh_candidate.csv \
+            --fail-on-extra \
+            --max-default-ratio-regression-pct 1.0 \
+            --max-default-speed-regression-pct 25.0 \
+            --max-ratio-profile-ratio-regression-pct 1.0 \
+            --max-ratio-profile-speed-regression-pct 50.0 \
+            --max-speed-profile-speed-regression-pct 30.0 \
+            > benchmarks/refresh_compare.txt 2>&1
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        id: compare
+      - name: Write summary
+        run: |
+          {
+            echo "## Benchmark Baseline Refresh Candidate"
+            echo
+            echo "- Candidate CSV artifact: \`benchmarks/latest_ci_refresh_candidate.csv\`"
+            echo "- Current baseline: \`benchmarks/baseline_realistic_subset.csv\`"
+            echo "- Comparator exit code: \`${{ steps.compare.outputs.exit_code }}\`"
+            echo
+            echo "Review the artifact + compare output, then update the baseline in a normal PR if the change is intentional."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-baseline-refresh-candidate
+          path: |
+            benchmarks/latest_ci_refresh_candidate.csv
+            benchmarks/refresh_compare.txt

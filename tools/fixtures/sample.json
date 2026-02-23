@@ -1,0 +1,21 @@
+{
+    "ts": "2026-02-22T00:00:00Z",
+    "svc": "api",
+    "level": "info",
+    "msg": "request completed",
+    "lat_ms": 12
+}
+{
+    "ts": "2026-02-22T00:00:01Z",
+    "svc": "api",
+    "level": "info",
+    "msg": "request completed",
+    "lat_ms": 8
+}
+{
+    "ts": "2026-02-22T00:00:02Z",
+    "svc": "auth",
+    "level": "warn",
+    "msg": "token expiring",
+    "lat_ms": 3
+}

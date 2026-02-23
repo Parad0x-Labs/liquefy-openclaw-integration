@@ -1,0 +1,55 @@
+# Parad0x Labs - Liquefy .gitignore
+
+# Internal Audits & Sensitive Docs (Scoped to prevent "audit smell")
+INTERNAL_AUDIT/**/*.txt
+INTERNAL_AUDIT/**/*.log
+REPORTS/INTERNAL_REVIEW_*
+MISSION_LOG_*
+INTERNAL_REVIEW_*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# Docker / Build
+appliance-public/decoder_source.py
+dist/
+build/
+*.spec
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / Build artifacts
+.pytest_cache/
+*.null
+*.gz
+.env
+logs/
+out/
+api/out/
+vault/
+restored/
+
+# Local uploads / generated artifacts (never publish)
+api/uploads/
+api/**/uploads/
+
+# Benchmark datasets / generated results / vendored binaries
+bench/datasets/
+bench/results/
+bench/bin/
+
+# Benchmark runner local outputs
+benchmarks/latest_ci_subset.csv
+
+# Local archives / bundles
+*.zst
+*.tar
+*.zip
+
+# Keep test fixtures and docs images tracked (do not blanket-ignore *.log/*.jsonl/*.png)

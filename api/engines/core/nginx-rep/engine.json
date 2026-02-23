@@ -1,0 +1,24 @@
+{
+    "id": "liquefy-nginx-rep-v1",
+    "type": "inprocess",
+    "api_version": "1.0",
+    "priority": 600,
+    "capabilities": {
+        "mimetypes": [
+            "text/plain"
+        ],
+        "extensions": [
+            ".log"
+        ]
+    },
+    "sniff": {
+        "contains_any": [
+            "upstream_response_time",
+            "request_time"
+        ],
+        "regex_any": [
+            "^\\S+ - \\S+ \\[\\d{2}/[A-Z][a-z]{2}/\\d{4}:"
+        ]
+    },
+    "entrypoint": "nginx.liquefy_nginx_repetition_v1:LiquefyNginxRepetitionV1"
+}

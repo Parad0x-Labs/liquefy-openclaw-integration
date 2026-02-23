@@ -1,0 +1,3 @@
+This is plain text that no specialized engine should match.
+It will be processed by the Zstd fallback path.
+Line three of raw text content for testing purposes.

@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -U pip
+      - run: pip install -r requirements.txt || true
+      - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
+      - run: PYTHONPYCACHEPREFIX=/tmp/pycache python -m compileall api || true
+      - run: pytest tests/ -v
+
+  unit_macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -U pip
+      - run: pip install -r requirements.txt || true
+      - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
+      - run: PYTHONPYCACHEPREFIX=/tmp/pycache python -m compileall api || true
+      - run: >
+          pytest
+          tests/test_router.py
+          tests/test_engines_run.py
+          tests/test_cli_contracts.py
+          tests/test_security_lsec_v2.py
+          tests/test_tracevault_path_safety.py
+          -q
+
+  cli_contracts:
+    runs-on: ubuntu-latest
+    needs: [unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -U pip
+      - run: pip install -r requirements.txt || true
+      - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
+      - run: pytest tests/test_cli_contracts.py -q
+
+  e2e_smoke:
+    runs-on: ubuntu-latest
+    needs: [unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -U pip
+      - run: pip install -r requirements.txt || true
+      - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
+      - run: python tools/smoke_e2e.py
+
+  bench_compare:
+    runs-on: ubuntu-latest
+    needs: [unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -U pip
+      - run: pip install -r requirements.txt || true
+      - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
+      - run: python benchmarks/run_ci_subset.py --out benchmarks/latest_ci.csv --runs 3
+      - run: >
+          python benchmarks/compare.py
+          --baseline benchmarks/baseline_realistic_subset.csv
+          --latest benchmarks/latest_ci.csv
+          --fail-on-extra
+          --max-default-ratio-regression-pct 1.0
+          --max-default-speed-regression-pct 25.0
+          --max-ratio-profile-ratio-regression-pct 1.0
+          --max-ratio-profile-speed-regression-pct 50.0
+          --max-speed-profile-speed-regression-pct 30.0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-latest-ci
+          path: benchmarks/latest_ci.csv

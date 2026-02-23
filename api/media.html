@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liquefy Media Lab | Nebula & Lazarus Engines</title>
+    <meta name="description" content="High-density media and document compression. Nebula for imagery, Lazarus for PDF skeletonization.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #050507;
+            --bg-secondary: #0c0c0e;
+            --bg-card: #111114;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #8b5cf6;
+            --accent-glow: rgba(139, 92, 246, 0.4);
+            --border: #1e293b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+
+        header { padding: 20px 0; border-bottom: 1px solid var(--border); background: rgba(5,5,7,0.8); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 100; }
+        .header-inner { display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-weight: 700; font-size: 1.25rem; text-decoration: none; color: #fff; }
+
+        nav { display: flex; gap: 32px; }
+        nav a { color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; }
+
+        .hero { padding: 80px 0 40px; text-align: center; }
+        .hero h1 { font-size: 3.5rem; font-weight: 800; margin-bottom: 16px; background: linear-gradient(to right, #fff, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero p { color: var(--text-secondary); max-width: 600px; margin: 0 auto 32px; }
+
+        .engine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 48px; }
+        .engine-card { background: var(--bg-card); border: 1px solid var(--border); padding: 32px; border-radius: 8px; position: relative; }
+        .engine-card h2 { font-size: 1.5rem; margin-bottom: 12px; color: var(--accent); }
+        .engine-card p { font-size: 0.95rem; color: var(--text-secondary); margin-bottom: 24px; }
+
+        .upload-zone { border: 2px dashed var(--border); padding: 40px; text-align: center; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .upload-zone:hover { border-color: var(--accent); background: rgba(139, 92, 246, 0.05); }
+
+        .terminal { background: #000; border: 1px solid var(--border); border-radius: 8px; margin-top: 40px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+        .terminal-header { background: #111; padding: 10px 16px; border-bottom: 1px solid var(--border); color: #666; }
+        .terminal-body { padding: 20px; height: 250px; overflow-y: auto; color: #a78bfa; }
+
+        .btn-download { display: block; margin-top: 20px; padding: 12px; background: var(--accent); color: #fff; text-align: center; text-decoration: none; font-weight: 700; border-radius: 4px; }
+
+        footer { padding: 60px 0; border-top: 1px solid var(--border); text-align: center; color: var(--text-secondary); font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container header-inner">
+            <a href="/" class="logo">LIQUEFY v1</a>
+            <nav>
+                <a href="/">Home</a>
+                <a href="/liquefy">Log Lab</a>
+                <a href="/media">Media Lab</a>
+                <a href="/api-docs">Docs</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="hero">
+            <h1>Nebula & Lazarus</h1>
+            <p>High-density media and document intelligence. Mounted as read-only black-box volumes for maximum performance and security.</p>
+        </section>
+
+        <div class="engine-grid">
+            <div class="engine-card">
+                <h2>Nebula Engine</h2>
+                <p>Optimized for high-resolution imagery and video telemetry. Strips inter-frame redundancy and perceptual noise while maintaining archival-grade fidelity.</p>
+
+                <div class="upload-zone" id="nebula-zone">
+                    <input type="file" id="nebula-input" style="display: none" accept="image/*,video/*">
+                    <p>Drop Imagery/Video</p>
+                </div>
+            </div>
+
+            <div class="engine-card">
+                <h2>Lazarus Engine</h2>
+                <p>Enterprise PDF and document skeletonization. Reconstructs document objects to minimize storage footprint for legal and financial archives.</p>
+
+                <div class="upload-zone" id="lazarus-zone">
+                    <input type="file" id="lazarus-input" style="display: none" accept=".pdf">
+                    <p>Drop PDF Documents</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="terminal">
+            <div class="terminal-header">root@liquefy-media-lab:~</div>
+            <div class="terminal-body" id="media-log">
+                [SYS] Media engines online. Ready for ingest...
+            </div>
+        </div>
+
+        <div id="download-area" style="display: none; margin-top: 20px;">
+            <a href="#" id="download-link" class="btn-download">DOWNLOAD PROCESSED ASSET</a>
+        </div>
+    </main>
+
+    <footer>
+        <p>PARAD0X LABS | DEEP-TECH DIVISION | © 2025</p>
+    </footer>
+
+    <script>
+        const log = document.getElementById('media-log');
+        const downloadArea = document.getElementById('download-area');
+        const downloadLink = document.getElementById('download-link');
+
+        function addLog(text) {
+            const line = document.createElement('div');
+            line.textContent = `> ${text}`;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function processMedia(file, engine) {
+            addLog(`Received ${file.name} for ${engine} processing...`);
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('profile', 'balanced');
+
+            try {
+                addLog('Transmitting to black-box volume...');
+                const res = await fetch('/api/compress/media', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    addLog('Operation successful. 100% Deterministic Restore verified.');
+                    downloadLink.href = data.download_url;
+                    downloadArea.style.display = 'block';
+                } else {
+                    addLog(`ERROR: ${data.detail || 'Unknown failure'}`);
+                }
+            } catch (e) {
+                addLog(`CRITICAL ERROR: ${e.message}`);
+            }
+        }
+
+        document.getElementById('nebula-zone').onclick = () => document.getElementById('nebula-input').click();
+        document.getElementById('lazarus-zone').onclick = () => document.getElementById('lazarus-input').click();
+
+        document.getElementById('nebula-input').onchange = (e) => {
+            if (e.target.files.length) processMedia(e.target.files[0], 'Nebula');
+        };
+        document.getElementById('lazarus-input').onchange = (e) => {
+            if (e.target.files.length) processMedia(e.target.files[0], 'Lazarus');
+        };
+    </script>
+</body>
+</html>

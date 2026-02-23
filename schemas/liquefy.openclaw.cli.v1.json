@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquefy.dev/schemas/liquefy.openclaw.cli.v1.json",
+  "title": "Liquefy OpenClaw CLI JSON",
+  "type": "object",
+  "required": ["schema_version", "tool", "command", "ok"],
+  "properties": {
+    "schema_version": { "const": "liquefy.openclaw.cli.v1" },
+    "tool": { "const": "liquefy_openclaw" },
+    "command": { "type": "string", "enum": ["scan", "pack", "policy", "version", "self_test", "doctor"] },
+    "ok": { "type": "boolean" },
+    "profile": { "type": ["string", "null"], "enum": ["default", "ratio", "speed", null] },
+    "workspace": { "type": ["string", "null"] },
+    "out_dir": { "type": ["string", "null"] },
+    "verify_mode": { "type": ["string", "null"] },
+    "secure": { "type": ["boolean", "null"] },
+    "dry_run": { "type": ["boolean", "null"] },
+    "result": { "type": "object" },
+    "error": { "type": ["string", "object"] },
+    "error_type": { "type": "string" }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,70 @@
+name: Nightly Full Bench
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  format_matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        profile: [default]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -U pip
+      - run: pip install -r requirements.txt || true
+      - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
+      - name: Run realistic format matrix
+        env:
+          LIQUEFY_DETERMINISTIC: "1"
+          ZSTD_NBTHREADS: "1"
+          OMP_NUM_THREADS: "1"
+        run: >
+          python bench/run_format_matrix.py
+          --openclaw-size 200mb
+          --server-target-mb 50
+          --server-mode realistic
+          --verify-mode fast
+          --liquefy-profile ${{ matrix.profile }}
+      - name: Upload benchmark outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-format-matrix-${{ matrix.os }}-${{ matrix.profile }}
+          path: |
+            bench/results/*.csv
+            bench/results/*.md
+
+  openclaw_bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -U pip
+      - run: pip install -r requirements.txt || true
+      - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
+      - name: Run OpenClaw benchmark table (50/200)
+        env:
+          LIQUEFY_DETERMINISTIC: "1"
+          ZSTD_NBTHREADS: "1"
+          OMP_NUM_THREADS: "1"
+        run: >
+          python bench/run_bench.py
+          --sizes 50mb 200mb
+          --liquefy-verify-mode fast
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-openclaw-bench-ubuntu
+          path: |
+            bench/results/*.csv
+            bench/results/*.md

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$NULL Token | Liquefy v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #020203;
+            --bg-secondary: #0A0A0B;
+            --border: rgba(255,255,255,0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #6366f1;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        .container { max-width: 800px; margin: 0 auto; padding: 80px 24px; }
+        nav {
+            padding: 24px 0;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: rgba(2,2,3,0.8);
+            backdrop-filter: blur(12px);
+            z-index: 100;
+        }
+        .nav-inner { max-width: 1000px; margin: 0 auto; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-weight: 800; font-size: 1.25rem; text-decoration: none; color: #fff; }
+        .nav-links { display: flex; gap: 32px; }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; }
+
+        .label { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 16px; display: block; }
+        h1 { font-size: 3rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 24px; }
+        .sub { font-size: 1.25rem; color: var(--text-secondary); margin-bottom: 60px; }
+
+        .token-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 40px;
+            border-radius: 8px;
+            margin-bottom: 40px;
+        }
+        .token-info { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 32px; }
+        .info-label { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px; display: block; }
+        .info-value { font-size: 1.1rem; font-weight: 700; color: #fff; word-break: break-all; }
+
+        .utility-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 60px; }
+        .utility-card h3 { font-size: 1.25rem; margin-bottom: 12px; }
+        .utility-card p { color: var(--text-secondary); font-size: 0.95rem; }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="/" class="logo">LIQUEFY v1</a>
+            <div class="nav-links">
+                <a href="/liquefy">Log Lab</a>
+                <a href="/media">Media Lab</a>
+                <a href="/api-docs">API Docs</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container">
+        <span class="label">Ecosystem Asset</span>
+        <h1>The $NULL Token</h1>
+        <p class="sub">Powering the validation layer and governance of the Paradox Sovereign Infrastructure.</p>
+
+        <div class="token-card">
+            <span class="label">Contract Information</span>
+            <div class="token-info">
+                <div>
+                    <span class="info-label">Symbol</span>
+                    <span class="info-value">$NULL</span>
+                </div>
+                <div>
+                    <span class="info-label">Network</span>
+                    <span class="info-value">Ethereum (ERC-20)</span>
+                </div>
+                <div style="grid-column: span 2;">
+                    <span class="info-label">Contract Address (CA)</span>
+                    <span class="info-value">0x0000000000000000000000000000000000000000 [PENDING]</span>
+                </div>
+            </div>
+        </div>
+
+        <h2 style="margin-top: 80px;">Core Utility</h2>
+        <div class="utility-grid">
+            <div class="utility-card">
+                <h3>Governance</h3>
+                <p>$NULL holders dictate the training parameters and ethical guardrails of the NULLA AI persona.</p>
+            </div>
+            <div class="utility-card">
+                <h3>Verification Fees</h3>
+                <p>Used for paying gas fees during high-throughput MRTV audits on the sovereign node network.</p>
+            </div>
+            <div class="utility-card">
+                <h3>Domain Registry</h3>
+                <p>The primary currency for registering and maintaining .null sovereign domain names.</p>
+            </div>
+            <div class="utility-card">
+                <h3>Staking & Incentives</h3>
+                <p>Stake $NULL to secure the network and earn a portion of the enterprise compression savings.</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

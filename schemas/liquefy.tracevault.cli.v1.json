@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquefy.dev/schemas/liquefy.tracevault.cli.v1.json",
+  "title": "Liquefy TraceVault Pack CLI JSON",
+  "type": "object",
+  "required": ["schema_version", "tool", "command", "ok"],
+  "properties": {
+    "schema_version": { "const": "liquefy.tracevault.cli.v1" },
+    "tool": { "const": "tracevault_pack" },
+    "command": {
+      "type": "string",
+      "enum": ["scan", "pack", "policy", "version", "self_test", "doctor"]
+    },
+    "ok": { "type": "boolean" },
+    "profile": { "type": ["string", "null"], "enum": ["default", "ratio", "speed", null] },
+    "run_dir": { "type": ["string", "null"] },
+    "out_dir": { "type": ["string", "null"] },
+    "result": { "type": "object" },
+    "error": { "type": ["string", "object"] },
+    "error_type": { "type": "string" }
+  },
+  "additionalProperties": true
+}

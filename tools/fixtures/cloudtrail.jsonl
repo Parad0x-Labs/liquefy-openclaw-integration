@@ -1,0 +1,2 @@
+{"eventVersion":"1.08","userIdentity":{"type":"Root"},"eventTime":"2026-02-22T00:00:05Z","eventName":"ConsoleLogin","eventSource":"signin.amazonaws.com","awsRegion":"us-east-1","sourceIPAddress":"203.0.113.1"}
+{"eventVersion":"1.08","userIdentity":{"type":"IAMUser"},"eventTime":"2026-02-22T00:00:06Z","eventName":"DescribeInstances","eventSource":"ec2.amazonaws.com","awsRegion":"us-west-2","sourceIPAddress":"10.0.0.5"}

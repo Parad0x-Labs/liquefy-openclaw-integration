@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Liquefy v1 | Enterprise API Documentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f8fafc;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --accent: #2563eb;
+      --border: #e2e8f0;
+      --code-bg: #1e293b;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; color: var(--text-primary); line-height: 1.6; background: var(--bg-primary); }
+    .container { max-width: 1000px; margin: 0 auto; padding: 40px 24px; }
+
+    header { border-bottom: 1px solid var(--border); padding: 20px 0; background: var(--bg-secondary); }
+    .header-inner { display: flex; justify-content: space-between; align-items: center; max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+    .logo { font-weight: 700; font-size: 20px; text-decoration: none; color: var(--text-primary); }
+
+    h1 { font-size: 36px; margin-bottom: 16px; letter-spacing: -0.02em; }
+    h2 { font-size: 24px; margin: 40px 0 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    h3 { font-size: 18px; margin: 24px 0 12px; color: var(--accent); }
+    p { margin-bottom: 16px; color: var(--text-secondary); }
+
+    .endpoint-card { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 32px; overflow: hidden; }
+    .endpoint-header { background: var(--bg-secondary); padding: 16px; display: flex; gap: 12px; align-items: center; border-bottom: 1px solid var(--border); }
+    .method { padding: 4px 8px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .method.post { background: #dcfce7; color: #166534; }
+    .method.get { background: #dbeafe; color: #1e40af; }
+    .path { font-family: 'Fira Code', monospace; font-size: 14px; font-weight: 600; }
+
+    .endpoint-body { padding: 24px; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    th { text-align: left; padding: 12px; background: var(--bg-secondary); font-size: 13px; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+    td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+
+    .code-block { background: var(--code-bg); color: #e2e8f0; padding: 20px; border-radius: 8px; font-family: 'Fira Code', monospace; font-size: 13px; overflow-x: auto; margin: 16px 0; }
+
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; background: #f1f5f9; color: #64748b; font-size: 11px; font-weight: 600; margin-left: 8px; }
+
+    footer { border-top: 1px solid var(--border); padding: 40px 0; text-align: center; color: var(--text-secondary); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="logo">Liquefy v1</a>
+      <a href="/liquefy" style="text-decoration: none; color: var(--accent); font-weight: 600; font-size: 14px;">← Back to Lab</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <h1>Enterprise API Specification</h1>
+    <p>Complete documentation for the Liquefy v1 Sovereign Compression Stack. Designed for high-throughput production environments requiring 100% bit-perfect restoration.</p>
+
+    <h2>Authentication</h2>
+    <p>All API calls must include your organization's API Key in the Authorization header. Authentication is required for multi-tenant isolation, audit logging, and rate limit management.</p>
+    <div class="code-block">Authorization: Bearer YOUR_PRODUCTION_API_KEY</div>
+
+    <h3>Rate Limits & Quotas</h3>
+    <table>
+      <thead><tr><th>Tier</th><th>Daily Call Limit</th><th>Daily Data Limit</th><th>Requirement</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Public Lab</strong></td><td>30 calls</td><td>50 MB</td><td>None (IP-tracked)</td></tr>
+        <tr><td><strong>Professional</strong></td><td>100 calls</td><td>500 MB</td><td>Registered API Key</td></tr>
+        <tr><td><strong>Enterprise</strong></td><td>500 calls</td><td>1.0 GB</td><td>Organization API Key</td></tr>
+      </tbody>
+    </table>
+    <p><small>* Limits are reset daily at 00:00 UTC. For high-volume production requirements exceeding 1TB/day, contact enterprise@parad0x.io.</small></p>
+
+    <h2>Endpoints</h2>
+
+    <!-- COMPRESS -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/compress/log</span>
+      </div>
+      <div class="endpoint-body">
+        <h3>Synchronous Log Compression</h3>
+        <p>Compresses a raw log stream using one of the 21 specialized engines. Returns a URI to the cryptographically sealed `.null` archive.</p>
+
+        <h4>Request Body (multipart/form-data)</h4>
+        <table>
+          <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td>file</td><td>File</td><td>Raw log file (Max 50MB Lab Limit).</td></tr>
+            <tr><td>engine</td><td>String</td><td>ID of tuned engine (e.g., <code>LIQUEFY_V1_JSON</code>). Defaults to <code>LIQUEFY_V1_MIXED</code>.</td></tr>
+            <tr><td>tenant_id</td><td>String</td><td>Enterprise tenant identifier for isolated key derivation.</td></tr>
+          </tbody>
+        </table>
+
+        <h4>Response (application/json)</h4>
+        <div class="code-block">
+{
+  "status": "success",
+  "job_id": "uuid-v4-identifier",
+  "engine": "LIQUEFY_V1_JSON",
+  "original_size": 197500421,
+  "compressed_size": 5821004,
+  "ratio": "33.92x",
+  "download_url": "/api/archive/filename.null"
+}
+        </div>
+      </div>
+    </div>
+
+    <!-- DECOMPRESS -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/decompress</span>
+      </div>
+      <div class="endpoint-body">
+        <h3>Bit-Perfect Restoration</h3>
+        <p>Restores a `.null` archive to its exact original state. Mandatory Round-Trip Verification (MRTV) ensures zero bit loss.</p>
+
+        <h4>Request Body (multipart/form-data)</h4>
+        <table>
+          <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td>file</td><td>File</td><td>The <code>.null</code> compressed archive.</td></tr>
+            <tr><td>tenant_id</td><td>String</td><td>Must match the identifier used during compression.</td></tr>
+          </tbody>
+        </table>
+
+        <h4>Response (application/json)</h4>
+        <div class="code-block">
+{
+  "status": "success",
+  "job_id": "uuid-v4-identifier",
+  "download_url": "/api/archive/filename.restored"
+}
+        </div>
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <span class="path">/api/stats</span>
+      </div>
+      <div class="endpoint-body">
+        <h3>Operational Telemetry</h3>
+        <p>Retrieve real-time performance metrics, including data reduction totals and projected annual savings (USD).</p>
+
+        <h4>Response (application/json)</h4>
+        <div class="code-block">
+{
+  "kpis": {
+    "total_ops": 1542,
+    "compression_ratio": 27.4,
+    "data_reduced_gb": 4.21,
+    "avg_throughput_mbps": 185.2
+  },
+  "fintech_lab": {
+    "projected_annual_savings_usd": 134700.00,
+    "enterprise_roi_value": 15.0
+  }
+}
+        </div>
+      </div>
+    </div>
+
+    <h2>Engine Matrix (v1.0)</h2>
+    <p>Specify the engine ID in the compression call to leverage structure-aware optimization.</p>
+    <table>
+      <thead><tr><th>Engine ID</th><th>Use Case</th><th>Optimized For</th></tr></thead>
+      <tbody>
+        <tr><td><code>LIQUEFY_V1_HYPER_NEBULA</code></td><td>Deep Nested K8s/JSON</td><td>Hyper-columnar recursive flattening (100x+)</td></tr>
+        <tr><td><code>LIQUEFY_V1_JSON_COLUMNAR</code></td><td>Structured Data</td><td>High-density columnar transpose (50x+)</td></tr>
+        <tr><td><code>LIQUEFY_V1_JSON</code></td><td>Application Logs</td><td>High-volume structured JSON streams</td></tr>
+        <tr><td><code>LIQUEFY_V1_APACHE</code></td><td>Web Ingress</td><td>Common Log Format / Nginx Combined</td></tr>
+        <tr><td><code>LIQUEFY_V1_AWS</code></td><td>Cloud Infrastructure</td><td>AWS CloudTrail / VPC Flow Logs</td></tr>
+        <tr><td><code>LIQUEFY_V1_K8S</code></td><td>Container Orchestration</td><td>Kubernetes System Audit Logs</td></tr>
+        <tr><td><code>LIQUEFY_V1_UNIVERSAL</code></td><td>Mixed / Legacy</td><td>Multi-format entropy lifting</td></tr>
+      </tbody>
+    </table>
+
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2025 Parad0x Labs | Liquefy Enterprise Division</p>
+    </div>
+  </footer>
+</body>
+</html>

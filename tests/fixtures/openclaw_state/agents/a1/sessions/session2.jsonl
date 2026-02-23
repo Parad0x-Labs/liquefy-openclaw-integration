@@ -1,0 +1,1 @@
+{"eventVersion":"1.08","userIdentity":{"type":"Agent"},"eventTime":"2026-02-22T01:00:00Z","eventName":"ToolCall","tool":"browser","input":{"url":"https://example.com"},"output":{"status":200},"duration_ms":320}

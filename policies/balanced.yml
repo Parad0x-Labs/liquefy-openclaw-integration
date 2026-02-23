@@ -1,0 +1,11 @@
+version: 1
+mode: balanced
+deny:
+  - pattern: "**/*.bak"
+    reason: "OPTIONAL_BACKUP_EXCLUDE"
+allow: []
+allow_categories: []
+include_risky:
+  enabled: false
+  require_phrase: "I UNDERSTAND THIS MAY LEAK SECRETS"
+redact_output: true

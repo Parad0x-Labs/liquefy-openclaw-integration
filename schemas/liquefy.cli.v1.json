@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquefy.dev/schemas/liquefy.cli.v1.json",
+  "title": "Liquefy Unified CLI Runtime JSON",
+  "type": "object",
+  "required": ["schema_version", "tool", "command", "ok", "result"],
+  "properties": {
+    "schema_version": { "const": "liquefy.cli.v1" },
+    "tool": { "const": "liquefy" },
+    "command": { "type": "string", "enum": ["version", "self_test", "doctor"] },
+    "ok": { "type": "boolean" },
+    "result": { "type": "object" }
+  },
+  "additionalProperties": true
+}

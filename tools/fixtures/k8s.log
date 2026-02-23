@@ -1,0 +1,3 @@
+{"log":"INFO: Server started on port 8080\n","stream":"stdout","time":"2026-02-22T00:00:04.000000000Z"}
+{"log":"INFO: Health check passed\n","stream":"stdout","time":"2026-02-22T00:00:05.000000000Z"}
+{"log":"WARN: High memory usage detected\n","stream":"stderr","time":"2026-02-22T00:00:06.000000000Z"}

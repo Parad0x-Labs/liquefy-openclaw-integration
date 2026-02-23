@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roadmap | Liquefy v1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #020203;
+            --bg-secondary: #0A0A0B;
+            --border: rgba(255,255,255,0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #6366f1;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        .container { max-width: 800px; margin: 0 auto; padding: 80px 24px; }
+        nav {
+            padding: 24px 0;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: rgba(2,2,3,0.8);
+            backdrop-filter: blur(12px);
+            z-index: 100;
+        }
+        .nav-inner { max-width: 1000px; margin: 0 auto; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-weight: 800; font-size: 1.25rem; text-decoration: none; color: #fff; }
+        .nav-links { display: flex; gap: 32px; }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; }
+
+        .label { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 16px; display: block; }
+        h1 { font-size: 3rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 48px; }
+
+        .roadmap-item {
+            position: relative;
+            padding-left: 40px;
+            margin-bottom: 60px;
+            border-left: 1px solid var(--border);
+        }
+        .roadmap-item::before {
+            content: '';
+            position: absolute;
+            left: -5px;
+            top: 0;
+            width: 9px;
+            height: 9px;
+            background: var(--accent);
+            border-radius: 50%;
+        }
+        .roadmap-item.completed::before { background: #10b981; }
+        .roadmap-item .status { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--accent); margin-bottom: 8px; display: block; }
+        .roadmap-item.completed .status { color: #10b981; }
+        .roadmap-item h2 { font-size: 1.5rem; margin-bottom: 12px; }
+        .roadmap-item p { color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="nav-inner">
+            <a href="/" class="logo">LIQUEFY v1</a>
+            <div class="nav-links">
+                <a href="/liquefy">Log Lab</a>
+                <a href="/media">Media Lab</a>
+                <a href="/api-docs">API Docs</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container">
+        <span class="label">The Path Ahead</span>
+        <h1>Development Roadmap</h1>
+
+        <div class="roadmap-item completed">
+            <span class="status">[PHASE 1: DEPLOYED]</span>
+            <h2>Liquefy v1 Core Stack</h2>
+            <p>Release of the structure-aware orchestration layer with 21 specialized engines, 50MB lab limit, and black-box Docker deployment.</p>
+        </div>
+
+        <div class="roadmap-item">
+            <span class="status">[PHASE 2: IN DEVELOPMENT]</span>
+            <h2>NULLA AI Integration</h2>
+            <p>Direct integration with the NULLA AI persona for intent-based data analysis and automated engine selection for unknown entropy profiles.</p>
+        </div>
+
+        <div class="roadmap-item">
+            <span class="status">[PHASE 3: RESEARCH]</span>
+            <h2>.null Domain Infrastructure</h2>
+            <p>Decentralized domain name service utilizing $NULL for registration and resolution within the Paradox ecosystem.</p>
+        </div>
+
+        <div class="roadmap-item">
+            <span class="status">[PHASE 4: PLANNED]</span>
+            <h2>Sovereign Node Network</h2>
+            <p>Enabling enterprise partners to host their own Liquefy nodes, earning $NULL for validating data integrity and providing localized compute.</p>
+        </div>
+    </div>
+</body>
+</html>

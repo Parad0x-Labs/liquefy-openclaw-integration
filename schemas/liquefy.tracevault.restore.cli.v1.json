@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquefy.dev/schemas/liquefy.tracevault.restore.cli.v1.json",
+  "title": "Liquefy TraceVault Restore CLI JSON",
+  "type": "object",
+  "required": ["schema_version", "tool", "command", "ok", "exit_code"],
+  "properties": {
+    "schema_version": { "const": "liquefy.tracevault.restore.cli.v1" },
+    "tool": { "const": "tracevault_restore" },
+    "command": { "type": "string", "enum": ["restore", "version", "self_test", "doctor"] },
+    "ok": { "type": "boolean" },
+    "exit_code": { "type": "integer" },
+    "vault_dir": { "type": ["string", "null"] },
+    "vault_name": { "type": ["string", "null"] },
+    "out_dir": { "type": ["string", "null"] },
+    "out_dir_name": { "type": ["string", "null"] },
+    "result": { "type": "object" },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

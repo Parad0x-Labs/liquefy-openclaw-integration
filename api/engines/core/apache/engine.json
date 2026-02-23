@@ -1,0 +1,27 @@
+{
+    "id": "liquefy-apache-v1",
+    "type": "inprocess",
+    "api_version": "1.0",
+    "priority": 500,
+    "capabilities": {
+        "mimetypes": [
+            "text/plain"
+        ],
+        "extensions": [
+            ".log"
+        ]
+    },
+    "sniff": {
+        "contains_any": [
+            "GET /",
+            "POST /",
+            "HTTP/1.1",
+            "HTTP/1.0",
+            "HTTP/2"
+        ],
+        "regex_any": [
+            "^\\S+ \\S+ \\S+ \\[[^\\]]+\\] \"(GET|POST|PUT|DELETE|HEAD|OPTIONS) "
+        ]
+    },
+    "entrypoint": "apache.liquefy_apache_v1:LiquefyApacheV1"
+}

@@ -1,0 +1,18 @@
+{
+    "id": "liquefy-fallback-v1",
+    "type": "inprocess",
+    "api_version": "1.0",
+    "priority": 10,
+    "capabilities": {
+        "mimetypes": [
+            "text/plain",
+            "application/octet-stream"
+        ],
+        "extensions": [
+            ".txt",
+            ".log",
+            ".dat"
+        ]
+    },
+    "entrypoint": "universal.liquefy_fallback_v1:LiquefyFallbackV1"
+}
