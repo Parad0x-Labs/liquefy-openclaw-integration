@@ -1,10 +1,37 @@
 {
   "name": "@parad0x-labs/liquefy-openclaw-plugin",
   "version": "0.1.0-alpha",
-  "private": true,
   "description": "OpenClaw plugin wrapper for Liquefy CLI (scan/apply tools, safe defaults)",
   "type": "module",
   "main": "dist/index.js",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md",
+    "skills"
+  ],
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "liquefy",
+    "compression",
+    "tracevault",
+    "observability"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git",
+    "directory": "plugins/openclaw-plugin"
+  },
+  "homepage": "https://github.com/Parad0x-Labs/liquefy-openclaw-integration/tree/main/plugins/openclaw-plugin",
+  "bugs": {
+    "url": "https://github.com/Parad0x-Labs/liquefy-openclaw-integration/issues"
+  },
+  "license": "BUSL-1.1",
+  "publishConfig": {
+    "access": "public"
+  },
+  "packageManager": "npm@10.8.2",
   "openclaw": {
     "extensions": [
       "./dist/index.js"

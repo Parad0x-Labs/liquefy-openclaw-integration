@@ -220,6 +220,13 @@ A Node.js OpenClaw plugin wrapper scaffold is included under:
 - `./plugins/openclaw-plugin`
 
 It exposes `liquefy_scan` (read-only) and `liquefy_pack_apply` (optional) by shelling out to the Liquefy CLI JSON contracts.
+It also includes a ClawHub/OpenClaw skill pack scaffold under:
+
+- `./plugins/openclaw-plugin/skills/liquefy-openclaw/SKILL.md`
+
+Publish/install trust notes (pinned plugin versions, checksums, safe defaults):
+
+- `./docs/openclaw-plugin-publish.md`
 ---
 
 ## 🛡️ Execution & Maintenance Policy
