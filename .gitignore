@@ -17,6 +17,8 @@ env/
 # Docker / Build
 appliance-public/decoder_source.py
 dist/
+!plugins/openclaw-plugin/dist/
+!plugins/openclaw-plugin/dist/*.js
 build/
 *.spec
 
