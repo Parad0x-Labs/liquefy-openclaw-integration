@@ -9,8 +9,8 @@ For legally binding terms, see the repository `LICENSE` file.
 
 - **Governing license:** BUSL-1.1
 - **Licensor:** Parad0x Labs
-- **Change Date:** 2029-02-22
-- **Change License:** MPL 2.0
+- **Change Date:** 2028-02-22
+- **Change License:** GPL-2.0-or-later
 
 ## Usage policy
 
