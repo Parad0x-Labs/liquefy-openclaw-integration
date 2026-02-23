@@ -32,6 +32,12 @@ Ratios improve significantly on production-scale files (MB+), where domain-speci
 ### Quick start
 
 ```bash
+# One-command local install (macOS/Linux, Apple Silicon-friendly source path)
+./install.sh
+
+# Activate the local environment
+source .venv/bin/activate
+
 # Pack a run folder
 python tools/tracevault_pack.py ./runs/latest --org dev --out ./vault/latest
 
@@ -162,6 +168,10 @@ The Liquefy decoder CLI/appliance path provides offline data recovery and verifi
 ```bash
 git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git
 cd liquefy-openclaw-integration
+# Source install (works today)
+./install.sh
+
+# Or use the decoder wrapper directly (Docker-backed path for decode/verify)
 chmod +x ./liquefy
 ```
 

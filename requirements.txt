@@ -1,0 +1,3 @@
+# Root install entry for source-based local development/use.
+# This keeps the public repo "pip install -r requirements.txt" friendly.
+-r api/requirements.txt
