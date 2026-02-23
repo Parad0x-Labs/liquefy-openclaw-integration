@@ -37,5 +37,12 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install -U pip
-      - run: pip install pip-audit
-      - run: pip-audit -r requirements.txt || (echo "pip-audit found issues" && exit 1)
+      - run: pip install pip-audit==2.9.0
+      - run: >
+          pip-audit
+          -r requirements.txt
+          --no-deps
+          --disable-pip
+          --cache-dir /tmp/pip-audit-cache
+          --progress-spinner off
+          || (echo "pip-audit found issues" && exit 1)
