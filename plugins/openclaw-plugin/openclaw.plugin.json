@@ -1,0 +1,45 @@
+{
+  "id": "liquefy",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "binaryPath": {
+        "type": "string",
+        "description": "Path to Liquefy CLI binary or script (defaults to LIQUEFY_OPENCLAW_BIN env var or `liquefy`)."
+      },
+      "workspace": {
+        "type": "string",
+        "description": "Default OpenClaw workspace path. Defaults to ~/.openclaw."
+      },
+      "vaultOut": {
+        "type": "string",
+        "description": "Default vault output directory (required for scan/apply if not supplied by tool input)."
+      },
+      "profile": {
+        "type": "string",
+        "enum": ["default", "ratio", "speed"],
+        "default": "default"
+      },
+      "policyFile": {
+        "type": "string",
+        "description": "Optional shared Liquefy policy file (.json/.yaml)."
+      },
+      "requireSecureByDefault": {
+        "type": "boolean",
+        "default": false,
+        "description": "If true, apply runs pass --secure and require LIQUEFY_SECRET."
+      },
+      "maxBytesPerRun": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 0
+      },
+      "listLimit": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 50
+      }
+    }
+  }
+}

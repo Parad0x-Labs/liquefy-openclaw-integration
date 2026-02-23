@@ -1,0 +1,19 @@
+{
+  "name": "@parad0x-labs/liquefy-openclaw-plugin",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "description": "OpenClaw plugin wrapper for Liquefy CLI (scan/apply tools, safe defaults)",
+  "type": "module",
+  "main": "dist/index.js",
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
