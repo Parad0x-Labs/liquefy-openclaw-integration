@@ -25,11 +25,11 @@ Scoreboard source of truth:
 - `./bench/results/SCOREBOARD.csv`
 - `./bench/results/SCOREBOARD_SUMMARY.md`
 
-Current scoreboard summary (post-fix):
+Current scoreboard summary (latest committed scoreboard artifact):
 - `WIN_SPEED`: `16`
 - `WIN_RATIO`: `7`
-- `WIN_RATIO+SPEED`: `1`
-- `TIE_OK`: `18`
+- `WIN_RATIO+SPEED`: `2`
+- `TIE_OK`: `17`
 - `FAIL`: `0`
 
 This scoreboard combines:
@@ -37,19 +37,21 @@ This scoreboard combines:
 - CI subset regression rows
 - OpenClaw benchmark rows (50MB/200MB)
 
-### Smoke fixtures (tiny, auto-routed sanity samples)
+Note: engine-core tuning has moved since some previously generated benchmark artifacts. Regenerate `SCOREBOARD.csv` / `SCOREBOARD_SUMMARY.md` and the scoreboard image after major engine changes before publishing fresh numeric claims.
 
-| Fixture | Input | Output | Ratio | Engine |
-|---|---|---|---|---|
-| apache.log | 308 B | 250 B | 1.23x | liquefy-apache-rep-v1 |
-| cloudtrail.jsonl | 424 B | 224 B | 1.89x | liquefy-json-hypernebula-v1 |
-| dump.sql | 276 B | 199 B | 1.39x | liquefy-sql-velocity-v1 |
-| sample.json | 393 B | 155 B | 2.54x | liquefy-json-hypernebula-v1 |
-| syslog_3164.log | 198 B | 174 B | 1.14x | liquefy-syslog-rep-v1 |
-| syslog_5424.log | 196 B | 159 B | 1.23x | liquefy-syslog-rep-v1 |
-| vpcflow.log | 288 B | 145 B | 1.99x | liquefy-vpcflow-v1 |
+### Smoke fixtures (routing sanity only)
 
-These tiny fixtures are routing/smoke examples only, not headline performance claims.
+| Fixture | Purpose | Expected route |
+|---|---|---|
+| `apache.log` | Apache log routing smoke | `liquefy-apache-rep-v1` |
+| `cloudtrail.jsonl` | CloudTrail/JSONL routing smoke | `liquefy-cloudtrail-v1` or JSON family engine |
+| `dump.sql` | SQL routing smoke | `liquefy-sql-velocity-v1` |
+| `sample.json` | JSON routing smoke | JSON family engine (`hypernebula` / cascade candidate) |
+| `syslog_3164.log` | RFC3164 syslog routing smoke | `liquefy-syslog-rep-v1` |
+| `syslog_5424.log` | RFC5424 syslog routing smoke | `liquefy-syslog-rep-v1` |
+| `vpcflow.log` | VPC flow routing smoke | `liquefy-vpcflow-v1` |
+
+These tiny fixtures are routing/correctness smoke examples only. Do not use them as headline performance numbers.
 
 ### Quick start
 
