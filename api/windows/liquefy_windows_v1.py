@@ -10,67 +10,13 @@ STATUS: 100% Lossless, Searchable.
 import time
 import re
 import zstandard as zstd
-import math
-import xxhash
 import sys
 import struct
 import io
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf, AdaptiveSearchIndex
 
 PROTOCOL_ID = b'EVT\x01'
-
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return struct.pack("B", val)
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80); val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple:
-    val = data[pos]; pos += 1
-    if val < 0x80: return val, pos
-    res = val & 0x7F; shift = 7
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
-
-class AdaptiveSearchIndex:
-    def __init__(self, num_items: int, fpr=0.01):
-        num_items = max(10, num_items)
-        m = -(num_items * math.log(fpr)) / (math.log(2)**2)
-        self.num_bits = max(64, int(m))
-        self.num_bytes = (self.num_bits + 7) // 8
-        self.ba = bytearray(self.num_bytes)
-        self.k = max(1, int((self.num_bits / num_items) * math.log(2)))
-
-    def add(self, token: bytes):
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            self.ba[pos >> 3] |= (1 << (pos & 7))
-
-    def check(self, token: bytes) -> bool:
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            if not (self.ba[pos >> 3] & (1 << (pos & 7))): return False
-        return True
-
-    def __bytes__(self):
-        return pack_varint(self.k) + pack_varint(self.num_bits) + bytes(self.ba)
-
-    @staticmethod
-    def from_bytes(data: bytes, pos: int):
-        k, p = unpack_varint_buf(data, pos); nb, p = unpack_varint_buf(data, p)
-        nby = (nb + 7) // 8; idx = AdaptiveSearchIndex(10)
-        idx.k = k; idx.num_bits = nb; idx.num_bytes = nby
-        idx.ba = bytearray(data[p:p+nby])
-        return idx, p + nby
 
 class StringLifter:
     def __init__(self):
@@ -98,7 +44,7 @@ def zstandard_params(level):
 
 class LiquefyWindowsV1:
     def __init__(self, level=3):
-        self.cctx = zstd.ZstdCompressor(level=level, compression_params=zstandard_params(level))
+        self.cctx = make_cctx(level=level, text_like=True)
         self.dctx = zstd.ZstdDecompressor()
         self.lifter = StringLifter()
         self.block_size = 2 * 1024 * 1024
@@ -118,9 +64,13 @@ class LiquefyWindowsV1:
             z_data = self.cctx.compress(chunk)
             out.write(pack_varint(len(idx_bytes)) + idx_bytes + pack_varint(len(z_data)))
             out.write(z_data)
-        return out.getvalue()
+        custom = out.getvalue()
+        raw_zstd = self.cctx.compress(raw)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, blob: bytes) -> bytes:
+        if blob.startswith(b"\x28\xb5\x2f\xfd"):
+            return zstd.ZstdDecompressor().decompress(blob)
         if not blob.startswith(PROTOCOL_ID): raise ValueError("Invalid Magic")
         in_io = io.BytesIO(blob)
         in_io.read(4) # Skip magic

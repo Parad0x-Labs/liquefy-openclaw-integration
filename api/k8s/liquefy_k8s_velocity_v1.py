@@ -15,33 +15,16 @@ import struct
 import xxhash
 import sys
 import io
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf, ZSTD_MAGIC
 
 PROTOCOL_ID = b'NIT\x01'
 V2_INDEX_FLAG = 1 << 31
 COL_MODE_RAW = 0
 COL_MODE_DICT = 1
-ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
-
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return struct.pack("B", val)
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80); val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple:
-    val = data[pos]; pos += 1
-    if val < 0x80: return val, pos
-    res = val & 0x7F; shift = 7
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
 
 class BloomIndex:
+    """Fixed-size 4KB bloom filter for K8s velocity lookups (2 hash probes)."""
     def __init__(self):
         self.ba = bytearray(4096)
     def add(self, token: bytes):
@@ -58,8 +41,9 @@ RE_K8S_FAST = re.compile(rb'^{"log":"((?:[^"\\]|\\.)*)","stream":"(stdout|stderr
 
 class LiquefyK8sVelocityV1:
     def __init__(self, level=19): # Favor ratio parity/wins against zstd-19 by default
-        self.cctx = zstd.ZstdCompressor(
+        self.cctx = make_cctx(
             level=level,
+            text_like=True,
             write_content_size=False,
             write_checksum=False,
             write_dict_id=False,

@@ -10,70 +10,16 @@ STATUS: 100% Lossless, Searchable, High Ratio (Target 20x+).
 import time
 import re
 import zstandard as zstd
-import math
-import xxhash
 import sys
 import struct
 from collections import defaultdict
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf, AdaptiveSearchIndex
 
 PROTOCOL_ID = b'K8U\x01'
 
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return struct.pack("B", val)
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80); val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple[int, int]:
-    val = data[pos]; pos += 1
-    if val < 0x80: return val, pos
-    res = val & 0x7F; shift = 7
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
-
-class AdaptiveSearchIndex:
-    def __init__(self, num_items: int, fpr=0.01):
-        num_items = max(10, num_items)
-        m = -(num_items * math.log(fpr)) / (math.log(2)**2)
-        self.num_bits = max(64, int(m))
-        self.num_bytes = (self.num_bits + 7) // 8
-        self.ba = bytearray(self.num_bytes)
-        self.k = max(1, int((self.num_bits / num_items) * math.log(2)))
-
-    def add(self, token: bytes):
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            self.ba[pos >> 3] |= (1 << (pos & 7))
-
-    def check(self, token: bytes) -> bool:
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            if not (self.ba[pos >> 3] & (1 << (pos & 7))): return False
-        return True
-
-    def __bytes__(self):
-        return pack_varint(self.k) + pack_varint(self.num_bits) + bytes(self.ba)
-
-    @staticmethod
-    def from_bytes(data: bytes, pos: int):
-        k, pos = unpack_varint_buf(data, pos); num_bits, pos = unpack_varint_buf(data, pos)
-        num_bytes = (num_bits + 7) // 8; idx = AdaptiveSearchIndex(10)
-        idx.k = k; idx.num_bits = num_bits; idx.num_bytes = num_bytes
-        idx.ba = bytearray(data[pos:pos+num_bytes])
-        return idx, pos + num_bytes
-
 class LiquefyK8sV1:
-    def __init__(self, level=3):
+    def __init__(self, level=19):
         self.level = level
         self.re_json = re.compile(rb'("(?:[^"\\]|\\.)*")|(-?\d+(?:\.\d+)?)|(true|false|null)')
 
@@ -112,7 +58,7 @@ class LiquefyK8sV1:
         for t in unique_tokens: idx.add(t)
         idx_bytes = bytes(idx)
 
-        cctx = zstd.ZstdCompressor(level=self.level)
+        cctx = make_cctx(level=self.level, text_like=True)
 
         # 1. Pack Templates
         t_blob = bytearray()
@@ -148,18 +94,21 @@ class LiquefyK8sV1:
 
             # We compress each global column with LDM
             try:
-                params = zstd.ZstdCompressionParameters(enable_ldm=True, window_log=22)
-                col_cctx = zstd.ZstdCompressor(level=self.level, compression_params=params)
-            except: col_cctx = cctx
+                col_cctx = make_cctx(level=self.level, text_like=True, enable_ldm=True, window_log=22)
+            except:
+                col_cctx = cctx
 
             c_data = col_cctx.compress(buf)
             c_blob.extend(pack_varint(len(c_data)) + c_data)
 
-        # FINAL COMPRESS
         final_payload = cctx.compress(t_blob + l_blob + c_blob)
-        return PROTOCOL_ID + pack_varint(len(idx_bytes)) + idx_bytes + final_payload
+        custom = PROTOCOL_ID + pack_varint(len(idx_bytes)) + idx_bytes + final_payload
+        raw_zstd = cctx.compress(raw)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, blob: bytes) -> bytes:
+        if blob.startswith(b"\x28\xb5\x2f\xfd"):
+            return zstd.ZstdDecompressor().decompress(blob)
         if not blob.startswith(PROTOCOL_ID): return b""
         pos = 4; idx_len, pos = unpack_varint_buf(blob, pos); pos += idx_len
         dctx = zstd.ZstdDecompressor()

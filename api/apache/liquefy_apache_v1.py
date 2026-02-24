@@ -12,32 +12,15 @@ import zstandard as zstd
 import json
 import re
 import sys
-import math
 from collections import defaultdict
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf
 
 PROTOCOL_ID = b'LPRM'
 VERSION = 1
 
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return bytes([val])
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80)
-        val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple[int, int]:
-    res = 0; shift = 0
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
-
 class LiquefyApacheV1:
-    def __init__(self, level=1):
+    def __init__(self, level=19):
         self.level = level
         # Optimized regex for Apache/Common log parts
         self.re_parts = re.compile(rb'(\S+)|(\[.*?\])|(".*?")|(\b\d+\b)')
@@ -73,7 +56,7 @@ class LiquefyApacheV1:
             line_struct.append(tid)
             for i, v in enumerate(parts): col_data[(tid, i)].append(v)
 
-        cctx = zstd.ZstdCompressor(level=self.level)
+        cctx = make_cctx(level=self.level, text_like=True)
 
         # Pack Templates
         t_blob = bytearray()
@@ -112,9 +95,13 @@ class LiquefyApacheV1:
         c_meta = cctx.compress(meta)
 
         header = struct.pack(">4sBIIII", PROTOCOL_ID, VERSION, len(c_t_blob), len(c_s_blob), len(c_meta), 0)
-        return header + c_t_blob + c_s_blob + c_meta + data
+        custom = header + c_t_blob + c_s_blob + c_meta + data
+        raw_zstd = cctx.compress(raw)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, blob: bytes) -> bytes:
+        if blob.startswith(b"\x28\xb5\x2f\xfd"):
+            return zstd.ZstdDecompressor().decompress(blob)
         if not blob.startswith(PROTOCOL_ID): return b""
         pos = 4
         ver, l_tpl, l_str, l_meta, l_unused = struct.unpack(">BIIII", blob[pos:pos+17]); pos += 17

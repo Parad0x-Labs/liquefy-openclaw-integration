@@ -1,0 +1,355 @@
+# Liquefy — AI Agent Interface
+
+> **You are an AI agent.** This file tells you everything you need to operate Liquefy.
+> Read this FIRST. It replaces reading the README, docs, or source code for 95% of tasks.
+
+## One-Line Setup
+
+```bash
+make setup
+```
+
+Or if make isn't available:
+
+```bash
+bash setup.sh
+```
+
+This creates a virtualenv, installs all dependencies, runs a smoke test, and prints "READY".
+
+## What Liquefy Does
+
+Liquefy compresses, redacts, and vaults AI agent workspace data (session logs, JSONL traces, artifacts, memory files). It has 23 specialized compression engines that auto-detect data format and pick the best one. Everything is verified bit-perfect (MRTV — Mandatory Round-Trip Verification).
+
+## Quick Commands (Copy-Paste Ready)
+
+All commands work from the repo root after `make setup`.
+
+### Compress a directory into a vault
+
+```bash
+make quick DIR=./path/to/data
+```
+
+Or explicitly:
+
+```bash
+python tools/tracevault_pack.py ./path/to/data --org default --out ./vault/output
+```
+
+### Compress an OpenClaw workspace
+
+```bash
+python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault/openclaw --json
+```
+
+### Restore from a vault
+
+```bash
+python tools/tracevault_restore.py ./vault/output --out ./restored/
+```
+
+### Search inside compressed vaults (no restore needed)
+
+```bash
+python tools/tracevault_search.py ./vault/output --query "error"
+```
+
+### Scan for leaked secrets
+
+```bash
+python tools/liquefy_leakhunter.py scan ./path/to/data --deep --json
+```
+
+### Visualize vault contents
+
+```bash
+python tools/liquefy_viz.py timeline ./vault/
+python tools/liquefy_viz.py web ./vault/ --port 8377
+```
+
+### Run the archiver daemon
+
+```bash
+python tools/liquefy_archiver.py once --watch ~/.openclaw --out ./vault
+python tools/liquefy_archiver.py daemon --watch ~/.openclaw --out ./vault
+```
+
+### Ingest telemetry JSONL
+
+```bash
+cat telemetry.jsonl | python tools/liquefy_telemetry_sink.py pipe --out ./vault/telemetry
+```
+
+### Sandbox-test a skill
+
+```bash
+python tools/liquefy_sandbox.py run ./skills/some_skill --timeout 60 --json
+```
+
+### Sync to Obsidian
+
+```bash
+python tools/liquefy_obsidian.py sync --vault-root ./vault --obsidian ~/Obsidian/MyVault
+```
+
+### Native OpenClaw integration (zero-config)
+
+```bash
+make openclaw-hook       # Install hooks — auto-triggers on every session close
+make status              # Show integration status
+# Users won't know it's there until they type: make status
+```
+
+### AI Intelligence Layer
+
+```bash
+make predict DIR=~/.openclaw         # "This agent will hit 2 GB in 3 days"
+make suggest DIR=~/.openclaw         # "Switch to ratio profile, enable archiver"
+make score VAULT=./vault             # Value-score every trace (high/med/low)
+make prune DIR=./vault               # Auto-prune low-value, keep high-value (dry-run)
+make summarize VAULT=./vault         # LLM-powered "what actually mattered today"
+make migrate SRC=./old.tar.gz OUT=./vault  # Import from tar/zstd/gzip backups
+```
+
+### Fleet Coordination (Multi-Agent)
+
+```bash
+make fleet-register AGENT=agent-47 QUOTA_MB=500 PRIORITY=20
+make fleet-status                    # Dashboard: all agents, usage, health
+make fleet-quota AGENT=agent-47      # Check quota headroom
+make fleet-ingest AGENT=agent-47 SRC=./data  # Compress for a specific agent (quota-enforced)
+make fleet-merge TARGET=main-agent SOURCES='agent-1 agent-2 agent-3' STRATEGY=last_write
+make fleet-gc MAX_AGE=30             # Remove old vaults, enforce quotas
+```
+
+All agents share one vault root (`~/.liquefy/fleet/`). Each gets a namespace partition.
+File-level locking ensures safe concurrent access from multiple processes.
+Conflict resolution: `last_write`, `largest`, `priority`, or `both` (keep-both).
+
+### Compliance & Audit
+
+```bash
+make audit-verify                    # Verify tamper-proof hash chain is intact
+```
+
+## Presets (Choose Your Risk Level)
+
+Liquefy defaults to maximum safety. Use presets to match your risk tolerance:
+
+### SAFE (default) — recommended for production
+
+```bash
+python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault --json
+```
+
+- Credentials, keys, envs: **BLOCKED**
+- MRTV verification: **FULL**
+- Profile: **default** (balanced ratio/speed)
+
+### POWER — faster, still safe, includes more file types
+
+```bash
+python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault \
+  --mode balanced --profile speed --verify-mode fast --json
+```
+
+- Most credentials still blocked
+- MRTV: fast (sampled verification)
+- Profile: speed-first
+
+### YOLO — everything included, your responsibility
+
+```bash
+python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault \
+  --mode off --profile ratio --verify-mode full \
+  --include-secrets "I UNDERSTAND THIS MAY LEAK SECRETS" --json
+```
+
+- Nothing blocked
+- Max compression ratio
+- Full verification still on (non-negotiable safety net)
+
+### Custom policy file
+
+```bash
+python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault \
+  --policy ./policies/my_policy.yml --json
+```
+
+Policy files live in `./policies/`. Examples: `strict.yml`, `balanced.yml`, `demo_risky.yml`.
+
+## Interactive Setup
+
+```bash
+python tools/liquefy_setup.py
+```
+
+Walks you through:
+1. What directories to watch
+2. Risk tolerance (safe/power/yolo)
+3. Encryption (on/off + secret generation)
+4. Notifications (telegram/discord/off)
+5. Daemon vs manual mode
+6. Writes config to `~/.liquefy/config.json`
+
+## JSON Output (Machine-Readable)
+
+Every command supports `--json` for structured output:
+
+```bash
+python tools/tracevault_pack.py ./data --org dev --out ./vault --json
+```
+
+Returns:
+
+```json
+{
+  "schema_version": "liquefy.tracevault.cli.v1",
+  "command": "pack",
+  "ok": true,
+  "result": {
+    "total_original_bytes": 104857600,
+    "total_compressed_bytes": 15728640,
+    "overall_ratio": 6.67,
+    "files_processed": 42,
+    "verify_mode": "full",
+    "mrtv_all_pass": true
+  }
+}
+```
+
+Schema contracts are in `./schemas/`.
+
+## Health Checks
+
+```bash
+# Are all dependencies installed?
+python tools/liquefy_cli.py doctor --json
+
+# Do all engines load and roundtrip?
+python tools/liquefy_cli.py self-test --json
+
+# What version is this?
+python tools/liquefy_cli.py version --json
+```
+
+## Capabilities Summary
+
+| Capability | Tool | Status |
+|------------|------|--------|
+| Compress any directory | `tracevault_pack.py` | Production |
+| Restore from vault | `tracevault_restore.py` | Production |
+| Search compressed data | `tracevault_search.py` | Production |
+| OpenClaw workspace pack | `liquefy_openclaw.py` | Production |
+| Secret/leak scanning | `liquefy_leakhunter.py` | Production |
+| Background archival | `liquefy_archiver.py` | Production |
+| Vault visualization | `liquefy_viz.py` | Production |
+| Telemetry ingestion | `liquefy_telemetry_sink.py` | Production |
+| Obsidian sync | `liquefy_obsidian.py` | Production |
+| Skill sandboxing | `liquefy_sandbox.py` | Production |
+| AES-256-GCM encryption | `--secure` flag | Production |
+| Policy engine | `--policy` flag | Production |
+| **Native OpenClaw hooks** | `liquefy_openclaw_plugin.py` | Production |
+| **Bloat prediction** | `liquefy_intelligence.py predict` | Production |
+| **Smart prune** | `liquefy_intelligence.py prune` | Production |
+| **Value scoring** | `liquefy_intelligence.py score` | Production |
+| **LLM summarization** | `liquefy_intelligence.py summarize` | Production |
+| **Policy suggestions** | `liquefy_intelligence.py suggest` | Production |
+| **Backup migration** | `liquefy_intelligence.py migrate` | Production |
+| **Tamper-proof audit** | `liquefy_audit_chain.py` | Production |
+| **Graceful degradation** | `liquefy_resilience.py` | Production |
+| **Plugin ecosystem** | `plugin_loader.py` + community dirs | Production |
+| **Fleet coordination** | `liquefy_fleet.py` + `liquefy_fleet_cli.py` | Production |
+| **Shared namespace** | File-lock coordination, atomic index | Production |
+| **Cross-agent merge** | 4 conflict resolution strategies | Production |
+| **Resource quotas** | Per-agent storage/rate/session limits | Production |
+
+## Compression Engines (23 total, auto-selected)
+
+| Data Type | Engine | Typical Ratio |
+|-----------|--------|---------------|
+| JSON/JSONL | HyperNebula columnar | 5-7x |
+| Apache logs | Repetition-aware | 6-8x |
+| Syslog | Token + repetition | 5-6x |
+| SQL dumps | Velocity + repetition | 7-8x |
+| K8s logs | Velocity | 6-7x |
+| CloudTrail | Domain-specific | 10-12x |
+| VPC Flow | Columnar | 3-4x |
+| Nginx logs | Token + repetition | 5-7x |
+| GitHub events | Domain-specific | 4-6x |
+| Windows EVTX | Domain-specific | 4-6x |
+| VMware logs | Domain-specific | 5-7x |
+| NetFlow | Domain-specific | 3-5x |
+| Everything else | Universal + Fallback | 3-7x |
+
+## Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `LIQUEFY_PROFILE` | `default` / `ratio` / `speed` | `default` |
+| `LIQUEFY_SECRET` | Master encryption secret | (none — encryption disabled) |
+| `LIQUEFY_TG_BOT_TOKEN` | Telegram notifications | (none) |
+| `LIQUEFY_TG_CHAT_ID` | Telegram chat ID | (none) |
+| `LIQUEFY_DISCORD_WEBHOOK` | Discord notifications | (none) |
+| `LIQUEFY_DISABLE_COLUMNAR` | Set to `1` to skip columnar engines | (none) |
+| `LIQUEFY_FLEET_ROOT` | Fleet shared vault root | `~/.liquefy/fleet` |
+| `LIQUEFY_AUDIT_DIR` | Audit chain storage directory | `~/.liquefy/audit` |
+
+## File Layout
+
+```
+liquefy/
+├── api/                    # Core engines + orchestrator + safety + security
+│   ├── orchestrator/       # Engine routing, registry, contracts
+│   ├── containers/         # .null vault format + bloom filters
+│   ├── engines/core/       # 23 engine manifests (engine.json)
+│   ├── json/               # JSON family engines (4)
+│   ├── apache/             # Apache engines (2)
+│   ├── syslog/             # Syslog engines (2)
+│   ├── sql/                # SQL engines (3)
+│   ├── k8s/                # Kubernetes engines (2)
+│   ├── aws/                # CloudTrail + VPC Flow (2)
+│   ├── nginx/              # Nginx engines (2)
+│   ├── scm/                # GitHub engine (1)
+│   ├── windows/            # Windows EVTX (1)
+│   ├── vmware/             # VMware (1)
+│   ├── netflow/            # NetFlow (1)
+│   ├── universal/          # Universal + Fallback (2)
+│   ├── liquefy_safety.py       # MRTV verification
+│   ├── liquefy_security.py     # LSEC v2 encryption
+│   ├── liquefy_primitives.py   # Shared varint/zigzag/bloom
+│   ├── liquefy_audit_chain.py  # Tamper-proof hash-chained audit log
+│   ├── liquefy_resilience.py   # Graceful degradation + self-healing
+│   ├── liquefy_fleet.py        # Multi-agent fleet coordination core
+│   └── orchestrator/
+│       └── plugin_loader.py    # Community engine/pattern auto-discovery
+├── tools/                      # CLI tools (all commands above)
+│   ├── liquefy_openclaw_plugin.py  # Native OpenClaw integration
+│   ├── liquefy_intelligence.py     # AI intelligence layer
+│   └── liquefy_fleet_cli.py        # Multi-agent fleet CLI
+├── api/engines/community/      # Drop-in community engines (auto-registered)
+├── patterns/community/         # Drop-in leak patterns (auto-registered)
+├── skills/                     # ClawHub skills
+├── policies/                   # YAML policy files
+├── schemas/                    # JSON schema contracts
+├── tests/                      # 201 tests
+└── bench/                      # Benchmarks
+```
+
+## For AI Agent Developers
+
+If you're building an AI agent that uses Liquefy:
+
+1. **Install**: `git clone <repo> && cd liquefy && make setup`
+2. **Integrate**: Call CLI tools with `--json` flag, parse JSON output
+3. **Schemas**: Validate against `./schemas/liquefy.*.json`
+4. **Presets**: Use SAFE for production, POWER for development, YOLO for testing
+5. **Monitor**: Use `liquefy_viz.py web` for dashboards or `liquefy_obsidian.py sync` for Obsidian
+6. **Automate**: Use `liquefy_archiver.py daemon` for background archival
+7. **Secure**: Run `liquefy_leakhunter.py scan --deep` before sharing any data
+8. **Extend**: Drop engines into `api/engines/community/` or patterns into `patterns/community/` — auto-discovered
+9. **OpenClaw Native**: Run `make openclaw-hook` once — Liquefy becomes the invisible default session store
+10. **Intelligence**: Use `make predict` / `make suggest` / `make summarize` for proactive insights
+11. **Compliance**: `make audit-verify` checks tamper-proof hash chain integrity
+12. **Fleet**: Running multiple agents? Use `make fleet-register` + `make fleet-ingest` for shared namespace with quotas

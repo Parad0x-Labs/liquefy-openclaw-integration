@@ -18,20 +18,20 @@
       "input_sha256": "09a91f8ff69651947d35001a9d4ddd98288057ea24e9fe350012d7ec1b88f84a",
       "profiles": {
         "default": {
-          "output_bytes": 4210,
-          "prefix_hex": "28b52ffd00401c12",
+          "output_bytes": 1665,
+          "prefix_hex": "4859320101000400",
           "restored_sha256": "09a91f8ff69651947d35001a9d4ddd98288057ea24e9fe350012d7ec1b88f84a",
           "byteperfect": true
         },
         "ratio": {
-          "output_bytes": 3242,
+          "output_bytes": 1665,
           "prefix_hex": "4859320101000400",
           "restored_sha256": "09a91f8ff69651947d35001a9d4ddd98288057ea24e9fe350012d7ec1b88f84a",
           "byteperfect": true
         },
         "speed": {
-          "output_bytes": 7857,
-          "prefix_hex": "28b52ffd004094b0",
+          "output_bytes": 7860,
+          "prefix_hex": "28b52ffda02aea02",
           "restored_sha256": "09a91f8ff69651947d35001a9d4ddd98288057ea24e9fe350012d7ec1b88f84a",
           "byteperfect": true
         }
@@ -44,20 +44,20 @@
       "input_sha256": "d2775986ff235733071e4354707c15fdcbcbd50937e5a726cb3e4de19bab5057",
       "profiles": {
         "default": {
-          "output_bytes": 803,
-          "prefix_hex": "28b52ffd00502c11",
+          "output_bytes": 806,
+          "prefix_hex": "28b52ffda08e920b",
           "restored_sha256": "d2775986ff235733071e4354707c15fdcbcbd50937e5a726cb3e4de19bab5057",
           "byteperfect": true
         },
         "ratio": {
-          "output_bytes": 792,
-          "prefix_hex": "28b52ffd00502c11",
+          "output_bytes": 795,
+          "prefix_hex": "28b52ffda08e920b",
           "restored_sha256": "d2775986ff235733071e4354707c15fdcbcbd50937e5a726cb3e4de19bab5057",
           "byteperfect": true
         },
         "speed": {
-          "output_bytes": 855,
-          "prefix_hex": "28b52ffd0050cc11",
+          "output_bytes": 858,
+          "prefix_hex": "28b52ffda08e920b",
           "restored_sha256": "d2775986ff235733071e4354707c15fdcbcbd50937e5a726cb3e4de19bab5057",
           "byteperfect": true
         }

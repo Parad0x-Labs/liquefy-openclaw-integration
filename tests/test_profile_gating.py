@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile gating tests for ratio-only structured paths."""
+"""Profile gating tests for structured path selection across profiles."""
 from pathlib import Path
 
 from orchestrator.engine_map import get_engine_instance
@@ -17,13 +17,13 @@ def _set_profile(monkeypatch, profile: str):
         monkeypatch.setenv("LIQUEFY_PROFILE", profile)
 
 
-def test_hypernebula_ratio_profile_uses_hy2_on_hyperfriendly_jsonl(monkeypatch):
+def test_hypernebula_default_profile_can_use_hy2_on_hyperfriendly_jsonl(monkeypatch):
     raw = (REPO_ROOT / "tests" / "fixtures" / "golden_inputs" / "generic_json_hyperfriendly_1024.jsonl").read_bytes()
 
     _set_profile(monkeypatch, "default")
     default_engine = get_engine_instance("liquefy-json-hypernebula-v1")
     c_default = default_engine.compress(raw)
-    assert c_default.startswith(ZSTD_MAGIC)
+    assert c_default.startswith(ZSTD_MAGIC) or c_default.startswith(b"HY2\x01")
 
     _set_profile(monkeypatch, "ratio")
     ratio_engine = get_engine_instance("liquefy-json-hypernebula-v1")

@@ -7,53 +7,16 @@ TECH:   Bracket Mining + Global Dedupe + Zstd.
 STATUS: 100% Lossless, Searchable.
 """
 
-import time, re, zstandard as zstd, math, xxhash, sys, struct, json, io
+import time, re, zstandard as zstd, sys, struct, json, io
 from collections import defaultdict
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf, AdaptiveSearchIndex
 
 PROTOCOL_ID = b'VMW\x01'
 
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return struct.pack("B", val)
-    out = bytearray()
-    while val >= 0x80: out.append((val & 0x7F) | 0x80); val >>= 7
-    out.append(val & 0x7F); return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple:
-    val = data[pos]; pos += 1
-    if val < 0x80: return val, pos
-    res = val & 0x7F; shift = 7
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
-
-class AdaptiveSearchIndex:
-    def __init__(self, num_items: int):
-        num_items = max(10, num_items)
-        m = -(num_items * math.log(0.01)) / (math.log(2)**2)
-        self.nb = max(64, int(m)); self.nby = (self.nb + 7) // 8
-        self.ba = bytearray(self.nby); self.k = max(1, int((self.nb / num_items) * 0.693))
-    def add(self, t: bytes):
-        h1 = xxhash.xxh64(t, seed=0).intdigest(); h2 = xxhash.xxh64(t, seed=1).intdigest()
-        for i in range(self.k): pos = (h1 + i * h2) % self.nb; self.ba[pos >> 3] |= (1 << (pos & 7))
-    def check(self, t: bytes) -> bool:
-        h1 = xxhash.xxh64(t, seed=0).intdigest(); h2 = xxhash.xxh64(t, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.nb
-            if not (self.ba[pos >> 3] & (1 << (pos & 7))): return False
-        return True
-    def __bytes__(self): return pack_varint(self.k) + pack_varint(self.nb) + bytes(self.ba)
-    @staticmethod
-    def from_bytes(d, p):
-        k, p = unpack_varint_buf(d, p); nb, p = unpack_varint_buf(d, p)
-        idx = AdaptiveSearchIndex(10); idx.k = k; idx.nb = nb; idx.nby = (nb+7)//8
-        idx.ba = bytearray(d[p:p+idx.nby]); return idx, p+idx.nby
-
 class LiquefyVmwareV1:
-    def __init__(self, level=3):
-        self.cctx = zstd.ZstdCompressor(level=level)
+    def __init__(self, level=19):
+        self.cctx = make_cctx(level=level, text_like=True)
         self.dctx = zstd.ZstdDecompressor()
         # Capture: Timestamp, Host, Process, [Meta], Message
         self.re_vm = re.compile(rb'^(\S+) (\S+) (\S+): (\[.*?\]) (.*)$')
@@ -101,9 +64,13 @@ class LiquefyVmwareV1:
         raw_blob = b"".join([pack_varint(len(x)) + x for x in cols['raw']])
         c_payload.extend(raw_blob)
 
-        return PROTOCOL_ID + pack_varint(len(idx_bytes)) + idx_bytes + self.cctx.compress(c_payload)
+        custom = PROTOCOL_ID + pack_varint(len(idx_bytes)) + idx_bytes + self.cctx.compress(c_payload)
+        raw_zstd = self.cctx.compress(raw)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, d: bytes) -> bytes:
+        if d.startswith(b"\x28\xb5\x2f\xfd"):
+            return self.dctx.decompress(d)
         if not d.startswith(PROTOCOL_ID): return b""
         pos = 4
         idx_len, pos = unpack_varint_buf(d, pos); pos += idx_len

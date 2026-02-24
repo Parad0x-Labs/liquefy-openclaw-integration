@@ -12,10 +12,11 @@ import xxhash
 import struct
 import io
 import sys
+from common_zstd import make_cctx
 
 class LiquefySafety:
     def __init__(self, fallback_level=19, enabled=True):
-        self.fallback_cctx = zstd.ZstdCompressor(level=fallback_level)
+        self.fallback_cctx = make_cctx(level=fallback_level)
         self.fallback_dctx = zstd.ZstdDecompressor()
         self.enabled = enabled
 

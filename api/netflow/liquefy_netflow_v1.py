@@ -13,29 +13,13 @@ import zstandard as zstd
 import xxhash
 import sys
 import socket
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf
 
 PROTOCOL_ID = b'NFL\x01'
 
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return struct.pack("B", val)
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80); val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple:
-    val = data[pos]; pos += 1
-    if val < 0x80: return val, pos
-    res = val & 0x7F; shift = 7
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
-
 class BloomIndex:
+    """Fixed-size 4KB bloom filter for Netflow IP lookups (2 hash probes)."""
     def __init__(self): self.ba = bytearray(4096)
     def add(self, token: bytes):
         h = xxhash.xxh64(token).intdigest()
@@ -51,7 +35,7 @@ class LiquefyNetflowV1:
     def __init__(self, level=3):
         # Dropped to Level 3 for Production Speed.
         # Transposition handles the heavy lifting.
-        self.cctx = zstd.ZstdCompressor(level=level)
+        self.cctx = make_cctx(level=level)
         self.dctx = zstd.ZstdDecompressor()
         self.V5_HEADER_SIZE = 24
         self.V5_RECORD_SIZE = 48
@@ -96,9 +80,13 @@ class LiquefyNetflowV1:
         out.extend(pack_varint(len(c_records)))
         out.extend(c_records)
         out.extend(pack_varint(total_records))
-        return bytes(out)
+        custom = bytes(out)
+        raw_zstd = self.cctx.compress(raw)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, blob: bytes) -> bytes:
+        if blob.startswith(b"\x28\xb5\x2f\xfd"):
+            return self.dctx.decompress(blob)
         if not blob.startswith(PROTOCOL_ID): raise ValueError("Invalid Magic")
         p = 4
         idx_len, p = unpack_varint_buf(blob, p); p += idx_len

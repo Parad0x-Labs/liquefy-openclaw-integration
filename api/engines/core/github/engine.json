@@ -12,5 +12,9 @@
             ".jsonl"
         ]
     },
+    "sniff": {
+        "contains_all": ["\"type\"", "\"actor\"", "\"repo\""],
+        "regex_any": ["\"type\"\\s*:\\s*\"(PushEvent|PullRequestEvent|WatchEvent|CreateEvent|IssuesEvent|ForkEvent)\""]
+    },
     "entrypoint": "scm.liquefy_github_v1:LiquefyGithubV1"
 }

@@ -20,9 +20,8 @@ ENGINE_MAP = {
     "liquefy-apache-rep-v1":       ("apache.liquefy_apache_repetition_v1", "LiquefyApacheRepetitionV1"),
 
     # ── Nginx Family (2 engines) ─────────────────────────────────────
+    "liquefy-nginx-v1":            ("nginx.liquefy_nginx_v1",            "LiquefyNginxV1"),
     "liquefy-nginx-rep-v1":        ("nginx.liquefy_nginx_repetition_v1", "LiquefyNginxRepetitionV1"),
-    # NOTE: liquefy_nginx_v1 uses file-path API (compress(in_path, out_path))
-    #       It's excluded from the bytes-based orchestrator. Use the REP variant instead.
 
     # ── SQL Family (3 engines) ───────────────────────────────────────
     "liquefy-sql-v1":              ("sql.liquefy_sql_v1",                "LiquefySqlV1"),
@@ -54,7 +53,8 @@ ENGINE_MAP = {
     "liquefy-fallback-v1":         ("universal.liquefy_fallback_v1",     "LiquefyFallbackV1"),
 }
 
-# Total: 22 engines (+ 1 Nginx file-path excluded = 23 total algorithms)
+# Total: 23 engines
+_ENGINE_INSTANCE_CACHE = {}
 
 
 def _parse_engine_levels_env():
@@ -169,16 +169,24 @@ def get_engine_instance(engine_id: str):
 
         cls = getattr(mod, class_name)
         kwargs = _engine_ctor_overrides(engine_id)
+        filtered = {}
         if kwargs:
             try:
                 sig = inspect.signature(cls)
                 filtered = {k: v for k, v in kwargs.items() if k in sig.parameters}
-                if filtered:
-                    return cls(**filtered)
             except Exception:
-                # Best-effort only; fall back to default constructor.
-                pass
-        return cls()
+                filtered = {}
+
+        cache_key = (engine_id, tuple(sorted(filtered.items())))
+        if cache_key in _ENGINE_INSTANCE_CACHE:
+            return _ENGINE_INSTANCE_CACHE[cache_key]
+
+        if filtered:
+            instance = cls(**filtered)
+        else:
+            instance = cls()
+        _ENGINE_INSTANCE_CACHE[cache_key] = instance
+        return instance
     except Exception as e:
         print(f"[WARN] Failed to load engine '{engine_id}': {e}")
         return None

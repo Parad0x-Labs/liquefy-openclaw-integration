@@ -9,77 +9,13 @@ TECH:   Global Columnar Buffers + Adaptive Transforms (RLE/Dict/Delta) + Zstd.
 import time
 import re
 import zstandard as zstd
-import math
-import xxhash
 import sys
 import os
 from collections import defaultdict
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf, zigzag_enc, zigzag_dec, AdaptiveSearchIndex
 
 PROTOCOL_ID = b'SLG\x01'
-
-# =========================================================
-# 1. CORE UTILITIES
-# =========================================================
-
-def pack_varint(val: int) -> bytes:
-    if val < 0: val = 0
-    if val < 0x80: return bytes([val])
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80)
-        val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple[int, int]:
-    res = 0; shift = 0
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
-
-def zigzag_enc(n: int) -> int: return (n << 1) ^ (n >> 63)
-def zigzag_dec(n: int) -> int: return (n >> 1) ^ -(n & 1)
-
-class AdaptiveSearchIndex:
-    def __init__(self, num_items: int, fpr=0.01):
-        num_items = max(10, num_items)
-        m = -(num_items * math.log(fpr)) / (math.log(2)**2)
-        self.num_bits = max(64, int(m))
-        self.num_bytes = (self.num_bits + 7) // 8
-        self.ba = bytearray(self.num_bytes)
-        self.k = max(1, int((self.num_bits / num_items) * math.log(2)))
-
-    def add(self, token: bytes):
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            self.ba[pos >> 3] |= (1 << (pos & 7))
-
-    def maybe_has(self, token: bytes) -> bool:
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            if not (self.ba[pos >> 3] & (1 << (pos & 7))):
-                return False
-        return True
-
-    def __bytes__(self):
-        return pack_varint(self.k) + pack_varint(self.num_bits) + bytes(self.ba)
-
-    @staticmethod
-    def from_bytes(data: bytes, pos: int) -> tuple["AdaptiveSearchIndex", int]:
-        k, pos = unpack_varint_buf(data, pos)
-        num_bits, pos = unpack_varint_buf(data, pos)
-        num_bytes = (num_bits + 7) // 8
-        idx = AdaptiveSearchIndex(10)
-        idx.k = k; idx.num_bits = num_bits; idx.num_bytes = num_bytes
-        idx.ba = bytearray(data[pos:pos+num_bytes])
-        return idx, pos + num_bytes
 
 # =========================================================
 # 2. SMART COLUMN ENCODER
@@ -166,7 +102,7 @@ class SmartColumn:
 
 class LiquefySyslogV1:
     def __init__(self, level=22):
-        self.cctx = zstd.ZstdCompressor(level=level)
+        self.cctx = make_cctx(level=level, text_like=True)
         self.dctx = zstd.ZstdDecompressor()
         self.re_vars = re.compile(rb'(\[.*?\])|(".*?")|(\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\S*\b)|(\b[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\b)|(\b\d+\.\d+\.\d+\.\d+\b)|(\b[0-9a-fA-F:]+:[0-9a-fA-F:]+\b)|(\b\d+\b)')
 
@@ -223,9 +159,13 @@ class LiquefySyslogV1:
             c_stream += pack_varint(len(smart_blob)) + smart_blob
 
         payload = self.cctx.compress(t_stream + l_stream + c_stream)
-        return PROTOCOL_ID + pack_varint(len(idx_bytes)) + idx_bytes + payload
+        custom = PROTOCOL_ID + pack_varint(len(idx_bytes)) + idx_bytes + payload
+        raw_zstd = self.cctx.compress(raw)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, blob: bytes) -> bytes:
+        if blob.startswith(b"\x28\xb5\x2f\xfd"):
+            return self.dctx.decompress(blob)
         if not blob.startswith(PROTOCOL_ID): return b""
         p = 4
         l_idx, p = unpack_varint_buf(blob, p); p += l_idx

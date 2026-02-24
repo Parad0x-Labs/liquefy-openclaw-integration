@@ -13,26 +13,10 @@ import struct
 import zstandard as zstd
 from collections import defaultdict
 from typing import List, Dict, Any
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf
 
 PROTOCOL_ID = b'COL1'
-
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return bytes([val])
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80)
-        val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple[int, int]:
-    res = 0; shift = 0
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
 
 
 def collect_json_rows(raw_data: bytes) -> List[Dict[str, Any]]:
@@ -97,19 +81,19 @@ def collect_json_rows(raw_data: bytes) -> List[Dict[str, Any]]:
 
 class LiquefyColumnarGunV1:
     def __init__(self, level=22):
-        self.cctx = zstd.ZstdCompressor(level=level)
+        self.cctx = make_cctx(level=level, text_like=True)
         self.dctx = zstd.ZstdDecompressor()
 
     def compress(self, raw_data: bytes) -> bytes:
         if not raw_data: return b""
 
-        columns = defaultdict(list)
         rows = collect_json_rows(raw_data)
         row_count = len(rows)
 
-        for doc in rows:
-            for k, v in doc.items():
-                columns[k].append(v)
+        all_keys = list(dict.fromkeys(k for doc in rows for k in doc))
+        columns = {}
+        for key in all_keys:
+            columns[key] = [doc.get(key, None) for doc in rows]
 
         output_buffer = bytearray()
         output_buffer.extend(PROTOCOL_ID)
@@ -117,9 +101,6 @@ class LiquefyColumnarGunV1:
         output_buffer.extend(struct.pack('<H', len(columns)))
 
         for col_name, values in columns.items():
-            # Pad values if some rows were missing the key (lossy-avoidance)
-            if len(values) < row_count:
-                values.extend([None] * (row_count - len(values)))
 
             str_values = [json.dumps(v) for v in values]
 
@@ -127,19 +108,28 @@ class LiquefyColumnarGunV1:
             output_buffer.extend(pack_varint(len(col_name_bytes)))
             output_buffer.extend(col_name_bytes)
 
-            unique_vals = list(set(str_values))
+            unique_vals = list(dict.fromkeys(str_values))
 
             # Dictionary Mode (Low Cardinality)
-            if len(unique_vals) < 256 and len(str_values) > 10:
+            if len(str_values) > 10 and len(unique_vals) <= 65535 and len(unique_vals) * 2 <= len(str_values):
                 mapping = {v: i for i, v in enumerate(unique_vals)}
-                col_payload = bytearray([0x01])
-                col_payload.extend(pack_varint(len(unique_vals)))
+                use_u16 = len(unique_vals) > 256
+                col_payload = bytearray([0x05 if use_u16 else 0x04])
+
+                dict_blob = bytearray()
+                dict_blob.extend(pack_varint(len(unique_vals)))
                 for uv in unique_vals:
                     b_uv = uv.encode('utf-8')
-                    col_payload.extend(pack_varint(len(b_uv)))
-                    col_payload.extend(b_uv)
+                    dict_blob.extend(pack_varint(len(b_uv)))
+                    dict_blob.extend(b_uv)
+                dict_comp = self.cctx.compress(bytes(dict_blob))
+                col_payload.extend(struct.pack('<I', len(dict_comp)))
+                col_payload.extend(dict_comp)
 
-                indices = bytes([mapping[v] for v in str_values])
+                if use_u16:
+                    indices = struct.pack(f'<{len(str_values)}H', *[mapping[v] for v in str_values])
+                else:
+                    indices = bytes([mapping[v] for v in str_values])
                 col_payload.extend(self.cctx.compress(indices))
 
             # Raw Zstd Mode (High Cardinality)
@@ -151,9 +141,13 @@ class LiquefyColumnarGunV1:
             output_buffer.extend(struct.pack('<I', len(col_payload)))
             output_buffer.extend(col_payload)
 
-        return bytes(output_buffer)
+        custom = bytes(output_buffer)
+        raw_zstd = self.cctx.compress(raw_data)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, blob: bytes) -> bytes:
+        if blob.startswith(b"\x28\xb5\x2f\xfd"):
+            return self.dctx.decompress(blob)
         if not blob.startswith(PROTOCOL_ID): return b""
 
         ptr = 4
@@ -172,15 +166,32 @@ class LiquefyColumnarGunV1:
             mode = payload[0]
             body = payload[1:]
 
-            if mode == 0x01: # Dict
+            if mode in (0x04, 0x05):
+                dict_comp_len = struct.unpack('<I', body[:4])[0]
+                dict_raw = self.dctx.decompress(body[4:4 + dict_comp_len])
+                dict_n, d_ptr = unpack_varint_buf(dict_raw, 0)
+                lookup = []
+                for _ in range(dict_n):
+                    s_len, d_ptr = unpack_varint_buf(dict_raw, d_ptr)
+                    lookup.append(dict_raw[d_ptr:d_ptr + s_len].decode('utf-8')); d_ptr += s_len
+                indices = self.dctx.decompress(body[4 + dict_comp_len:])
+                if mode == 0x05:
+                    indices_vals = struct.unpack(f'<{row_count}H', indices[:row_count * 2]) if row_count else ()
+                else:
+                    indices_vals = indices
+                columns_data[name] = [json.loads(lookup[i]) for i in indices_vals]
+            elif mode in (0x01, 0x03):
                 dict_n, b_ptr = unpack_varint_buf(body, 0)
                 lookup = []
                 for _ in range(dict_n):
                     s_len, b_ptr = unpack_varint_buf(body, b_ptr)
                     lookup.append(body[b_ptr:b_ptr+s_len].decode('utf-8')); b_ptr += s_len
-
                 indices = self.dctx.decompress(body[b_ptr:])
-                columns_data[name] = [json.loads(lookup[i]) for i in indices]
+                if mode == 0x03:
+                    indices_vals = struct.unpack(f'<{row_count}H', indices[: row_count * 2]) if row_count else ()
+                else:
+                    indices_vals = indices
+                columns_data[name] = [json.loads(lookup[i]) for i in indices_vals]
             else: # Raw
                 raw = self.dctx.decompress(body)
                 columns_data[name] = [json.loads(x.decode('utf-8')) for x in raw.split(b'\x00')]

@@ -13,7 +13,23 @@
             ".csv",
             ".md",
             ".html",
-            ".htm"
+            ".htm",
+            ".tar",
+            ".xml",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".conf",
+            ".py",
+            ".js",
+            ".ts",
+            ".tsx",
+            ".jsx",
+            ".rb",
+            ".sh",
+            ".bash"
         ]
     },
     "entrypoint": "universal.liquefy_universal_v1:LiquefyUniversalV1"

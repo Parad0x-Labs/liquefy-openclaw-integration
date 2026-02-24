@@ -12,6 +12,7 @@ import os
 import io
 import zstandard as zstd
 import xxhash
+from common_zstd import make_cctx
 
 PROTOCOL_ID = b'SQC\x01'
 ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
@@ -38,8 +39,9 @@ if lib is not None:
 
 class LiquefySqlVelocityV1:
     def __init__(self, level=19):
-        self.cctx = zstd.ZstdCompressor(
+        self.cctx = make_cctx(
             level=level,
+            text_like=True,
             write_content_size=False,
             write_checksum=False,
             write_dict_id=False,
@@ -87,7 +89,7 @@ class LiquefySqlVelocityV1:
         stream = self._zstd_decompress(blob[4:])
 
         if lib is None:
-            return stream
+            raise ValueError("sql_scanner native library unavailable; cannot decompress SQC container")
 
         tpl_part, var_part = stream.split(b'TITAN', 1)
 

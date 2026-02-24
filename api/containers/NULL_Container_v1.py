@@ -7,6 +7,7 @@ import zstandard as zstd
 
 from .utils import sha256, enc_varint, dec_varint
 from .bloom import Bloom
+from common_zstd import make_cctx
 
 MAGIC = b"NULLA\x01"
 VERSION = 1
@@ -38,7 +39,7 @@ class BlockRef:
     digest: bytes
 
 def _zstd_c(level: int = 12) -> zstd.ZstdCompressor:
-    return zstd.ZstdCompressor(level=level)
+    return make_cctx(level=level)
 
 def _zstd_d() -> zstd.ZstdDecompressor:
     return zstd.ZstdDecompressor()

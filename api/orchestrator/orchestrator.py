@@ -31,11 +31,27 @@ from orchestrator.drivers.inprocess_driver import execute_inprocess, InProcessDr
 from orchestrator.drivers.http_driver import execute_http_driver, DriverError
 from orchestrator.drivers.binary_driver import execute_binary, BinaryDriverError
 from orchestrator.engine_map import get_engine_instance
+from common_zstd import make_cctx
 
 # ── Enterprise Modules ──────────────────────────────────────────────
 from liquefy_security import LiquefySecurity, secure_audit_log
 from liquefy_safety import LiquefySafety, Valve
 from liquefy_observability import LiquefyObservability, Vision
+
+try:
+    from liquefy_audit_chain import audit_log as _chain_audit_log
+except ImportError:
+    def _chain_audit_log(event, **details):
+        return None
+
+try:
+    from liquefy_resilience import ResilientEngine, adaptive_zstd_level, recover_malformed_jsonl
+except ImportError:
+    ResilientEngine = None
+    def adaptive_zstd_level(base_level=12):
+        return base_level
+    def recover_malformed_jsonl(data):
+        return data, 0, 0
 
 try:
     from observability.liquefy_otel import track_compression as otel_track_compression
@@ -57,6 +73,76 @@ class Orchestrator:
         self.security = LiquefySecurity(master_secret=master_secret) if master_secret is not None else None
         self.safety = Valve
         self.vision = Vision
+        self._engine_cache: Dict[str, Any] = {}
+
+    async def _probe_json_family_candidates(
+        self,
+        filepath: str,
+        raw_data: bytes,
+        engine_id: str,
+        instance: Any,
+    ):
+        """
+        Try sibling JSON engines and keep the smallest verified result.
+        This only runs for JSON/JSONL and is disabled in speed profile.
+        """
+        if os.getenv("LIQUEFY_DISABLE_JSON_CASCADE", "").strip() == "1":
+            return engine_id, instance, None
+        if os.getenv("LIQUEFY_PROFILE", "").strip().lower() == "speed":
+            return engine_id, instance, None
+        if Path(filepath).suffix.lower() not in {".json", ".jsonl"}:
+            return engine_id, instance, None
+        if engine_id != "liquefy-json-hypernebula-v1":
+            return engine_id, instance, None
+
+        ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
+
+        candidate_ids = [
+            "liquefy-json-hypernebula-v1",
+            "liquefy-json-rep-v1",
+            "liquefy-json-columnar-v1",
+            "liquefy-json-v1",
+        ]
+
+        best_id = engine_id
+        best_instance = instance
+        best_comp = await asyncio.to_thread(instance.compress, raw_data)
+
+        # If the top engine already fell back to raw zstd (choose-smaller),
+        # no other Python engine will beat it — skip the cascade entirely.
+        if best_comp.startswith(ZSTD_MAGIC):
+            return engine_id, instance, best_comp
+
+        # Verify the baseline candidate too before using it as comparator.
+        if not await asyncio.to_thread(self.safety.quick_verify, raw_data, best_comp, instance.decompress):
+            return engine_id, instance, None
+
+        for cid in candidate_ids[1:]:
+            try:
+                cand_instance = get_engine_instance(cid)
+                if cand_instance is None:
+                    continue
+                cand_comp = await asyncio.to_thread(cand_instance.compress, raw_data)
+                if cand_comp.startswith(ZSTD_MAGIC):
+                    continue
+                cand_ok = await asyncio.to_thread(
+                    self.safety.quick_verify,
+                    raw_data,
+                    cand_comp,
+                    cand_instance.decompress,
+                )
+                if not cand_ok:
+                    continue
+                if len(cand_comp) < len(best_comp):
+                    best_id = cid
+                    best_instance = cand_instance
+                    best_comp = cand_comp
+            except Exception:
+                continue
+
+        if best_id != engine_id:
+            print(f"[ROUTER] JSON cascade selected '{best_id}' over '{engine_id}' for '{filepath}'")
+        return best_id, best_instance, best_comp
 
     async def process_file(
         self,
@@ -105,30 +191,64 @@ class Orchestrator:
         try:
             if engine and engine.type == "inprocess":
                 # Load the engine instance for MRTV wrapping
-                instance = get_engine_instance(engine.id)
+                cache_key = engine.id
+                if cache_key not in self._engine_cache:
+                    self._engine_cache[cache_key] = get_engine_instance(engine.id)
+                instance = self._engine_cache[cache_key]
                 if instance is None:
                     raise InProcessDriverError(f"Could not load engine '{engine.id}'")
 
+                precompressed = None
+                engine_id_str, instance, precompressed = await self._probe_json_family_candidates(
+                    filepath,
+                    raw_data,
+                    engine.id,
+                    instance,
+                )
+
                 # Derive a 4-byte engine tag for the SAFE header
                 engine_tag = engine.id[:4].encode().ljust(4, b'\x00')[:4]
+                if engine_id_str != engine.id:
+                    engine_tag = engine_id_str[:4].encode().ljust(4, b'\x00')[:4]
 
                 if requested_verify_mode == "full":
-                    # Full MRTV: compress -> decompress -> full hash verify -> SAFE wrap
-                    compressed = await asyncio.to_thread(
-                        self.safety.seal,
-                        raw_data,
-                        instance.compress,
-                        instance.decompress,
-                        engine_tag,
-                    )
-                    if compressed.startswith(b"SAFEZST\x00"):
-                        engine_id_str = "zstd-fallback"
-                        print(f"[SAFETY] MRTV fallback triggered for engine '{engine.id}'")
+                    if precompressed is not None:
+                        import xxhash
+                        original_hash = xxhash.xxh64(raw_data).digest()
+                        restored = await asyncio.to_thread(instance.decompress, precompressed)
+                        ok = xxhash.xxh64(restored).digest() == original_hash
+                        if ok:
+                            compressed = precompressed
+                            print(f"[SAFETY] MRTV verified (precompressed) for engine '{engine_id_str}'")
+                        else:
+                            compressed = await asyncio.to_thread(
+                                self.safety.seal,
+                                raw_data,
+                                instance.compress,
+                                instance.decompress,
+                                engine_tag,
+                            )
+                            if compressed.startswith(b"SAFEZST\x00"):
+                                engine_id_str = "zstd-fallback"
+                                print(f"[SAFETY] MRTV fallback triggered for engine '{engine.id}'")
+                            else:
+                                print(f"[SAFETY] MRTV verified for engine '{engine.id}'")
                     else:
-                        print(f"[SAFETY] MRTV verified for engine '{engine.id}'")
+                        compressed = await asyncio.to_thread(
+                            self.safety.seal,
+                            raw_data,
+                            instance.compress,
+                            instance.decompress,
+                            engine_tag,
+                        )
+                        if compressed.startswith(b"SAFEZST\x00"):
+                            engine_id_str = "zstd-fallback"
+                            print(f"[SAFETY] MRTV fallback triggered for engine '{engine.id}'")
+                        else:
+                            print(f"[SAFETY] MRTV verified for engine '{engine.id}'")
                 elif requested_verify_mode == "fast":
                     # Fast verify: direct compress + sampled post-check.
-                    compressed = await asyncio.to_thread(instance.compress, raw_data)
+                    compressed = precompressed if precompressed is not None else await asyncio.to_thread(instance.compress, raw_data)
                     fast_ok = await asyncio.to_thread(
                         self.safety.quick_verify,
                         raw_data,
@@ -153,7 +273,7 @@ class Orchestrator:
                             print(f"[SAFETY] MRTV verified for engine '{engine.id}'")
                 else:
                     # Verification disabled.
-                    compressed = await asyncio.to_thread(instance.compress, raw_data)
+                    compressed = precompressed if precompressed is not None else await asyncio.to_thread(instance.compress, raw_data)
 
             elif engine and engine.type == "external_service":
                 # External service — bypass MRTV (trust the service)
@@ -174,15 +294,13 @@ class Orchestrator:
 
             else:
                 # No engine matched -> Zstd fallback
-                import zstandard as zstd
-                cctx = zstd.ZstdCompressor(level=3)
+                cctx = make_cctx(level=9, text_like=True)
                 compressed = await asyncio.to_thread(cctx.compress, raw_data)
 
         except Exception as e:
             print(f"[ERROR] Engine '{engine_id_str}' failed: {e}. Falling back to Zstd.")
             secure_audit_log("ENGINE_FAILURE", {"engine": engine_id_str, "error": str(e)})
-            import zstandard as zstd
-            cctx = zstd.ZstdCompressor(level=3)
+            cctx = make_cctx(level=9, text_like=True)
             compressed = await asyncio.to_thread(cctx.compress, raw_data)
             engine_id_str = "zstd-fallback"
 
@@ -230,8 +348,8 @@ class Orchestrator:
             duration_ms=duration_ms,
         )
 
-        # Audit trail
-        secure_audit_log("COMPRESS_SUCCESS", {
+        # Audit trail (legacy + tamper-proof chain)
+        audit_payload = {
             "engine": engine_id_str,
             "tenant": tenant_id,
             "bytes_in": original_bytes,
@@ -241,7 +359,9 @@ class Orchestrator:
             "encrypted": encrypt,
             "verified": (requested_verify_mode != "off"),
             "verify_mode": requested_verify_mode,
-        })
+        }
+        secure_audit_log("COMPRESS_SUCCESS", audit_payload)
+        _chain_audit_log("compress", **audit_payload)
 
         print(f"[ORCHESTRATOR] Done. {original_bytes:,} -> {compressed_bytes:,} bytes "
               f"({original_bytes / max(1, compressed_bytes):.1f}x) in {duration_ms:.0f}ms")

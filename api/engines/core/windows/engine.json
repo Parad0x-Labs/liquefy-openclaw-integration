@@ -9,8 +9,12 @@
         ],
         "extensions": [
             ".evtx",
-            ".xml"
+            ".xml",
+            ".log"
         ]
+    },
+    "sniff": {
+        "contains_any": ["<Event xmlns", "<EventID>", "<Provider Name=", "<System>", "<EventData>", "<TimeCreated SystemTime="]
     },
     "entrypoint": "windows.liquefy_windows_v1:LiquefyWindowsV1"
 }

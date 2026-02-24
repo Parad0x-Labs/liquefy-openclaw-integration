@@ -9,71 +9,13 @@ TECH:   Safe-Delta Columnar + Regex Tokenizer + Zstd.
 import time
 import re
 import zstandard as zstd
-import math
-import xxhash
 import sys
 import struct
 from collections import defaultdict
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf, zigzag_enc, zigzag_dec, AdaptiveSearchIndex
 
 PROTOCOL_ID = b'UNI\x01'
-
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return struct.pack("B", val)
-    if val < 0x4000: return struct.pack("<H", (val & 0x7F) | 0x80 | ((val >> 7) << 8))
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80); val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple[int, int]:
-    val = data[pos]; pos += 1
-    if val < 0x80: return val, pos
-    res = val & 0x7F; shift = 7
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
-
-def zigzag_enc(n: int) -> int: return (n << 1) ^ (n >> 63)
-def zigzag_dec(n: int) -> int: return (n >> 1) ^ -(n & 1)
-
-class AdaptiveSearchIndex:
-    def __init__(self, num_items: int, fpr=0.01):
-        num_items = max(10, num_items)
-        m = -(num_items * math.log(fpr)) / (math.log(2)**2)
-        self.num_bits = max(64, int(m))
-        self.num_bytes = (self.num_bits + 7) // 8
-        self.ba = bytearray(self.num_bytes)
-        self.k = max(1, int((self.num_bits / num_items) * math.log(2)))
-
-    def add(self, token: bytes):
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            self.ba[pos >> 3] |= (1 << (pos & 7))
-
-    def check(self, token: bytes) -> bool:
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            if not (self.ba[pos >> 3] & (1 << (pos & 7))): return False
-        return True
-
-    def __bytes__(self):
-        return pack_varint(self.k) + pack_varint(self.num_bits) + bytes(self.ba)
-
-    @staticmethod
-    def from_bytes(data: bytes, pos: int):
-        k, pos = unpack_varint_buf(data, pos); num_bits, pos = unpack_varint_buf(data, pos)
-        num_bytes = (num_bits + 7) // 8; idx = AdaptiveSearchIndex(10)
-        idx.k = k; idx.num_bits = num_bits; idx.num_bytes = num_bytes
-        idx.ba = bytearray(data[pos:pos+num_bytes])
-        return idx, pos + num_bytes
 
 class SafeSmartColumn:
     @staticmethod
@@ -137,7 +79,7 @@ class SafeSmartColumn:
 
 class LiquefySqlV1:
     def __init__(self, level=22):
-        self.cctx = zstd.ZstdCompressor(level=level)
+        self.cctx = make_cctx(level=level, text_like=True)
         self.dctx = zstd.ZstdDecompressor()
         self.re_token = re.compile(rb"('[^'\\]*(?:\\.[^'\\]*)*'|\"[^\"\\]*(?:\\.[^\"\\]*)*\"|`[^`]+`|0x[0-9a-fA-F]+|-?\d+(?:\.\d+)?|\bNULL\b)", re.IGNORECASE)
 
@@ -186,9 +128,13 @@ class LiquefySqlV1:
                 c_blob.extend(pack_varint(tid) + pack_varint(col_idx) + pack_varint(len(enc)) + enc)
 
         iv_len_packed = pack_varint(len(idx_bytes))
-        return PROTOCOL_ID + iv_len_packed + idx_bytes + self.cctx.compress(t_blob + l_blob + c_blob)
+        custom = PROTOCOL_ID + iv_len_packed + idx_bytes + self.cctx.compress(t_blob + l_blob + c_blob)
+        raw_zstd = self.cctx.compress(raw)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, blob: bytes) -> bytes:
+        if blob.startswith(b"\x28\xb5\x2f\xfd"):
+            return self.dctx.decompress(blob)
         if not blob.startswith(PROTOCOL_ID): return b""
         pos = 4; idx_len, pos = unpack_varint_buf(blob, pos); pos += idx_len
         stream = self.dctx.decompress(blob[pos:]); p = 0

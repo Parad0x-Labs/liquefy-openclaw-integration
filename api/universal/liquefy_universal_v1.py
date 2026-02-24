@@ -17,70 +17,60 @@ import io
 import math
 import struct
 import sys
+from collections import Counter
 from typing import Tuple
 
 import xxhash
 import zstandard as zstd
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf, ZSTD_MAGIC
 
 PROTOCOL_ID = b"NMX5"
 VERSION = 6
 LEGACY_VERSION = 5
-ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
-
-
-def pack_varint(val: int) -> bytes:
-    if val < 0x80:
-        return struct.pack("B", val)
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80)
-        val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-
-def unpack_varint_buf(data: bytes, pos: int) -> Tuple[int, int]:
-    val = data[pos]
-    pos += 1
-    if val < 0x80:
-        return val, pos
-    res = val & 0x7F
-    shift = 7
-    while True:
-        b = data[pos]
-        pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80):
-            break
-        shift += 7
-    return res, pos
 
 
 class LiquefyUniversalV1:
     def __init__(
         self,
-        level: int = 3,
+        level: int = 9,
         threads: int = 0,
         high_compression_level: int = 19,
-        entropy_threshold: float = 4.75,
+        entropy_threshold: float = 5.5,
     ):
         self.level = level
         self.threads = threads
         self.high_compression_level = high_compression_level
         self.entropy_threshold = entropy_threshold
         self.dctx = zstd.ZstdDecompressor()
+        self._cctx_default = make_cctx(
+            level=self.level,
+            text_like=True,
+            write_content_size=True,
+            write_checksum=False,
+            write_dict_id=False,
+        )
+        self._cctx_high = (
+            self._cctx_default
+            if self.high_compression_level == self.level
+            else make_cctx(
+                level=self.high_compression_level,
+                text_like=True,
+                write_content_size=True,
+                write_checksum=False,
+                write_dict_id=False,
+            )
+        )
 
     @staticmethod
     def _sample_entropy(data: bytes, sample_size: int = 1 << 20) -> float:
         data = data[:sample_size]
         if not data:
             return 0.0
-        freq = [0] * 256
-        for b in data:
-            freq[b] += 1
+        freq_counts = Counter(data)
         total = float(len(data))
         h = 0.0
-        for c in freq:
+        for c in freq_counts.values():
             if c:
                 p = c / total
                 h -= p * math.log2(p)
@@ -96,13 +86,7 @@ class LiquefyUniversalV1:
     def compress(self, raw: bytes) -> bytes:
         raw = raw or b""
         level = self._select_level(raw)
-        cctx = zstd.ZstdCompressor(
-            level=level,
-            threads=self.threads,
-            write_content_size=False,
-            write_checksum=False,
-            write_dict_id=False,
-        )
+        cctx = self._cctx_high if level == self.high_compression_level else self._cctx_default
         payload = cctx.compress(raw)
         candidate_raw = payload
         candidate_v6 = PROTOCOL_ID + bytes([VERSION]) + struct.pack(">I", len(payload)) + payload

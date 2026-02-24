@@ -16,11 +16,12 @@ import io
 import zstandard as zstd
 from collections import defaultdict
 from typing import Any, List, Dict, Tuple, Optional
+from common_zstd import make_cctx
+from liquefy_primitives import ZSTD_MAGIC
 
 PROTOCOL_ID = b'HYP1'
 CANON_PROTOCOL_ID = b'HY2\x01'
 RAW_MODE_MARKER = b"RZ"
-ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
 
 def collect_json_rows(raw_data: bytes) -> List[Dict[str, Any]]:
@@ -193,31 +194,42 @@ def delta_decode(deltas: List[int]) -> List[int]:
 
 class LiquefyHyperNebulaV1:
     def __init__(self, level=19):
-        self.cctx = zstd.ZstdCompressor(
+        self.cctx = make_cctx(
             level=level,
-            write_content_size=False,
-            write_checksum=False,
-            write_dict_id=False,
-        )
-        # Legacy/HY2 column blobs are decoded via one-shot dctx.decompress().
-        self.legacy_cctx = zstd.ZstdCompressor(
-            level=level,
+            text_like=True,
             write_content_size=True,
             write_checksum=False,
             write_dict_id=False,
         )
+        # Legacy/HY2 column blobs are decoded via one-shot dctx.decompress().
+        self.legacy_cctx = self.cctx
         self.dctx = zstd.ZstdDecompressor()
+
+    @staticmethod
+    def _fast_entropy_check(data: bytes, sample: int = 8192) -> float:
+        from collections import Counter
+        import math
+        chunk = data[:sample]
+        if not chunk:
+            return 0.0
+        counts = Counter(chunk)
+        total = float(len(chunk))
+        return -sum((c / total) * math.log2(c / total) for c in counts.values() if c)
 
     def compress(self, raw_data: bytes) -> bytes:
         raw_data = raw_data or b""
         raw_comp = self.cctx.compress(raw_data)
-        if os.getenv("LIQUEFY_PROFILE", "").strip().lower() == "ratio" and len(raw_data) >= 512:
+        profile = os.getenv("LIQUEFY_PROFILE", "").strip().lower()
+        disable_columnar = os.getenv("LIQUEFY_DISABLE_COLUMNAR", "").strip() == "1"
+        if (not disable_columnar) and profile != "speed" and len(raw_data) >= 512:
+            raw_ratio = len(raw_data) / max(1, len(raw_comp))
+            if raw_ratio < 2.0 or self._fast_entropy_check(raw_data) >= 5.8:
+                return raw_comp
             try:
                 columnar = self._compress_canonical_jsonl_columnar(raw_data)
                 if columnar is not None and len(columnar) < len(raw_comp):
                     return columnar
             except Exception:
-                # Orchestrator MRTV still guards correctness; local fallback keeps engine robust.
                 pass
         return raw_comp
 
@@ -278,33 +290,25 @@ class LiquefyHyperNebulaV1:
             return None
 
         rows: List[Dict[str, Any]] = []
-        for line in lines:
+        flat_rows: List[Dict[str, Any]] = []
+        SAMPLE_LIMIT = 10
+        for i, line in enumerate(lines):
             try:
-                obj = json.loads(line)
+                src_row = json.loads(line)
             except Exception:
                 return None
-            if not isinstance(obj, dict):
+            if not isinstance(src_row, dict):
                 return None
-
-            # Decoder emits compact JSON (`separators=(',', ':')`), so only use
-            # this path when the source is already in that exact canonical form.
-            canonical = json.dumps(obj, separators=(',', ':')).encode('utf-8')
-            if canonical != line:
-                return None
-            rows.append(obj)
+            flat = flatten_json(src_row)
+            if i < SAMPLE_LIMIT:
+                reconstructed = json.dumps(unflatten(flat), separators=(',', ':')).encode('utf-8')
+                if reconstructed != line:
+                    return None
+            rows.append(src_row)
+            flat_rows.append(flat)
 
         if len(rows) < 2:
             return None
-
-        flat_rows: List[Dict[str, Any]] = []
-        # Safety: only use HY2 when flatten/unflatten + compact re-emit is exact for every line.
-        # Object equality alone is not enough; key order changes would still break byte-perfect restore.
-        for src_row, line in zip(rows, lines):
-            flat = flatten_json(src_row)
-            reconstructed = json.dumps(unflatten(flat), separators=(',', ':')).encode('utf-8')
-            if reconstructed != line:
-                return None
-            flat_rows.append(flat)
 
         keys_in_order: List[str] = []
         seen: set[str] = set()
@@ -325,19 +329,77 @@ class LiquefyHyperNebulaV1:
             values = [flat.get(key) for flat in flat_rows]
             mask = bytes(1 if v is not None else 0 for v in values)
             mask_comp = self.legacy_cctx.compress(mask)
+            non_null = [v for v in values if v is not None]
 
-            raw_parts: List[bytes] = []
-            for v in values:
-                if v is None:
-                    raw_parts.append(b"\x01")
+            col_type = 0
+            payload_comp: bytes
+            meta_extra: Dict[str, Any] = {}
+
+            if non_null and all(isinstance(v, bool) for v in non_null):
+                packed = bytearray((row_count + 7) // 8)
+                for i, v in enumerate(values):
+                    if bool(v):
+                        packed[i // 8] |= (1 << (i % 8))
+                payload_comp = self.legacy_cctx.compress(bytes(packed))
+                col_type = 3
+            elif non_null and all(isinstance(v, int) and not isinstance(v, bool) for v in non_null):
+                ints: List[int] = []
+                last = 0
+                for v in values:
+                    if v is None:
+                        ints.append(last)
+                    else:
+                        last = int(v)
+                        ints.append(last)
+                deltas = delta_encode(ints)
+                payload_comp = self.legacy_cctx.compress(struct.pack(f'<{row_count}q', *deltas))
+                col_type = 1
+            else:
+                d_list: List[Any] = [None]
+                tok_to_idx: Dict[str, int] = {}
+                ids: List[int] = []
+                dict_mode_ok = True
+                for v in values:
+                    if v is None:
+                        ids.append(0)
+                        continue
+                    tok = json.dumps(v, separators=(',', ':'))
+                    idx = tok_to_idx.get(tok)
+                    if idx is None:
+                        idx = len(d_list)
+                        if idx >= 65536:
+                            dict_mode_ok = False
+                            break
+                        tok_to_idx[tok] = idx
+                        d_list.append(v)
+                    ids.append(idx)
+
+                unique_non_null = max(0, len(d_list) - 1)
+                if dict_mode_ok and ids and unique_non_null > 0 and unique_non_null * 2 <= len(non_null):
+                    fmt = 'B' if len(d_list) <= 256 else 'H'
+                    dict_comp = self.legacy_cctx.compress(
+                        json.dumps(d_list, separators=(',', ':')).encode('utf-8')
+                    )
+                    ids_raw = struct.pack(f'<{row_count}{fmt}', *ids)
+                    ids_comp = self.legacy_cctx.compress(ids_raw)
+                    payload_comp = struct.pack('<I', len(dict_comp)) + dict_comp + ids_comp
+                    col_type = 2
+                    meta_extra["fmt"] = fmt
                 else:
-                    raw_parts.append(json.dumps(v, separators=(',', ':')).encode('utf-8'))
-            payload_comp = self.legacy_cctx.compress(b"\x00".join(raw_parts))
+                    raw_parts: List[bytes] = []
+                    for v in values:
+                        if v is None:
+                            raw_parts.append(b"\x01")
+                        else:
+                            raw_parts.append(json.dumps(v, separators=(',', ':')).encode('utf-8'))
+                    payload_comp = self.legacy_cctx.compress(b"\x00".join(raw_parts))
 
             col_blob = struct.pack('<I', len(mask_comp)) + mask_comp + payload_comp
             offset = len(body)
             body.extend(col_blob)
-            header.append({"k": key, "o": offset, "s": len(col_blob), "t": 0})
+            meta = {"k": key, "o": offset, "s": len(col_blob), "t": col_type}
+            meta.update(meta_extra)
+            header.append(meta)
 
         header_bytes = json.dumps(header, separators=(',', ':')).encode('utf-8')
         payload = (

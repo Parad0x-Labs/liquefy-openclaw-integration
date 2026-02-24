@@ -6,6 +6,20 @@ INTERNAL_AUDIT/**/*.log
 REPORTS/INTERNAL_REVIEW_*
 MISSION_LOG_*
 INTERNAL_REVIEW_*
+CURSOR_FIXED_HANDOVER*
+CURSOR_SUGGESTED_GIT_TREE*
+BUILD.md
+
+# Local analysis / one-off reports (never publish)
+api/CORRECTED_PERFORMANCE_REPORT.md
+api/FINAL_SPEED_COMPRESSION_REPORT.md
+api/MRTV_PROTECTION_VALUE_REPORT.md
+api/NULL_Suite_V1_Certification.md
+api/PARAD0X_LABS_MASTER_CODEX.txt
+api/accurate_performance_benchmark.py
+api/comprehensive_engine_analysis.py
+api/final_status_check.py
+api/verify_performance.py
 
 # Python
 __pycache__/

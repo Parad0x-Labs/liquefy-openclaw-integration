@@ -75,7 +75,42 @@ def _speedup(a: Dict[str, str] | None, b: Dict[str, str] | None, col: str) -> st
         return "—"
 
 
-def _render_table(out_path: Path, title: str, rows: List[List[str]]) -> None:
+def _num(row: Dict[str, str] | None, col: str) -> float | None:
+    if not row:
+        return None
+    try:
+        return _to_float_text(str(row.get(col, "")))
+    except Exception:
+        return None
+
+
+def _cmp_color(a: float | None, b: float | None, tie_pct: float = 0.02) -> str:
+    """Green/yellow/red for higher-is-better comparisons."""
+    if a is None or b is None or b <= 0:
+        return "#FFFFFF"
+    d = (a - b) / b
+    if d > tie_pct:
+        return "#DFF3E4"  # green
+    if d < -tie_pct:
+        return "#F8D7DA"  # red
+    return "#FFF3CD"  # yellow
+
+
+def _cmp_speedup_color(speedup_text: str, tie_pct: float = 0.02) -> str:
+    if not speedup_text or speedup_text == "—":
+        return "#FFFFFF"
+    try:
+        v = _to_float_text(speedup_text)
+    except Exception:
+        return "#FFFFFF"
+    if v > 1.0 + tie_pct:
+        return "#DFF3E4"
+    if v < 1.0 - tie_pct:
+        return "#F8D7DA"
+    return "#FFF3CD"
+
+
+def _render_table(out_path: Path, title: str, rows: List[List[str]], cell_colors: List[List[str]] | None = None) -> None:
     col_labels = [
         "Size",
         "Liquefy\nDefault Ratio",
@@ -118,6 +153,10 @@ def _render_table(out_path: Path, title: str, rows: List[List[str]]) -> None:
         if r == 0:
             cell.set_text_props(weight="bold")
             cell.set_facecolor("#E8EDF5")
+        elif cell_colors and (r - 1) < len(cell_colors) and c < len(cell_colors[r - 1]):
+            color = cell_colors[r - 1][c]
+            if color:
+                cell.set_facecolor(color)
         if r != 0 and c in (0, 11):
             cell.get_text().set_ha("left")
 
@@ -146,6 +185,7 @@ def main():
     sizes = sorted(sizes, key=lambda s: (len(s), s))
 
     rendered: List[List[str]] = []
+    color_rows: List[List[str]] = []
     for size in sizes:
         d_liq = default_rows.get((size, "liquefy"))
         r_liq = ratio_rows.get((size, "liquefy"))
@@ -163,7 +203,7 @@ def main():
             except Exception:
                 pass
 
-        rendered.append([
+        row_vals = [
             size,
             _fmt_ratio(d_liq),
             _fmt_mbs(d_liq, "Compress MB/s"),
@@ -176,9 +216,39 @@ def main():
             _speedup(d_liq, z22, "Compress MB/s"),
             _speedup(r_liq, z22, "Compress MB/s"),
             restore_note,
+        ]
+        rendered.append(row_vals)
+
+        # Color policy:
+        # - Default ratio/MBps compare vs zstd-19 (practical baseline)
+        # - Ratio profile ratio/MBps compare vs zstd-22 (max-ratio baseline)
+        # - Speedup columns compare vs 1.0x
+        d_ratio = _num(d_liq, "Ratio")
+        d_mbs = _num(d_liq, "Compress MB/s")
+        r_ratio = _num(r_liq, "Ratio")
+        r_mbs = _num(r_liq, "Compress MB/s")
+        z19_ratio = _num(z19, "Ratio")
+        z19_mbs = _num(z19, "Compress MB/s")
+        z22_ratio = _num(z22, "Ratio")
+        z22_mbs = _num(z22, "Compress MB/s")
+        def_vs_z22 = row_vals[9]
+        ratio_vs_z22 = row_vals[10]
+        color_rows.append([
+            "#FFFFFF",                         # Size
+            _cmp_color(d_ratio, z19_ratio),    # Liquefy default ratio vs zstd-19 ratio
+            _cmp_color(d_mbs, z19_mbs),        # Liquefy default speed vs zstd-19 speed
+            _cmp_color(r_ratio, z22_ratio),    # Liquefy ratio ratio vs zstd-22 ratio
+            _cmp_color(r_mbs, z22_mbs),        # Liquefy ratio speed vs zstd-22 speed
+            "#F2F2F2",                         # zstd-19 ratio (baseline)
+            "#F2F2F2",                         # zstd-19 speed (baseline)
+            "#F2F2F2",                         # zstd-22 ratio (baseline)
+            "#F2F2F2",                         # zstd-22 speed (baseline)
+            _cmp_speedup_color(def_vs_z22),    # default speedup vs z22
+            _cmp_speedup_color(ratio_vs_z22),  # ratio speedup vs z22
+            "#FFFFFF",                         # restore note
         ])
 
-    _render_table(Path(args.out), args.title, rendered)
+    _render_table(Path(args.out), args.title, rendered, cell_colors=color_rows)
     print(f"[OK] wrote {args.out}")
 
 

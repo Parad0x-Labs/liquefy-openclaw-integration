@@ -8,73 +8,17 @@ TECH: Line-Level RLE + Pattern Deduplication + Binary Columnar Packing.
 
 import time
 import socket
-import math
 import zstandard as zstd
-import xxhash
 import sys
 import struct
 import json
 from collections import defaultdict
-
-def pack_varint(val: int) -> bytes:
-    if val < 0x80: return bytes([val])
-    out = bytearray()
-    while val >= 0x80:
-        out.append((val & 0x7F) | 0x80)
-        val >>= 7
-    out.append(val & 0x7F)
-    return bytes(out)
-
-def unpack_varint_buf(data: bytes, pos: int) -> tuple[int, int]:
-    res = 0; shift = 0
-    while True:
-        b = data[pos]; pos += 1
-        res |= (b & 0x7F) << shift
-        if not (b & 0x80): break
-        shift += 7
-    return res, pos
-
-class AdaptiveSearchIndex:
-    def __init__(self, num_items: int, fpr=0.01):
-        num_items = max(10, num_items)
-        m = -(num_items * math.log(fpr)) / (math.log(2)**2)
-        self.num_bits = max(64, int(m))
-        self.num_bytes = (self.num_bits + 7) // 8
-        self.ba = bytearray(self.num_bytes)
-        self.k = max(1, int((self.num_bits / num_items) * math.log(2)))
-
-    def add(self, token: bytes):
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            self.ba[pos >> 3] |= (1 << (pos & 7))
-
-    def maybe_has(self, token: bytes) -> bool:
-        h1 = xxhash.xxh64(token, seed=0).intdigest()
-        h2 = xxhash.xxh64(token, seed=1).intdigest()
-        for i in range(self.k):
-            pos = (h1 + i * h2) % self.num_bits
-            if not (self.ba[pos >> 3] & (1 << (pos & 7))):
-                return False
-        return True
-
-    def __bytes__(self):
-        return pack_varint(self.k) + pack_varint(self.num_bits) + bytes(self.ba)
-
-    @staticmethod
-    def from_bytes(data: bytes, pos: int) -> tuple["AdaptiveSearchIndex", int]:
-        k, pos = unpack_varint_buf(data, pos)
-        num_bits, pos = unpack_varint_buf(data, pos)
-        num_bytes = (num_bits + 7) // 8
-        idx = AdaptiveSearchIndex(10)
-        idx.k = k; idx.num_bits = num_bits; idx.num_bytes = num_bytes
-        idx.ba = bytearray(data[pos:pos+num_bytes])
-        return idx, pos + num_bytes
+from common_zstd import make_cctx
+from liquefy_primitives import pack_varint, unpack_varint_buf, AdaptiveSearchIndex
 
 class LiquefyJsonRepetitionV1:
     def __init__(self, level=22):
-        self.cctx = zstd.ZstdCompressor(level=level)
+        self.cctx = make_cctx(level=level, text_like=True)
         self.dctx = zstd.ZstdDecompressor()
 
     def compress(self, raw: bytes) -> bytes:
@@ -105,9 +49,13 @@ class LiquefyJsonRepetitionV1:
             stream.extend(pack_varint(len(line))); stream.extend(line)
             stream.extend(pack_varint(count))
 
-        return b'JSUR' + pack_varint(len(idx_bytes)) + idx_bytes + self.cctx.compress(stream)
+        custom = b'JSUR' + pack_varint(len(idx_bytes)) + idx_bytes + self.cctx.compress(stream)
+        raw_zstd = self.cctx.compress(raw)
+        return raw_zstd if len(raw_zstd) <= len(custom) else custom
 
     def decompress(self, blob: bytes) -> bytes:
+        if blob.startswith(b"\x28\xb5\x2f\xfd"):
+            return self.dctx.decompress(blob)
         if not blob.startswith(b'JSUR'): return b""
         pos = 4
         l_idx, pos = unpack_varint_buf(blob, pos); pos += l_idx

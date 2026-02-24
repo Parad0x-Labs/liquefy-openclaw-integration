@@ -1,0 +1,104 @@
+{
+  "name": "Liquefy Archive",
+  "version": "1.0.0",
+  "description": "One-click compression, redaction & vault archival for OpenClaw workspaces. Auto-packs sessions, memory, and artifacts into verified .null vaults with leak detection and MRTV proofs.",
+  "author": "Parad0x Labs",
+  "license": "BUSL-1.1",
+  "homepage": "https://github.com/parad0x-labs/liquefy",
+  "tags": ["compression", "archival", "security", "redaction", "vault"],
+  "category": "Data Management",
+  "icon": "archive",
+  "min_openclaw_version": "0.8.0",
+  "capabilities": [
+    "filesystem_read",
+    "filesystem_write",
+    "background_process"
+  ],
+  "entry": "trigger.py",
+  "config_schema": {
+    "watch_root": {
+      "type": "string",
+      "default": "~/.openclaw",
+      "description": "Root directory to watch for archivable data"
+    },
+    "vault_dir": {
+      "type": "string",
+      "default": "~/.liquefy/vault",
+      "description": "Output directory for .null vault archives"
+    },
+    "size_threshold_mb": {
+      "type": "number",
+      "default": 50,
+      "description": "Files/dirs above this size (MB) become archive candidates"
+    },
+    "age_threshold_days": {
+      "type": "number",
+      "default": 7,
+      "description": "Files/dirs older than this (days) become archive candidates"
+    },
+    "keep_active": {
+      "type": "integer",
+      "default": 5,
+      "description": "Number of most-recent items to keep active (not archived)"
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["default", "ratio", "speed"],
+      "default": "default",
+      "description": "Compression profile"
+    },
+    "secure": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable LSEC v2 encryption on vaults"
+    },
+    "prune_originals": {
+      "type": "boolean",
+      "default": false,
+      "description": "Delete originals after verified archival"
+    },
+    "notify": {
+      "type": "array",
+      "items": {"type": "string", "enum": ["stdout", "telegram", "discord"]},
+      "default": ["stdout"],
+      "description": "Notification channels for sweep summaries"
+    },
+    "poll_seconds": {
+      "type": "integer",
+      "default": 300,
+      "description": "Seconds between daemon sweeps"
+    },
+    "policy_mode": {
+      "type": "string",
+      "enum": ["strict", "balanced", "off"],
+      "default": "strict",
+      "description": "Path safety policy mode for leak/secret detection"
+    }
+  },
+  "commands": {
+    "archive_now": {
+      "description": "Run a single archival sweep immediately",
+      "confirmation": "This will compress and vault eligible files. Continue?"
+    },
+    "start_daemon": {
+      "description": "Start the background archiver daemon",
+      "confirmation": "Start continuous archival monitoring?"
+    },
+    "stop_daemon": {
+      "description": "Stop the running archiver daemon"
+    },
+    "status": {
+      "description": "Show archiver daemon status and last sweep summary"
+    },
+    "daily_recap": {
+      "description": "Generate a daily recap of archival activity"
+    }
+  },
+  "schedules": {
+    "daily_recap": {
+      "cron": "0 9 * * *",
+      "command": "daily_recap",
+      "description": "Morning recap of yesterday's archival activity"
+    }
+  }
+}

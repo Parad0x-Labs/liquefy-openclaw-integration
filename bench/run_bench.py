@@ -112,6 +112,11 @@ def ensure_dataset(size: str):
 
 
 def safe_rename(src: Path, dst: Path):
+    if dst.exists():
+        if dst.is_dir():
+            shutil.rmtree(dst, ignore_errors=True)
+        else:
+            dst.unlink(missing_ok=True)
     for _ in range(10):
         try:
             src.rename(dst)
@@ -128,6 +133,7 @@ def benchmark_liquefy(
     workers: int = 0,
     verify_mode: str = "full",
     liquefy_profile: str = "default",
+    unsafe_disable_restore_cap: bool = False,
 ) -> Tuple[float, int, float]:
     extra = ""
     if no_verify:
@@ -144,6 +150,8 @@ def benchmark_liquefy(
         f"{run_path} --org bench --out {out_dir}/pack --no-encrypt{extra}"
     )
     restore_cmd = f"{sys.executable} {REPO_ROOT}/tools/tracevault_restore.py {out_dir}/pack --out {out_dir}/restore"
+    if unsafe_disable_restore_cap:
+        restore_cmd += " --max-output-bytes 0"
 
     pack_times = []
     restore_times = []
@@ -180,7 +188,7 @@ def zstd_pack_python(run_path: Path, archive: Path, level: int):
         tar_path = Path(tf.name)
     try:
         run_cmd(f"tar -cf {tar_path} -C {run_path.parent} {run_path.name}")
-        cctx = zstd.ZstdCompressor(level=level)
+        cctx = zstd.ZstdCompressor(level=level, threads=-1, write_content_size=True)
         with tar_path.open("rb") as src, archive.open("wb") as dst:
             cctx.copy_stream(src, dst)
     finally:
@@ -375,6 +383,11 @@ def main():
         default="default",
         help="Optional Liquefy engine profile.",
     )
+    parser.add_argument(
+        "--unsafe-disable-restore-cap",
+        action="store_true",
+        help="Disable restore output cap during Liquefy benchmark restore (unsafe; for large local benchmark runs only).",
+    )
     args = parser.parse_args()
     if args.liquefy_no_verify:
         args.liquefy_verify_mode = "off"
@@ -406,6 +419,7 @@ def main():
                     workers=args.liquefy_workers,
                     verify_mode=args.liquefy_verify_mode,
                     liquefy_profile=args.liquefy_profile,
+                    unsafe_disable_restore_cap=args.unsafe_disable_restore_cap,
                 ),
             }
         ]
