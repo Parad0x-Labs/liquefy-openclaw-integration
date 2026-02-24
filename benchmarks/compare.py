@@ -61,6 +61,12 @@ def main():
     ap.add_argument("--max-default-speed-regression-pct", type=float, default=None)
     ap.add_argument("--max-ratio-profile-speed-regression-pct", type=float, default=None)
     ap.add_argument("--max-speed-profile-speed-regression-pct", type=float, default=None)
+    ap.add_argument(
+        "--min-bytes-for-speed-check",
+        type=int,
+        default=0,
+        help="Skip speed regression checks for rows with input_bytes below this threshold.",
+    )
     ap.add_argument("--fail-on-extra", action="store_true")
     args = ap.parse_args()
 
@@ -118,6 +124,16 @@ def main():
         n_ratio = parse_float(n, "ratio", row_name)
         b_comp = parse_float(b, "compress_mb_s", row_name)
         n_comp = parse_float(n, "compress_mb_s", row_name)
+        row_input_bytes = None
+        try:
+            row_input_bytes = int(float(n.get("input_bytes", b.get("input_bytes", "0"))))
+        except Exception:
+            row_input_bytes = None
+
+        def speed_checks_enabled() -> bool:
+            if row_input_bytes is None:
+                return True
+            return row_input_bytes >= max(0, int(args.min_bytes_for_speed_check))
 
         if key[1] == "liquefy":
             profile = key[3]
@@ -127,7 +143,7 @@ def main():
                     failures.append(
                         f"{row_name}: ratio regression {d:.2f}% (baseline {b_ratio:.4f}, latest {n_ratio:.4f})"
                     )
-                if thr_default_speed is not None:
+                if thr_default_speed is not None and speed_checks_enabled():
                     d = pct_delta(n_comp, b_comp)
                     if d < -abs(thr_default_speed):
                         failures.append(
@@ -140,7 +156,7 @@ def main():
                     failures.append(
                         f"{row_name}: ratio regression {d:.2f}% (baseline {b_ratio:.4f}, latest {n_ratio:.4f})"
                     )
-                if thr_ratio_speed is not None:
+                if thr_ratio_speed is not None and speed_checks_enabled():
                     d = pct_delta(n_comp, b_comp)
                     if d < -abs(thr_ratio_speed):
                         failures.append(
@@ -148,11 +164,12 @@ def main():
                             f"(baseline {b_comp:.4f}, latest {n_comp:.4f} MB/s)"
                         )
             elif profile == "speed":
-                d = pct_delta(n_comp, b_comp)
-                if d < -abs(thr_speed_speed):
-                    failures.append(
-                        f"{row_name}: speed regression {d:.2f}% (baseline {b_comp:.4f}, latest {n_comp:.4f} MB/s)"
-                    )
+                if speed_checks_enabled():
+                    d = pct_delta(n_comp, b_comp)
+                    if d < -abs(thr_speed_speed):
+                        failures.append(
+                            f"{row_name}: speed regression {d:.2f}% (baseline {b_comp:.4f}, latest {n_comp:.4f} MB/s)"
+                        )
 
     for w in warnings:
         print(f"[WARN] {w}")

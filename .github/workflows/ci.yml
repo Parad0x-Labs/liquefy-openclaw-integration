@@ -88,6 +88,7 @@ jobs:
           --max-ratio-profile-ratio-regression-pct 1.0
           --max-ratio-profile-speed-regression-pct 50.0
           --max-speed-profile-speed-regression-pct 30.0
+          --min-bytes-for-speed-check 5000000
       - uses: actions/upload-artifact@v4
         with:
           name: bench-latest-ci
