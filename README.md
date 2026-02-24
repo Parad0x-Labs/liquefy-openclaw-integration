@@ -15,7 +15,29 @@ Agent frameworks produce trace explosions: JSONL logs, tool call outputs, HTML r
 Trace Vault packs an entire run folder into verified `.null` archives with optional per-org encryption.
 Restore is bit-perfect.
 
-### Compression on real log formats (sub-1KB test fixtures, auto-routed)
+### Benchmark snapshot (default profile, post-fix)
+
+Default profile is the production-oriented baseline. The scoreboard below is the current headline benchmark view (green/yellow/red = win/tie/loss by repo policy bands).
+
+![Liquefy Scoreboard (Default Profile)](./liquefy_scoreboard_default.png)
+
+Scoreboard source of truth:
+- `./bench/results/SCOREBOARD.csv`
+- `./bench/results/SCOREBOARD_SUMMARY.md`
+
+Current scoreboard summary (post-fix):
+- `WIN_SPEED`: `16`
+- `WIN_RATIO`: `7`
+- `WIN_RATIO+SPEED`: `1`
+- `TIE_OK`: `18`
+- `FAIL`: `0`
+
+This scoreboard combines:
+- realistic format matrix rows
+- CI subset regression rows
+- OpenClaw benchmark rows (50MB/200MB)
+
+### Smoke fixtures (tiny, auto-routed sanity samples)
 
 | Fixture | Input | Output | Ratio | Engine |
 |---|---|---|---|---|
@@ -27,7 +49,7 @@ Restore is bit-perfect.
 | syslog_5424.log | 196 B | 159 B | 1.23x | liquefy-syslog-rep-v1 |
 | vpcflow.log | 288 B | 145 B | 1.99x | liquefy-vpcflow-v1 |
 
-Ratios improve significantly on production-scale files (MB+), where domain-specific engines exploit structural repetition.
+These tiny fixtures are routing/smoke examples only, not headline performance claims.
 
 ### Quick start
 
