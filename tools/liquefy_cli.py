@@ -64,7 +64,7 @@ def _runtime_main(argv: list[str]) -> int:
     if args.command == "self-test":
         result = self_test_core(tool="liquefy", repo_root=REPO_ROOT)
         ok = bool(result.get("summary", {}).get("ok"))
-        payload = {"schema_version": CLI_SCHEMA_VERSION, "tool": "liquefy", "command": "self_test", "ok": ok, "result": result}
+        payload = {"schema_version": CLI_SCHEMA_VERSION, "tool": "liquefy", "command": "self-test", "ok": ok, "result": result}
         _emit_json(payload, enabled_json, json_file)
         if not enabled_json:
             summary = result.get("summary", {})
@@ -102,7 +102,7 @@ def _dispatch_script(module_name: str, argv: list[str]) -> int:
 def main() -> None:
     if len(sys.argv) <= 1:
         print(
-            "Usage: liquefy <openclaw|tracevault-pack|tracevault-restore|version|self-test|doctor> [args...]\n"
+            "Usage: liquefy <openclaw|tracevault-pack|tracevault-restore|sign|version|self-test|doctor> [args...]\n"
             "Aliases: pack=tracevault-pack, restore=tracevault-restore"
         )
         raise SystemExit(2)
@@ -119,6 +119,7 @@ def main() -> None:
         "tracevault-restore": "tracevault_restore",
         "pack": "tracevault_pack",
         "restore": "tracevault_restore",
+        "sign": "liquefy_sign",
     }
     module_name = mapping.get(cmd)
     if not module_name:

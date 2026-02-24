@@ -581,6 +581,9 @@ def main():
     ap.add_argument("--org", default="openclaw_user", help="Org/tenant label")
     ap.add_argument("--verify-mode", choices=["full", "fast", "off"], default="full")
     ap.add_argument("--workers", type=int, default=0, help="Parallel workers (0=auto)")
+    ap.add_argument("--hash-cache", action="store_true", help="Enable persistent hash cache during pack.")
+    ap.add_argument("--hash-cache-clear", action="store_true", help="Clear hash cache before pack (requires --hash-cache).")
+    ap.add_argument("--sign", action="store_true", help="Sign vault proof artifacts after pack.")
     ap.add_argument("--secure", action="store_true", help="Enable per-tenant encryption")
     ap.add_argument("--no-chunking", action="store_true", help="Disable large-file chunking")
     ap.add_argument(
@@ -778,6 +781,12 @@ def main():
         ]
         if args.workers > 0:
             cmd.extend(["--workers", str(args.workers)])
+        if args.hash_cache:
+            cmd.append("--hash-cache")
+            if args.hash_cache_clear:
+                cmd.append("--hash-cache-clear")
+        if args.sign:
+            cmd.append("--sign")
         if not args.secure:
             cmd.append("--no-encrypt")
         if args.no_chunking:
@@ -847,6 +856,7 @@ def main():
         "out_dir": str(out_dir),
         "verify_mode": args.verify_mode,
         "secure": bool(args.secure),
+        "sign": bool(args.sign),
         "dry_run": False,
         "result": {
             "scan": scan,

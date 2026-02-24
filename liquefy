@@ -13,6 +13,7 @@ Usage:
   ./liquefy decompress <archive> <output>
   ./liquefy search <vault_dir> --query "<expr>" [--limit N] [--ignore-case] [--regex] [--json]
   ./liquefy openclaw --workspace ~/.openclaw --out ./openclaw-vault [--verify-mode full|fast|off] [--workers N] [--secure]
+  ./liquefy sign <sign|verify-signature> <vault_dir> [--json]
 
 Notes:
   - Uses the public decode-only appliance (no compression, no tuning).
@@ -69,6 +70,10 @@ case "$cmd" in
   openclaw)
     shift
     exec python3 "$(dirname "$0")/tools/liquefy_openclaw.py" "$@"
+    ;;
+  sign)
+    shift
+    exec python3 "$(dirname "$0")/tools/liquefy_sign.py" "$@"
     ;;
   *)
     usage; exit 2

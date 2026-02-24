@@ -294,6 +294,71 @@ def test_tracevault_pack_include_secrets_requires_exact_phrase():
     assert "OVERRIDE_PHRASE_REQUIRED" in payload["error"]
 
 
+def test_tracevault_pack_json_pack_writes_manifest_metadata_signature_and_hash_cache(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "note.txt").write_text("hello world\n" * 32, encoding="utf-8")
+    out_dir = tmp_path / "vault"
+
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "tracevault_pack.py"),
+        str(run_dir),
+        "--out", str(out_dir),
+        "--no-encrypt",
+        "--no-verify",
+        "--hash-cache",
+        "--sign",
+        "--json",
+    ])
+    assert payload["ok"] is True
+    result = payload["result"]
+    manifest_path = Path(result["manifest_path"])
+    run_metadata_path = Path(result["run_metadata_path"])
+    sig_path = Path(result["signature_path"])
+    assert manifest_path.exists()
+    assert run_metadata_path.exists()
+    assert sig_path.exists()
+    assert result["hash_cache_enabled"] is True
+    assert result["signed"] is True
+    assert (run_dir / ".liquefy" / "hash_cache.json").exists()
+
+
+def test_liquefy_sign_cli_json_contract(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "tracevault_index.json").write_text(json.dumps({"version": "tracevault-index-v2"}), encoding="utf-8")
+    (vault / "vault_manifest.json").write_text(json.dumps({"vault_id": "v1", "included": []}), encoding="utf-8")
+    (vault / "run_metadata.json").write_text(json.dumps({"vault_id": "v1"}), encoding="utf-8")
+    key_path = tmp_path / "signing.key"
+
+    sign_payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_sign.py"),
+        "sign",
+        str(vault),
+        "--key-path", str(key_path),
+        "--json",
+    ])
+    assert sign_payload["schema_version"] == "liquefy.sign.cli.v1"
+    assert sign_payload["tool"] == "liquefy_sign"
+    assert sign_payload["command"] == "sign"
+    assert sign_payload["ok"] is True
+
+    verify_payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_sign.py"),
+        "verify-signature",
+        str(vault),
+        "--key-path", str(key_path),
+        "--json",
+    ])
+    assert verify_payload["schema_version"] == "liquefy.sign.cli.v1"
+    assert verify_payload["tool"] == "liquefy_sign"
+    assert verify_payload["command"] == "verify-signature"
+    assert verify_payload["ok"] is True
+
+
 def test_liquefy_openclaw_secure_pack_requires_secret_json():
     env = dict(os.environ)
     env.pop("LIQUEFY_SECRET", None)

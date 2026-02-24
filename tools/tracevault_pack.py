@@ -17,6 +17,7 @@ import os
 import stat
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from cli_runtime import (
@@ -36,6 +37,8 @@ from path_policy import (
     redact_risky_rows,
     summarize_risky_inclusions,
 )
+from common_hash_cache import HashCache
+from common_signing import sign_vault_artifacts
 
 SKIP_DIRS = {".git", "__pycache__", "venv", ".venv", "node_modules", ".pytest_cache"}
 CLI_SCHEMA_VERSION = "liquefy.tracevault.cli.v1"
@@ -56,6 +59,46 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def sha256_file_cached(path: Path, cache: Optional[HashCache]) -> str:
+    if cache is not None:
+        got = cache.lookup(path)
+        if got:
+            return got
+    sha = sha256_file(path)
+    if cache is not None:
+        cache.record(path, sha)
+    return sha
+
+
+def _utc_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _json_sha256(obj: object) -> str:
+    raw = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _find_previous_vault(out_dir: Path) -> Optional[Tuple[Path, Dict]]:
+    parent = out_dir.parent
+    if not parent.exists():
+        return None
+    candidates: List[Path] = []
+    for p in parent.iterdir():
+        if not p.is_dir() or p.resolve() == out_dir.resolve():
+            continue
+        if (p / "vault_manifest.json").exists():
+            candidates.append(p)
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    for p in candidates:
+        try:
+            manifest = json.loads((p / "vault_manifest.json").read_text(encoding="utf-8"))
+            return p, manifest
+        except Exception:
+            continue
+    return None
 
 
 def should_skip(path: Path) -> bool:
@@ -467,6 +510,7 @@ async def process_single_file(
     encrypt: bool,
     verify: bool,
     verify_mode: str,
+    hash_cache: Optional[HashCache] = None,
 ) -> Tuple[Optional[Dict], Optional[str]]:
     try:
         result = await orch.process_file(
@@ -499,7 +543,7 @@ async def process_single_file(
         "compressed_bytes": int(result.get("compressed_bytes", 0)),
         "output_bytes": len(output_data),
         "ratio": result.get("ratio", 1.0),
-        "sha256_original": sha256_file(src_path),
+        "sha256_original": sha256_file_cached(src_path, hash_cache),
         "encrypted": bool(result.get("encrypted", False)),
         "verified": bool(result.get("verified", False)),
     }
@@ -520,6 +564,8 @@ async def pack(
     unsafe_perms_ok: bool = False,
     policy=None,
     verbose: bool = True,
+    hash_cache: Optional[HashCache] = None,
+    sign_artifacts: bool = False,
 ):
     if policy is None:
         policy = default_policy(mode="strict", source="tracevault-default")
@@ -642,6 +688,7 @@ async def pack(
                     encrypt=encrypt,
                     verify=verify,
                     verify_mode=verify_mode,
+                    hash_cache=hash_cache,
                 )
                 return rel, file_size, receipt, error
 
@@ -675,7 +722,7 @@ async def pack(
             group = {
                 "run_relpath": rel,
                 "original_bytes": file_size,
-                "sha256_original": sha256_file(fp),
+                "sha256_original": sha256_file_cached(fp, hash_cache),
                 "chunk_bytes": chunk_bytes,
                 "chunk_count": len(parts),
                 "parts": [],
@@ -698,6 +745,7 @@ async def pack(
                     encrypt=encrypt,
                     verify=verify,
                     verify_mode=verify_mode,
+                    hash_cache=hash_cache,
                 )
                 if error:
                     chunk_failed = True
@@ -756,6 +804,122 @@ async def pack(
     write_text_private(index_path, json.dumps(index, indent=2))
     index["_index_path"] = str(index_path)
 
+    manifest_included: List[Dict[str, object]] = []
+    for r in receipts:
+        manifest_included.append({
+            "relpath": r.get("run_relpath"),
+            "output_name": Path(str(r.get("output_path", ""))).name,
+            "sha256": r.get("sha256_original"),
+            "original_bytes": int(r.get("original_bytes", 0)),
+            "output_bytes": int(r.get("output_bytes", 0)),
+            "engine_used": r.get("engine_used"),
+            "encrypted": bool(r.get("encrypted", False)),
+            "verified": bool(r.get("verified", False)),
+        })
+    for g in bigfile_groups:
+        manifest_included.append({
+            "relpath": g.get("run_relpath"),
+            "sha256": g.get("sha256_original"),
+            "original_bytes": int(g.get("original_bytes", 0)),
+            "output_bytes": int(sum(int(p.get("output_bytes", 0)) for p in g.get("parts", []))),
+            "chunked": True,
+            "chunk_count": int(g.get("chunk_count", 0)),
+            "encrypted": any(bool(p.get("encrypted", False)) for p in g.get("parts", [])),
+            "verified": all(bool(p.get("verified", False)) for p in g.get("parts", [])) if g.get("parts") else False,
+            "parts": [
+                {
+                    "output_name": Path(str(p.get("output_path", ""))).name,
+                    "chunk_index": int(p.get("chunk_index", 0)),
+                    "output_bytes": int(p.get("output_bytes", 0)),
+                    "engine_used": p.get("engine_used"),
+                }
+                for p in g.get("parts", [])
+            ],
+        })
+    manifest_included.sort(key=lambda x: str(x.get("relpath", "")))
+
+    vault_id = out_dir.name
+    manifest = {
+        "schema": "liquefy.vault_manifest",
+        "schema_version": "v1",
+        "generated_at_utc": _utc_now(),
+        "vault_id": vault_id,
+        "org_id": org_id,
+        "run_dir": str(run_dir),
+        "policy_hash": _json_sha256(policy.public_summary() if policy is not None else {}),
+        "totals": {
+            "input_bytes": total_in,
+            "output_bytes": total_out,
+            "ratio": round(total_in / max(1, total_out), 2),
+            "files_processed": logical_processed,
+            "files_skipped": len(skipped),
+            "chunked_files": len(bigfile_groups),
+        },
+        "included": manifest_included,
+        "skipped": skipped,
+    }
+    manifest_path = out_dir / "vault_manifest.json"
+    write_text_private(manifest_path, json.dumps(manifest, indent=2))
+    manifest_sha256 = sha256_file(manifest_path)
+
+    prev_vault = _find_previous_vault(out_dir)
+    prev_vault_id = None
+    prev_manifest_hash = None
+    if prev_vault is not None:
+        prev_dir, prev_manifest = prev_vault
+        prev_vault_id = prev_manifest.get("vault_id") or prev_dir.name
+        try:
+            prev_manifest_hash = sha256_file(prev_dir / "vault_manifest.json")
+        except Exception:
+            prev_manifest_hash = None
+
+    run_metadata = {
+        "schema": "liquefy.run_metadata",
+        "schema_version": "v1",
+        "generated_at_utc": _utc_now(),
+        "mode": "vault",
+        "vault_id": vault_id,
+        "org_id": org_id,
+        "run_dir": str(run_dir),
+        "out_dir": str(out_dir),
+        "profile": os.environ.get("LIQUEFY_PROFILE", "default") or "default",
+        "verify_mode": verify_mode,
+        "verify_enabled": bool(verify),
+        "verify_pass": bool(all(bool(r.get("verified", False)) for r in receipts) and all(all(bool(p.get("verified", False)) for p in g.get("parts", [])) for g in bigfile_groups)),
+        "encrypt": bool(encrypt),
+        "workers": int(worker_count),
+        "hash_cache_enabled": bool(hash_cache is not None),
+        "input_bytes": total_in,
+        "output_bytes": total_out,
+        "ratio": round(total_in / max(1, total_out), 2),
+        "files_processed": logical_processed,
+        "files_skipped": len(skipped),
+        "index_path": str(index_path.name),
+        "manifest_path": str(manifest_path.name),
+        "manifest_sha256": manifest_sha256,
+        "policy_hash": manifest["policy_hash"],
+        "prev_vault_id": prev_vault_id,
+        "prev_manifest_hash": prev_manifest_hash,
+    }
+    run_metadata_path = out_dir / "run_metadata.json"
+    write_text_private(run_metadata_path, json.dumps(run_metadata, indent=2))
+
+    signature_info = None
+    if sign_artifacts:
+        signature_info = sign_vault_artifacts(out_dir)
+        run_metadata["signed"] = True
+        run_metadata["signature"] = {
+            "algorithm": signature_info.get("algorithm"),
+            "key_id": signature_info.get("key_id"),
+            "signature_path": signature_info.get("signature_path"),
+        }
+        write_text_private(run_metadata_path, json.dumps(run_metadata, indent=2))
+
+    index["_manifest_path"] = str(manifest_path)
+    index["_run_metadata_path"] = str(run_metadata_path)
+    if signature_info:
+        index["_signature_path"] = str(signature_info.get("signature_path"))
+
     if verbose:
         print(f"\n  input:         {total_in:,} bytes")
         print(f"  output:        {total_out:,} bytes ({index['ratio']}x)")
@@ -763,6 +927,10 @@ async def pack(
         print(f"  files skipped: {len(skipped)}")
         print(f"  chunked files: {len(bigfile_groups)}")
         print(f"  index:         {index_path}")
+        print(f"  manifest:      {manifest_path}")
+        print(f"  metadata:      {run_metadata_path}")
+        if signature_info:
+            print(f"  signature:     {signature_info.get('signature_path')}")
 
     return index
 
@@ -815,6 +983,14 @@ def main():
         default="default",
         help="Optional Liquefy engine profile to apply during packing.",
     )
+    ap.add_argument("--hash-cache", dest="hash_cache", action="store_true", default=False,
+                    help="Use persistent SHA256 cache (size+mtime keyed) to speed re-packs.")
+    ap.add_argument("--no-hash-cache", dest="hash_cache", action="store_false",
+                    help="Disable persistent SHA256 cache.")
+    ap.add_argument("--hash-cache-clear", action="store_true",
+                    help="Clear hash cache before packing (only applies with --hash-cache).")
+    ap.add_argument("--sign", action="store_true",
+                    help="Sign proof artifacts after packing (writes .liquefy/signature.json).")
     ap.add_argument(
         "--scan-only",
         action="store_true",
@@ -847,6 +1023,12 @@ def main():
         os.environ["LIQUEFY_PROFILE"] = args.profile
 
     try:
+        hash_cache = None
+        if args.hash_cache:
+            cache_path = run_dir / ".liquefy" / "hash_cache.json"
+            hash_cache = HashCache(cache_path)
+            if args.hash_cache_clear:
+                hash_cache.clear()
         policy = build_policy_from_args(args, source_label="tracevault_pack")
         if args.print_effective_policy or args.explain:
             effective = effective_rules_payload(policy)
@@ -924,6 +1106,8 @@ def main():
                     unsafe_perms_ok=args.unsafe_perms_ok,
                     policy=policy,
                     verbose=False,
+                    hash_cache=hash_cache,
+                    sign_artifacts=args.sign,
                 ))
         else:
             index = asyncio.run(pack(
@@ -940,7 +1124,11 @@ def main():
                 unsafe_perms_ok=args.unsafe_perms_ok,
                 policy=policy,
                 verbose=True,
+                hash_cache=hash_cache,
+                sign_artifacts=args.sign,
             ))
+        if hash_cache is not None:
+            hash_cache.save()
 
         payload = {
             "schema_version": CLI_SCHEMA_VERSION,
@@ -952,6 +1140,9 @@ def main():
             "out_dir": str(out_dir),
             "result": {
                 "index_path": index.get("_index_path"),
+                "manifest_path": index.get("_manifest_path"),
+                "run_metadata_path": index.get("_run_metadata_path"),
+                "signature_path": index.get("_signature_path"),
                 "version": index.get("version"),
                 "files_processed": index.get("files_processed"),
                 "files_skipped": index.get("files_skipped"),
@@ -962,6 +1153,8 @@ def main():
                 "policy": index.get("policy"),
                 "risk_summary": index.get("risk_summary"),
                 "risky_files": index.get("risky_files"),
+                "hash_cache_enabled": bool(args.hash_cache),
+                "signed": bool(args.sign),
             },
         }
         if not args.json and (index.get("risk_summary") or {}).get("risky_files_included"):
