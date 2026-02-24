@@ -15,6 +15,17 @@ Agent frameworks produce trace explosions: JSONL logs, tool call outputs, HTML r
 Trace Vault packs an entire run folder into verified `.null` archives with optional per-org encryption.
 Restore is bit-perfect.
 
+## Quick Start (30 seconds)
+
+```bash
+git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration
+cd liquefy-openclaw-integration
+make setup
+make quick DIR=~/openclaw/sessions
+```
+
+See `AGENTS.md` for presets, full commands, and agent integration.
+
 ### Benchmark snapshot (default profile, post-fix)
 
 Default profile is the production-oriented baseline. The scoreboard below is the current headline benchmark view (green/yellow/red = win/tie/loss by repo policy bands).
@@ -210,6 +221,13 @@ cd liquefy-openclaw-integration
 # Or use the decoder wrapper directly (Docker-backed path for decode/verify)
 chmod +x ./liquefy
 ```
+
+### Verify Downloads (checksums)
+
+Release binaries include `SHA256SUMS.txt`. Verify downloads before running them:
+
+- See `./docs/VERIFY_DOWNLOADS.md` for macOS/Linux/Windows commands.
+- The current release workflow generates `SHA256SUMS.txt` automatically in GitHub Releases.
 
 ### Usage (Linux/macOS)
 ```bash
