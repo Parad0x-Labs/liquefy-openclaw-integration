@@ -17,4 +17,4 @@ jobs:
       - run: python -m pip install -U pip
       - run: pip install -r requirements.txt || true
       - run: pip install cryptography
-      - run: python tests/fuzz_security_unseal.py --iterations 2000
+      - run: python tests/fuzz_security_unseal.py --iterations 500

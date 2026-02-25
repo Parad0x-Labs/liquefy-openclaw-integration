@@ -26,6 +26,7 @@ PROTOCOL_SEC = b'LSEC'
 VER_SEC = 2
 KDF_PBKDF2_SHA256 = 1
 DEFAULT_PBKDF2_ITERS = 300_000
+MAX_PBKDF2_ITERS = 2_000_000
 MAX_AUDIT_LEN = 1_048_576  # 1 MiB
 
 # No enforced usage limits in OSS/BUSL personal-use build.
@@ -65,7 +66,7 @@ class LiquefySecurity:
             raise ValueError("INVALID_TENANT_ID")
         if len(salt) != 16:
             raise ValueError("INVALID_SALT")
-        if int(iterations) <= 0:
+        if int(iterations) <= 0 or int(iterations) > MAX_PBKDF2_ITERS:
             raise ValueError("INVALID_PBKDF2_ITERS")
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
@@ -116,6 +117,8 @@ class LiquefySecurity:
         flags = 0
         kdf_id = KDF_PBKDF2_SHA256
         iters_i = int(iters)
+        if iters_i <= 0 or iters_i > MAX_PBKDF2_ITERS:
+            raise ValueError("INVALID_PBKDF2_ITERS")
 
         header = bytearray()
         header.extend(PROTOCOL_SEC)
@@ -183,7 +186,7 @@ class LiquefySecurity:
             raise ValueError("INVALID_ITERS")
         iters = struct.unpack(">I", blob[p:p + 4])[0]
         p += 4
-        if iters <= 0:
+        if iters <= 0 or iters > MAX_PBKDF2_ITERS:
             raise ValueError("INVALID_ITERS")
 
         if p + 2 > len(blob):

@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """LSEC v2 security-specific regression tests."""
+import struct
+
 import pytest
 
-from liquefy_security import LiquefySecurity, PROTOCOL_SEC, VER_SEC
+from liquefy_security import (
+    LiquefySecurity,
+    MAX_PBKDF2_ITERS,
+    PROTOCOL_SEC,
+    VER_SEC,
+)
 
 
 def test_lsec_v2_roundtrip_and_header_version(sample_json):
@@ -41,3 +48,18 @@ def test_missing_secret_rejected():
 def test_weak_secret_rejected():
     with pytest.raises(ValueError, match="WEAK_SECRET"):
         LiquefySecurity(master_secret="short")
+
+
+def test_unseal_rejects_oversized_iters_before_kdf(sample_json, monkeypatch):
+    sec = LiquefySecurity(master_secret="test_secret_key_for_ci")
+    blob = bytearray(sec.seal(sample_json, "org-alpha", {"x": 1}))
+    # Header layout (v2): magic[4] ver[1] flags[1] salt[16] nonce[12] kdf_id[1] iters[4] ...
+    iters_off = 4 + 1 + 1 + 16 + 12 + 1
+    blob[iters_off:iters_off + 4] = struct.pack(">I", MAX_PBKDF2_ITERS + 1)
+
+    def _no_kdf(*_args, **_kwargs):
+        raise AssertionError("_derive_tenant_key should not be called for oversized iters")
+
+    monkeypatch.setattr(sec, "_derive_tenant_key", _no_kdf)
+    with pytest.raises(ValueError, match="INVALID_ITERS"):
+        sec.unseal(bytes(blob), "org-alpha")
