@@ -269,6 +269,32 @@ It also includes a ClawHub/OpenClaw skill pack scaffold under:
 Publish/install trust notes (pinned plugin versions, checksums, safe defaults):
 
 - `./docs/openclaw-plugin-publish.md`
+
+### DNA x402 Payment Bridge Plugin
+
+[DNA](https://github.com/Parad0x-Labs/dna-x402) is our open-source payment rail for AI agents (x402 protocol on Solana). The DNA payment bridge plugin archives micropayment audit logs and cryptographic receipts into Liquefy `.null` vaults.
+
+- `./plugins/dna-payment`
+
+**What it does:**
+- Exports DNA payment audit events as Liquefy telemetry (NDJSON)
+- Converts signed payment receipts into verifiable proof artifacts
+- Packs everything into `.null` vaults with bit-perfect verification
+
+**Quick usage:**
+
+```bash
+# Export DNA payment data to a Liquefy-ready directory
+python plugins/dna-payment/dna_bridge.py export \
+  --server http://localhost:8080 \
+  --out ./vault-staging/dna-payments
+
+# Pack into a .null vault
+python tools/tracevault_pack.py ./vault-staging/dna-payments \
+  --org dna --out ./vault/dna-payments --json
+```
+
+DNA can also run as a live sidecar, streaming payment events directly into vault directories in real-time. See [`plugins/dna-payment/README.md`](./plugins/dna-payment/README.md) for full integration docs.
 ---
 
 ## 🛡️ Execution & Maintenance Policy
