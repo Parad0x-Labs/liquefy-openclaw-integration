@@ -1,0 +1,53 @@
+{
+  "id": "dna-payment",
+  "name": "DNA x402 Payment Bridge",
+  "version": "1.0.0",
+  "description": "Bridges DNA x402 micropayment audit logs and signed receipts into Liquefy vaults. Supports Pay-Prove-Pack workflow for AI agent commerce.",
+  "author": "Parad0x Labs",
+  "license": "MIT",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "dnaServerUrl": {
+        "type": "string",
+        "description": "URL of the DNA x402 server (e.g. http://localhost:8080)",
+        "default": "http://localhost:8080"
+      },
+      "adminToken": {
+        "type": "string",
+        "description": "Admin token for authenticated DNA endpoints (optional)"
+      },
+      "vaultOut": {
+        "type": "string",
+        "description": "Output directory for DNA payment vault data",
+        "default": "./vault/dna-payments"
+      },
+      "cluster": {
+        "type": "string",
+        "enum": ["devnet", "mainnet-beta"],
+        "default": "mainnet-beta"
+      },
+      "autoArchive": {
+        "type": "boolean",
+        "default": false,
+        "description": "If true, auto-pack exported data into .null vault after export"
+      }
+    }
+  },
+  "capabilities": [
+    "telemetry_source",
+    "proof_artifact",
+    "audit_chain"
+  ],
+  "data_schemas": {
+    "telemetry": "liquefy.dna.telemetry.v1",
+    "proof": "liquefy.dna.proof.v1",
+    "run_manifest": "liquefy.dna.run.v1"
+  },
+  "commands": {
+    "export": "Export DNA audit logs + receipts to Liquefy-ready directory",
+    "status": "Check DNA server connection and payment stats",
+    "archive": "Export + pack into .null vault in one step"
+  }
+}
