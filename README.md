@@ -379,6 +379,35 @@ make cloud-verify VAULT=./vault BUCKET=my-backups         # Verify remote integr
 - **Integrity verification** — confirms remote files match local hashes
 - Install boto3: `pip install boto3`
 
+### Policy Enforcer (Active Kill Switch)
+
+Three levels: audit (report), enforce (block), kill (halt signal + SIGTERM).
+
+```bash
+make policy-audit DIR=./agent-output      # Report violations
+make policy-enforce DIR=./agent-output    # Block on critical/high
+make policy-kill DIR=./agent-output       # Write halt signal to stop agent
+```
+
+- **Secret detection** — API keys, tokens, AWS creds, private keys, JWTs
+- **Forbidden files** — `.exe`, `.dll`, `.vbs`, executables blocked
+- **Watch mode** — continuous monitoring with auto-halt on critical violations
+- **Custom policies** — configurable size limits, extensions, patterns
+
+### Telemetry Forwarder (SIEM Streaming)
+
+Push audit events to Splunk, Datadog, ELK, Slack, or any SIEM in real-time.
+
+```bash
+make telemetry-push WEBHOOK=https://splunk:8088/services/collector
+make telemetry-stream SYSLOG=10.0.0.1:514 INTERVAL=10
+make telemetry-test FILE=/var/log/liquefy.jsonl
+```
+
+- **Webhook** — HTTP POST JSON to any endpoint
+- **Syslog** — RFC 5424 UDP/TCP for enterprise log collectors
+- **Cursor-based** — only forwards new events, no duplicates
+
 ### Token Ledger [EXPERIMENTAL]
 
 Track where your tokens go, set budgets, and catch waste before the bill arrives.

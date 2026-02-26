@@ -203,6 +203,65 @@ python tools/liquefy_vision.py stats ./vault/vision.vsnx --json
 
 Install Pillow for perceptual dedup (`pip install Pillow`). Without it, falls back to exact SHA-256 dedup.
 
+### Policy Enforcer (Active Kill Switch)
+
+Goes beyond audit-mode: actively BLOCKS operations and can HALT agent processes when critical violations are detected.
+
+**Three escalation levels:**
+
+```bash
+make policy-audit DIR=./agent-output     # Report only (safe, no side effects)
+make policy-enforce DIR=./agent-output   # Block on critical/high — non-zero exit
+make policy-kill DIR=./agent-output SIGNAL=./agent.halt PID=1234  # Halt signal + SIGTERM
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_policy_enforcer.py audit   --dir ./agent-output --json
+python tools/liquefy_policy_enforcer.py enforce --dir ./agent-output --json
+python tools/liquefy_policy_enforcer.py kill    --dir ./agent-output --signal ./agent.halt --pid 1234 --json
+python tools/liquefy_policy_enforcer.py watch   --dir ./agent-output --signal ./agent.halt --interval 5
+```
+
+**What it catches:**
+- **secret_leak** (critical) — API keys, tokens, passwords, private keys, AWS creds, JWTs
+- **forbidden_ext** (high) — `.exe`, `.dll`, `.so`, `.msi`, `.vbs`, etc.
+- **forbidden_path** (critical) — `.ssh/`, `.gnupg/`, `.aws/credentials`, `.kube/config`
+- **oversized** (warning) — files exceeding 50MB (configurable via policy JSON)
+
+**Kill switch workflow:** `watch` mode continuously scans the agent output directory. On critical violations, it writes a `.liquefy-halt` JSON file (agents watch for this) and optionally sends SIGTERM to the agent PID.
+
+**Custom policies:** pass `--policy policy.json` with `max_file_size`, `forbidden_extensions`, etc.
+
+### Telemetry Forwarder (SIEM Streaming)
+
+Push audit chain events to Splunk, Datadog, ELK, PagerDuty, Slack, or any SIEM.
+
+```bash
+make telemetry-push WEBHOOK=https://splunk:8088/services/collector TOKEN=xxx
+make telemetry-stream WEBHOOK=https://hooks.slack.com/xxx INTERVAL=10
+make telemetry-push SYSLOG=10.0.0.1:514
+make telemetry-push FILE=/var/log/liquefy-events.jsonl
+make telemetry-test WEBHOOK=https://my-siem/api/events
+make telemetry-status
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_telemetry_forward.py push   --webhook https://splunk:8088/services/collector --token xxx --json
+python tools/liquefy_telemetry_forward.py stream --webhook https://hooks.slack.com/xxx --interval 10
+python tools/liquefy_telemetry_forward.py push   --syslog 10.0.0.1:514 --json
+python tools/liquefy_telemetry_forward.py push   --file /var/log/liquefy-events.jsonl --json
+python tools/liquefy_telemetry_forward.py test   --webhook https://my-siem/api --json
+python tools/liquefy_telemetry_forward.py status --json
+```
+
+**Destinations:** Webhook (HTTP POST JSON), Syslog (RFC 5424 UDP/TCP), File (JSONL append).
+
+**Cursor-based:** tracks what's been sent so `push` only forwards new events. `stream` mode tails the audit chain continuously.
+
 ### Token Ledger [EXPERIMENTAL]
 
 Track, budget, and audit LLM token usage across agent runs. Parses OpenAI, Anthropic, LangChain, and generic JSONL traces.

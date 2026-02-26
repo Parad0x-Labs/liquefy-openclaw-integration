@@ -99,6 +99,17 @@ help: ## Show this help
 	@echo "    make vault-verify VAULT=./vault         Verify vault vs anchor"
 	@echo "    make vault-show PROOF=./proof.json      Display anchor proof"
 	@echo ""
+	@echo "  POLICY ENFORCER (Kill Switch)"
+	@echo "    make policy-audit DIR=./agent-output    Scan for violations (safe)"
+	@echo "    make policy-enforce DIR=./agent-output  Block on critical/high"
+	@echo "    make policy-kill DIR=. SIGNAL=./halt    Write halt signal + SIGTERM"
+	@echo ""
+	@echo "  TELEMETRY FORWARDER (SIEM)"
+	@echo "    make telemetry-push WEBHOOK=https://... Forward new events"
+	@echo "    make telemetry-stream WEBHOOK=https://. Continuous streaming"
+	@echo "    make telemetry-test WEBHOOK=https://... Test connectivity"
+	@echo "    make telemetry-status                   Show forwarding state"
+	@echo ""
 	@echo "  TOKEN LEDGER [EXPERIMENTAL]"
 	@echo "    make token-scan DIR=./agent-output      Scan logs for token usage"
 	@echo "    make token-budget ORG=acme DAILY=500000 Set token budgets"
@@ -388,6 +399,41 @@ vault-verify: $(VENV) ## Verify vault matches its on-chain anchor
 vault-show: $(VENV) ## Display an existing anchor proof
 	@test -n "$(PROOF)" || { echo "Usage: make vault-show PROOF=./vault/.anchor-proof.json"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py show --proof "$(PROOF)" --json
+
+# ─── Policy Enforcer (Kill Switch) ───
+
+policy-audit: $(VENV) ## Scan for policy violations (safe, report only)
+	@test -n "$(DIR)" || { echo "Usage: make policy-audit DIR=./agent-output"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_policy_enforcer.py audit --dir "$(DIR)" --json
+
+policy-enforce: $(VENV) ## Block operations on critical/high violations
+	@test -n "$(DIR)" || { echo "Usage: make policy-enforce DIR=./agent-output"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_policy_enforcer.py enforce --dir "$(DIR)" --json
+
+policy-kill: $(VENV) ## Write halt signal + optional SIGTERM on critical violations
+	@test -n "$(DIR)" || { echo "Usage: make policy-kill DIR=./agent-output [SIGNAL=./agent.halt] [PID=1234]"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_policy_enforcer.py kill --dir "$(DIR)" \
+		$(if $(SIGNAL),--signal "$(SIGNAL)",) $(if $(PID),--pid "$(PID)",) --json
+
+# ─── Telemetry Forwarder (SIEM) ───
+
+telemetry-push: $(VENV) ## Forward new audit events to SIEM (one-shot)
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_telemetry_forward.py push \
+		$(if $(WEBHOOK),--webhook "$(WEBHOOK)",) $(if $(SYSLOG),--syslog "$(SYSLOG)",) \
+		$(if $(FILE),--file "$(FILE)",) $(if $(TOKEN),--token "$(TOKEN)",) --json
+
+telemetry-stream: $(VENV) ## Continuous event streaming to SIEM
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_telemetry_forward.py stream \
+		$(if $(WEBHOOK),--webhook "$(WEBHOOK)",) $(if $(SYSLOG),--syslog "$(SYSLOG)",) \
+		$(if $(FILE),--file "$(FILE)",) --interval $(or $(INTERVAL),10)
+
+telemetry-test: $(VENV) ## Send test event to verify SIEM connectivity
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_telemetry_forward.py test \
+		$(if $(WEBHOOK),--webhook "$(WEBHOOK)",) $(if $(SYSLOG),--syslog "$(SYSLOG)",) \
+		$(if $(FILE),--file "$(FILE)",) --json
+
+telemetry-status: $(VENV) ## Show forwarding state and pending events
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_telemetry_forward.py status --json
 
 # ─── Token Ledger [EXPERIMENTAL] ───
 
