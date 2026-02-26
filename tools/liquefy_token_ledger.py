@@ -124,6 +124,17 @@ def _ledger_dir(base: Optional[Path] = None) -> Path:
     return Path.home() / ".liquefy" / "tokens"
 
 
+_unknown_models_seen: set = set()
+
+
+def _is_known_model(model: str) -> bool:
+    model_lower = model.lower()
+    for key in MODEL_COSTS_PER_1K:
+        if key in model_lower:
+            return True
+    return False
+
+
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     model_lower = model.lower()
     costs = DEFAULT_COST
@@ -132,6 +143,8 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
         if key in model_lower and len(key) > len(best_match):
             best_match = key
             costs = val
+    if not best_match and model_lower != "unknown":
+        _unknown_models_seen.add(model_lower)
     return (input_tokens / 1000 * costs["input"]) + (output_tokens / 1000 * costs["output"])
 
 
@@ -307,6 +320,9 @@ def cmd_scan(args: argparse.Namespace) -> int:
     _audit_log("token_ledger.scan", entries=len(entries), total_tokens=total_tokens,
                estimated_cost=round(total_cost, 4))
 
+    unknown = sorted(_unknown_models_seen)
+    _unknown_models_seen.clear()
+
     result = {
         "ok": True,
         "experimental": True,
@@ -317,6 +333,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
         "estimated_cost_usd": round(total_cost, 4),
         "by_model": {k: {**v, "cost": round(v["cost"], 4)} for k, v in by_model.items()},
         "ledger_file": str(ledger_path),
+        "unknown_models": unknown,
     }
 
     if args.json:
@@ -333,6 +350,12 @@ def cmd_scan(args: argparse.Namespace) -> int:
         print(f"    By model:")
         for model, stats in sorted(by_model.items(), key=lambda x: -x[1]["total"]):
             print(f"      {model}: {stats['total']:,} tokens, {stats['calls']} calls, ~${stats['cost']:.4f}")
+        if unknown:
+            print()
+            print(f"    WARNING: {len(unknown)} unknown model(s) using default cost estimates:")
+            for m in unknown:
+                print(f"      → {m}")
+            print(f"    Update costs: python tools/liquefy_token_ledger.py models --add '{unknown[0]}:0.003:0.015'")
         print()
         print(f"    Note: Cost estimates are approximate. Check provider billing for exact amounts.")
 
@@ -572,6 +595,36 @@ def cmd_audit(args: argparse.Namespace) -> int:
                 "message": f"Average input/output ratio is {avg_ratio:.1f}x — agents may be sending too much context for small outputs",
             })
 
+    models_used = sorted({e["model"] for e in entries if e["model"] != "unknown"})
+    if len(models_used) > 1:
+        by_source = defaultdict(set)
+        for e in entries:
+            if e.get("source_file"):
+                by_source[e["source_file"]].add(e["model"])
+        switches = {src: sorted(models) for src, models in by_source.items() if len(models) > 1}
+        if switches:
+            for src, models in switches.items():
+                issues.append({
+                    "type": "model_switch",
+                    "severity": "info",
+                    "source": src,
+                    "models": models,
+                    "message": f"Model switch in {src}: {' → '.join(models)} — verify intentional",
+                })
+
+    for e in entries:
+        if not _is_known_model(e["model"]) and e["model"] != "unknown":
+            _unknown_models_seen.add(e["model"])
+    unknown_in_audit = sorted(_unknown_models_seen)
+    _unknown_models_seen.clear()
+    for m in unknown_in_audit:
+        issues.append({
+            "type": "unknown_model",
+            "severity": "warning",
+            "model": m,
+            "message": f"Unknown model '{m}' — cost estimate uses default rates. Run: token-models --add '{m}:INPUT:OUTPUT'",
+        })
+
     total_tokens = sum(e["total_tokens"] for e in entries)
     total_wasted = sum(i.get("wasted_tokens", 0) for i in issues)
     waste_pct = round(total_wasted / total_tokens * 100, 1) if total_tokens > 0 else 0
@@ -584,6 +637,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
         "issues_found": len(issues),
         "wasted_tokens": total_wasted,
         "waste_percent": waste_pct,
+        "models_used": models_used,
+        "unknown_models": unknown_in_audit,
         "issues": issues,
     }
 

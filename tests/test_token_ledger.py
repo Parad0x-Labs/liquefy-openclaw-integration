@@ -356,6 +356,41 @@ class TestModelCosts:
         assert output["builtin_models"] > 20
         assert "gpt-5" in output["models"]
 
+    def test_scan_detects_unknown_model(self, tmp_path, capsys):
+        (tmp_path / "trace.jsonl").write_text(
+            json.dumps({"model": "brand-new-model-v9", "usage": {"prompt_tokens": 500, "completion_tokens": 200, "total_tokens": 700}}) + "\n"
+        )
+        args = _Args(dir=str(tmp_path))
+        ret = cmd_scan(args)
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        assert "brand-new-model-v9" in output["unknown_models"]
+
+    def test_audit_detects_model_switch(self, tmp_path, capsys):
+        lines = [
+            json.dumps(_openai_entry(1000, 500, "gpt-4o")) + "\n",
+            json.dumps(_openai_entry(1000, 500, "gpt-4o-mini")) + "\n",
+        ]
+        (tmp_path / "trace.jsonl").write_text("".join(lines))
+        args = _Args(dir=str(tmp_path))
+        ret = cmd_audit(args)
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        switch_issues = [i for i in output["issues"] if i["type"] == "model_switch"]
+        assert len(switch_issues) >= 1
+
+    def test_audit_detects_unknown_model(self, tmp_path, capsys):
+        (tmp_path / "trace.jsonl").write_text(
+            json.dumps({"model": "totally-new-llm", "usage": {"prompt_tokens": 300, "completion_tokens": 100, "total_tokens": 400}}) + "\n"
+        )
+        args = _Args(dir=str(tmp_path))
+        ret = cmd_audit(args)
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        unknown_issues = [i for i in output["issues"] if i["type"] == "unknown_model"]
+        assert len(unknown_issues) >= 1
+        assert "totally-new-llm" in output["unknown_models"]
+
     def test_cmd_models_add(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         args = _Args(add="future-model:0.01:0.03")
