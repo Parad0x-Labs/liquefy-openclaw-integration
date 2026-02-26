@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  liquefy:
+    build: .
+    volumes:
+      - ./vault:/app/vault
+      - ./data:/app/data
+    environment:
+      - LIQUEFY_SECRET=${LIQUEFY_SECRET:-}
+      - LIQUEFY_ORG=${LIQUEFY_ORG:-default}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - LIQUEFY_S3_ENDPOINT=${LIQUEFY_S3_ENDPOINT:-}
+    entrypoint: ["python"]
+    # Examples:
+    #   docker compose run liquefy tools/tracevault_pack.py ./data --org default --out ./vault/output --json
+    #   docker compose run liquefy tools/liquefy_compliance.py report --vault ./vault --output ./vault/report.html
+    #   docker compose run liquefy tools/liquefy_token_ledger.py scan --dir ./data --json
+
+  liquefy-api:
+    build: .
+    ports:
+      - "${LIQUEFY_PORT:-8420}:8420"
+    volumes:
+      - ./vault:/app/vault
+    environment:
+      - LIQUEFY_SECRET=${LIQUEFY_SECRET:-}
+      - LIQUEFY_ORG=${LIQUEFY_ORG:-default}
+    entrypoint: ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8420"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8420/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -25,6 +25,18 @@ bash install.sh
 setup.bat
 ```
 
+**pip install (into existing project):**
+```bash
+pip install git+https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git
+```
+
+Optional extras: `pip install "liquefy-openclaw[vision,cloud,anchor,api,all] @ git+https://..."`
+
+**Docker:**
+```bash
+docker compose run liquefy tools/tracevault_pack.py ./data --org default --out ./vault/output --json
+```
+
 All paths create a virtualenv, install dependencies, run a smoke test, and print "READY".
 
 ## What Liquefy Does

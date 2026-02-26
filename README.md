@@ -33,6 +33,21 @@ cd liquefy-openclaw-integration
 .venv\Scripts\python tools\tracevault_pack.py .\your\data --org default --out .\vault\output --json
 ```
 
+**pip install (add to existing project):**
+```bash
+pip install git+https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git
+pip install "liquefy-openclaw[all] @ git+https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git"  # with all extras
+```
+
+Optional extras: `vision` (Pillow), `cloud` (boto3), `anchor` (solders), `api` (FastAPI server), `all` (everything).
+
+**Docker:**
+```bash
+git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration
+cd liquefy-openclaw-integration
+docker compose run liquefy tools/tracevault_pack.py ./data --org default --out ./vault/output --json
+```
+
 See `AGENTS.md` for presets, full commands, and agent integration.
 
 ### Benchmark snapshot (default profile, post-fix)

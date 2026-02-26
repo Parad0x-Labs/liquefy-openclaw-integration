@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "liquefy-openclaw"
+version = "1.1.0"
+description = "Entropy-native compression, auditing, and observability for AI agent runs"
+readme = "README.md"
+license = {text = "BUSL-1.1"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Parad0x Labs"},
+]
+keywords = ["compression", "ai-agents", "audit", "observability", "openclaw", "trace-vault"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: System :: Archiving :: Compression",
+    "Topic :: Software Development :: Libraries",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "zstandard>=0.22.0",
+    "xxhash>=3.4.0",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.5.0",
+    "cryptography>=41.0.0",
+    "python-multipart>=0.0.6",
+    "blake3>=0.4.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.0",
+    "python-dotenv>=1.0.0",
+    "sqlalchemy>=2.0.0",
+    "pandas>=2.1.0",
+    "scipy>=1.11.0",
+    "requests>=2.31.0",
+    "tenacity>=8.2.0",
+    "httpx>=0.25.0",
+    "typer>=0.9.0",
+]
+vision = [
+    "Pillow>=10.0.0",
+]
+cloud = [
+    "boto3>=1.34.0",
+]
+anchor = [
+    "solders>=0.21.0",
+    "httpx>=0.25.0",
+]
+all = [
+    "liquefy-openclaw[api,vision,cloud,anchor]",
+]
+
+[project.urls]
+Homepage = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration"
+Repository = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration"
+Issues = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration/issues"
+
+[project.scripts]
+liquefy-pack = "tools.tracevault_pack:main"
+liquefy-restore = "tools.tracevault_restore:main"
+liquefy-search = "tools.tracevault_search:main"
+liquefy-compliance = "tools.liquefy_compliance:main"
+liquefy-vision = "tools.liquefy_vision:main"
+liquefy-cloud = "tools.liquefy_cloud_sync:main"
+liquefy-tokens = "tools.liquefy_token_ledger:main"
+liquefy-guard = "tools.liquefy_config_guard:main"
+liquefy-anchor = "tools.liquefy_vault_anchor:main"
+liquefy-key = "tools.liquefy_key_backup:main"
+
+[tool.setuptools.packages.find]
+include = ["api*", "tools*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
