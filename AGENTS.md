@@ -176,6 +176,35 @@ python tools/liquefy_vision.py stats ./vault/vision.vsnx --json
 
 Install Pillow for perceptual dedup (`pip install Pillow`). Without it, falls back to exact SHA-256 dedup.
 
+### On-Chain Anchoring (Solana)
+
+Anchor vault integrity proofs on Solana. Anyone with a Solana explorer can verify your data hasn't been tampered with — without seeing a single byte of it.
+
+**What goes on-chain (80 bytes):**
+- `vault_hash` — SHA-256 of all vault file hashes (32 bytes, truncated to 16 hex)
+- `chain_tip` — latest audit chain hash (32 bytes, truncated to 16 hex)
+- `key_fingerprint` — SHA-256 of encryption key (16 hex chars)
+
+**Cost:** ~0.000005 SOL per anchor via SPL Memo program.
+
+```bash
+make vault-proof VAULT=./vault                    # Compute proof (free, offline)
+make vault-anchor VAULT=./vault KEYPAIR=~/.config/solana/id.json  # Anchor on Solana
+make vault-verify VAULT=./vault                   # Verify vault matches anchor
+make vault-show PROOF=./vault/.anchor-proof.json  # Display proof details
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_vault_anchor.py proof  --vault ./vault --json
+python tools/liquefy_vault_anchor.py anchor --vault ./vault --keypair ~/.config/solana/id.json --json
+python tools/liquefy_vault_anchor.py verify --vault ./vault --json
+python tools/liquefy_vault_anchor.py show   --proof ./vault/.anchor-proof.json --json
+```
+
+Install `solders` and `httpx` for on-chain anchoring: `pip install solders httpx`. Proof computation works without any Solana dependencies.
+
 ### Key Backup (Disaster Recovery)
 
 If your machine dies and `LIQUEFY_SECRET` was only an env var, your encrypted cloud backups are bricks. Back up your key:

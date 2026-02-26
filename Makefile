@@ -93,6 +93,12 @@ help: ## Show this help
 	@echo "    make key-card                           Generate printable recovery card"
 	@echo "    make key-verify SRC=./backup.enc        Verify backup is valid"
 	@echo ""
+	@echo "  ON-CHAIN ANCHORING (Solana)"
+	@echo "    make vault-proof VAULT=./vault          Compute proof (free, offline)"
+	@echo "    make vault-anchor VAULT=. KEYPAIR=~/.config/solana/id.json  Anchor on Solana"
+	@echo "    make vault-verify VAULT=./vault         Verify vault vs anchor"
+	@echo "    make vault-show PROOF=./proof.json      Display anchor proof"
+	@echo ""
 	@echo "  CLOUD SYNC (S3 / R2 / MinIO)"
 	@echo "    make cloud-push VAULT=./vault BUCKET=x  Push vaults (encrypted) to cloud"
 	@echo "    make cloud-pull VAULT=./vault BUCKET=x  Restore vaults from cloud"
@@ -350,6 +356,25 @@ key-card: $(VENV) ## Generate printable recovery card
 key-verify: $(VENV) ## Verify a key backup file can be decrypted
 	@test -n "$(SRC)" || { echo "Usage: make key-verify SRC=./liquefy_key_backup.enc"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_key_backup.py verify --input "$(SRC)"
+
+# ─── On-Chain Anchoring (Solana) ───
+
+vault-proof: $(VENV) ## Compute vault integrity proof (offline, free)
+	@test -n "$(VAULT)" || { echo "Usage: make vault-proof VAULT=./vault"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py proof --vault "$(VAULT)" --json
+
+vault-anchor: $(VENV) ## Anchor vault proof on Solana (~0.000005 SOL)
+	@test -n "$(VAULT)" -a -n "$(KEYPAIR)" || { echo "Usage: make vault-anchor VAULT=./vault KEYPAIR=~/.config/solana/id.json [CLUSTER=mainnet]"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py anchor \
+		--vault "$(VAULT)" --keypair "$(KEYPAIR)" --cluster $(or $(CLUSTER),mainnet) --json
+
+vault-verify: $(VENV) ## Verify vault matches its on-chain anchor
+	@test -n "$(VAULT)" || { echo "Usage: make vault-verify VAULT=./vault"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py verify --vault "$(VAULT)" --json
+
+vault-show: $(VENV) ## Display an existing anchor proof
+	@test -n "$(PROOF)" || { echo "Usage: make vault-show PROOF=./vault/.anchor-proof.json"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py show --proof "$(PROOF)" --json
 
 cloud-verify: $(VENV) ## Verify remote vault integrity against local
 	@test -n "$(VAULT)" || { echo "Usage: make cloud-verify VAULT=./vault BUCKET=my-backups"; exit 1; }

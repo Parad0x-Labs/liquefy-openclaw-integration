@@ -353,6 +353,22 @@ make cloud-verify VAULT=./vault BUCKET=my-backups         # Verify remote integr
 - **Integrity verification** — confirms remote files match local hashes
 - Install boto3: `pip install boto3`
 
+### On-Chain Vault Anchoring (Solana)
+
+Anchor vault integrity proofs on Solana. ~80 bytes of hashes go on-chain via SPL Memo — no data, no keys, just a fingerprint that proves your vault existed in a specific state at a specific time. Anyone with a Solana explorer can verify it.
+
+```bash
+make vault-proof  VAULT=./vault                   # Compute proof (free, offline)
+make vault-anchor VAULT=./vault KEYPAIR=~/.config/solana/id.json  # Anchor on Solana
+make vault-verify VAULT=./vault                   # Verify vault vs anchor
+make vault-show   PROOF=./vault/.anchor-proof.json  # Display proof
+```
+
+- **Cost:** ~0.000005 SOL per anchor
+- **What's anchored:** vault file hash, audit chain tip hash, encryption key fingerprint
+- **What's NOT anchored:** your data, your key, anything readable
+- Install solders + httpx: `pip install solders httpx` (proof generation works without them)
+
 ---
 
 ## 🛡️ Execution & Maintenance Policy
