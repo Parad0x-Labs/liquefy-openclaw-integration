@@ -70,3 +70,4 @@ benchmarks/latest_ci_subset.csv
 *.zip
 
 # Keep test fixtures and docs images tracked (do not blanket-ignore *.log/*.jsonl/*.png)
+tests/redteam/tmp/

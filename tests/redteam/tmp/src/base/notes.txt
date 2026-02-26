@@ -1,3 +1,0 @@
-agent run ok
-step=1
-step=2
