@@ -191,6 +191,43 @@ python tools/liquefy_vision.py stats ./vault/vision.vsnx --json
 
 Install Pillow for perceptual dedup (`pip install Pillow`). Without it, falls back to exact SHA-256 dedup.
 
+### Config Guard (Update Protection)
+
+Never lose your customizations to a framework update again. Config Guard snapshots your configs, skills, prompts, and env files before an update and restores them after.
+
+```bash
+# Before update — save everything
+make guard-save DIR=./my-agent LABEL="pre-v2.0"
+
+# Run your update (git pull, npm update, pip install --upgrade, etc.)
+
+# After update — see what got overwritten
+make guard-diff DIR=./my-agent
+
+# Restore your customizations
+make guard-restore DIR=./my-agent
+
+# Check current state
+make guard-status DIR=./my-agent
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_config_guard.py save    --dir ./my-agent --label "pre-v2.0" --json
+python tools/liquefy_config_guard.py diff    --dir ./my-agent --json
+python tools/liquefy_config_guard.py restore --dir ./my-agent --json
+python tools/liquefy_config_guard.py status  --dir ./my-agent --json
+```
+
+**What it guards:** `.yaml`, `.json`, `.toml`, `.env`, `.py`, `.ts`, `.sh`, `Makefile`, `Dockerfile`, `requirements.txt`, skill files, prompt files — anything config-like.
+
+**What it skips:** `node_modules/`, `.git/`, `__pycache__/`, `.venv/`, `dist/`, `build/`.
+
+**Conflict handling:** If the update changed a file AND you had customizations, Config Guard saves a `.update-backup` copy so you can merge manually. Use `--force` to skip backups. Use `--dry-run` to preview without changes.
+
+Works with any framework: OpenClaw, NanoClaw, LangChain, CrewAI, or any project directory.
+
 ### On-Chain Anchoring (Solana)
 
 Anchor vault integrity proofs on Solana. Anyone with a Solana explorer can verify your data hasn't been tampered with — without seeing a single byte of it.

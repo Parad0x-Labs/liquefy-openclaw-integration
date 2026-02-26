@@ -99,6 +99,12 @@ help: ## Show this help
 	@echo "    make vault-verify VAULT=./vault         Verify vault vs anchor"
 	@echo "    make vault-show PROOF=./proof.json      Display anchor proof"
 	@echo ""
+	@echo "  CONFIG GUARD (Update Protection)"
+	@echo "    make guard-save DIR=./my-agent          Snapshot before update"
+	@echo "    make guard-restore DIR=./my-agent       Restore after update"
+	@echo "    make guard-diff DIR=./my-agent          Show what changed"
+	@echo "    make guard-status DIR=./my-agent        File status overview"
+	@echo ""
 	@echo "  CLOUD SYNC (S3 / R2 / MinIO)"
 	@echo "    make cloud-push VAULT=./vault BUCKET=x  Push vaults (encrypted) to cloud"
 	@echo "    make cloud-pull VAULT=./vault BUCKET=x  Restore vaults from cloud"
@@ -375,6 +381,25 @@ vault-verify: $(VENV) ## Verify vault matches its on-chain anchor
 vault-show: $(VENV) ## Display an existing anchor proof
 	@test -n "$(PROOF)" || { echo "Usage: make vault-show PROOF=./vault/.anchor-proof.json"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py show --proof "$(PROOF)" --json
+
+# ─── Config Guard (Update Protection) ───
+
+guard-save: $(VENV) ## Snapshot config files before an update
+	@test -n "$(DIR)" || { echo "Usage: make guard-save DIR=./my-agent [LABEL='pre-v2.0']"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_config_guard.py save \
+		--dir "$(DIR)" $(if $(LABEL),--label "$(LABEL)",) --json
+
+guard-restore: $(VENV) ## Restore customizations after an update
+	@test -n "$(DIR)" || { echo "Usage: make guard-restore DIR=./my-agent"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_config_guard.py restore --dir "$(DIR)" --json
+
+guard-diff: $(VENV) ## Show what changed since snapshot
+	@test -n "$(DIR)" || { echo "Usage: make guard-diff DIR=./my-agent"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_config_guard.py diff --dir "$(DIR)" --json
+
+guard-status: $(VENV) ## Show guarded file statuses
+	@test -n "$(DIR)" || { echo "Usage: make guard-status DIR=./my-agent"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_config_guard.py status --dir "$(DIR)" --json
 
 cloud-verify: $(VENV) ## Verify remote vault integrity against local
 	@test -n "$(VAULT)" || { echo "Usage: make cloud-verify VAULT=./vault BUCKET=my-backups"; exit 1; }

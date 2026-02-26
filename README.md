@@ -364,6 +364,22 @@ make cloud-verify VAULT=./vault BUCKET=my-backups         # Verify remote integr
 - **Integrity verification** — confirms remote files match local hashes
 - Install boto3: `pip install boto3`
 
+### Config Guard (Update Protection)
+
+Framework update overwrites your configs? Not anymore.
+
+```bash
+make guard-save DIR=./my-agent LABEL="pre-v2.0"    # Snapshot before update
+# ...run your update...
+make guard-diff DIR=./my-agent                       # See what changed
+make guard-restore DIR=./my-agent                    # Restore your customizations
+```
+
+- **Auto-detects** configs, skills, prompts, env files, Dockerfiles, Makefiles
+- **Conflict-safe** — saves `.update-backup` copies when both you and the update changed a file
+- **Framework-agnostic** — works with any project directory
+- **Dry-run** mode to preview without touching anything
+
 ### On-Chain Vault Anchoring (Solana)
 
 Anchor vault integrity proofs on Solana. ~80 bytes of hashes go on-chain via SPL Memo — no data, no keys, just a fingerprint that proves your vault existed in a specific state at a specific time. Anyone with a Solana explorer can verify it.
