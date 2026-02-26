@@ -1,130 +1,121 @@
 #!/usr/bin/env python3
-"""Unified Liquefy CLI dispatcher for packaged releases."""
+"""
+liquefy_cli.py
+==============
+Unified Python-first CLI for all Liquefy operations.
 
+    liquefy pack       — Pack OpenClaw workspace into vault
+    liquefy restore    — Restore files from vault
+    liquefy search     — Search across vaults
+    liquefy policy     — Policy enforcement (audit/enforce/kill)
+    liquefy safe-run   — Snapshot -> run -> enforce -> auto-rollback
+    liquefy cas        — Content-addressed storage (ingest/restore/gc)
+    liquefy tokens     — Token ledger (scan/budget/report/audit)
+    liquefy telemetry  — Forward audit events to SIEM
+    liquefy guard      — Config Guard (save/restore/diff)
+    liquefy anchor     — On-chain vault integrity proofs
+    liquefy events     — Agent event trace operations
+    liquefy status     — Overall system status
+
+Also importable as a library:
+    from liquefy_cli import pack, restore, search, policy, cas
+"""
 from __future__ import annotations
 
 import argparse
 import importlib
-import json
+import os
 import sys
 from pathlib import Path
-from typing import Dict, Optional
 
-from cli_runtime import doctor_checks_common, resolve_repo_root, self_test_core, version_result
+from cli_runtime import resolve_repo_root
 
-
-CLI_SCHEMA_VERSION = "liquefy.cli.v1"
 REPO_ROOT = resolve_repo_root(__file__)
 TOOLS_DIR = REPO_ROOT / "tools"
 API_DIR = REPO_ROOT / "api"
+
 for _p in (TOOLS_DIR, API_DIR):
     ps = str(_p)
     if ps not in sys.path:
         sys.path.insert(0, ps)
 
 
-def _emit_json(payload: Dict, enabled: bool, json_file: Optional[Path]) -> None:
-    if json_file:
-        json_file.parent.mkdir(parents=True, exist_ok=True)
-        json_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        if sys.platform != "win32":
-            try:
-                json_file.chmod(0o600)
-            except OSError:
-                pass
-    if enabled:
-        print(json.dumps(payload, indent=2))
+SUBCOMMAND_MAP = {
+    "pack":      ("liquefy_openclaw",         "main",     "Pack OpenClaw workspace into vault"),
+    "restore":   ("tracevault_restore",        "main",     "Restore files from vault"),
+    "search":    ("liquefy_search",            "main",     "Search across vaults"),
+    "policy":    ("liquefy_policy_enforcer",   "main",     "Policy enforcement (audit/enforce/kill/watch)"),
+    "safe-run":  ("liquefy_safe_run",          "main",     "Snapshot -> run -> enforce -> auto-rollback"),
+    "cas":       ("liquefy_cas",               "main",     "Content-addressed storage (ingest/restore/gc)"),
+    "tokens":    ("liquefy_token_ledger",      "main",     "Token ledger (scan/budget/report/audit)"),
+    "telemetry": ("liquefy_telemetry_forward", "main",     "Forward audit events to SIEM"),
+    "guard":     ("liquefy_config_guard",      "main",     "Config Guard (save/restore/diff)"),
+    "anchor":    ("liquefy_vault_anchor",      "main",     "On-chain vault integrity proofs"),
+    "events":    ("liquefy_events",            "main",     "Agent event trace operations"),
+    "vision":    ("liquefy_vision",            "main",     "Vision dedup engine"),
+    "cloud":     ("liquefy_cloud_sync",        "main",     "Encrypted cloud sync"),
+    "fleet":     ("liquefy_fleet_cli",         "main",     "Fleet management"),
+    "sign":      ("liquefy_sign",              "main",     "Vault signing and verification"),
+}
 
 
-def _runtime_main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(prog="liquefy", description="Liquefy unified CLI")
-    sub = ap.add_subparsers(dest="command")
-
-    for name in ("version", "self-test", "doctor"):
-        p = sub.add_parser(name)
-        p.add_argument("--json", action="store_true")
-        p.add_argument("--json-file", default=None)
-
-    args, extra = ap.parse_known_args(argv)
-    if extra:
-        raise SystemExit(f"Unexpected arguments for '{args.command}': {' '.join(extra)}")
-
-    enabled_json = bool(getattr(args, "json", False))
-    json_file = Path(args.json_file).resolve() if getattr(args, "json_file", None) else None
-
-    if args.command == "version":
-        result = version_result(tool="liquefy", repo_root=REPO_ROOT)
-        payload = {"schema_version": CLI_SCHEMA_VERSION, "tool": "liquefy", "command": "version", "ok": True, "result": result}
-        _emit_json(payload, enabled_json, json_file)
-        if not enabled_json:
-            build = result.get("build", {})
-            print(f"liquefy {build.get('liquefy_version','dev')} ({build.get('system','?')}/{build.get('machine','?')})")
-        return 0
-
-    if args.command == "self-test":
-        result = self_test_core(tool="liquefy", repo_root=REPO_ROOT)
-        ok = bool(result.get("summary", {}).get("ok"))
-        payload = {"schema_version": CLI_SCHEMA_VERSION, "tool": "liquefy", "command": "self-test", "ok": ok, "result": result}
-        _emit_json(payload, enabled_json, json_file)
-        if not enabled_json:
-            summary = result.get("summary", {})
-            print(f"[self-test] ok={summary.get('ok')} passed={summary.get('checks_passed')}/{summary.get('checks_total')}")
-        return 0 if ok else 1
-
-    if args.command == "doctor":
-        result = doctor_checks_common(tool="liquefy", repo_root=REPO_ROOT, api_dir=REPO_ROOT / "api", require_secret=False)
-        ok = bool(result.get("summary", {}).get("ok"))
-        payload = {"schema_version": CLI_SCHEMA_VERSION, "tool": "liquefy", "command": "doctor", "ok": ok, "result": result}
-        _emit_json(payload, enabled_json, json_file)
-        if not enabled_json:
-            summary = result.get("summary", {})
-            print(
-                f"[doctor] ok={summary.get('ok')} "
-                f"passed={summary.get('checks_passed')}/{summary.get('checks_total')} "
-                f"errors={summary.get('errors')} warnings={summary.get('warnings')}"
-            )
-        return 0 if ok else 1
-
-    raise SystemExit("Unknown runtime command")
-
-
-def _dispatch_script(module_name: str, argv: list[str]) -> int:
-    mod = importlib.import_module(module_name)
-    old_argv = sys.argv[:]
+def _version() -> str:
     try:
-        sys.argv = [old_argv[0]] + argv
-        mod.main()
-        return 0
-    finally:
-        sys.argv = old_argv
+        toml_path = REPO_ROOT / "pyproject.toml"
+        if toml_path.exists():
+            for line in toml_path.read_text().splitlines():
+                if line.strip().startswith("version"):
+                    return line.split("=")[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return "dev"
 
 
-def main() -> None:
-    if len(sys.argv) <= 1:
-        print(
-            "Usage: liquefy <openclaw|tracevault-pack|tracevault-restore|sign|version|self-test|doctor> [args...]\n"
-            "Aliases: pack=tracevault-pack, restore=tracevault-restore"
-        )
-        raise SystemExit(2)
+def main():
+    if len(sys.argv) >= 2 and sys.argv[1] in SUBCOMMAND_MAP:
+        subcmd = sys.argv[1]
+        module_name, func_name, _ = SUBCOMMAND_MAP[subcmd]
 
-    cmd = sys.argv[1]
-    rest = sys.argv[2:]
+        sys.argv = [f"liquefy {subcmd}"] + sys.argv[2:]
 
-    if cmd in {"version", "self-test", "doctor"}:
-        raise SystemExit(_runtime_main(sys.argv[1:]))
+        try:
+            mod = importlib.import_module(module_name)
+            fn = getattr(mod, func_name)
+            result = fn()
+            sys.exit(result if isinstance(result, int) else 0)
+        except SystemExit as e:
+            sys.exit(e.code)
+        except ImportError as e:
+            print(f"Error: module '{module_name}' not found — {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
 
-    mapping = {
-        "openclaw": "liquefy_openclaw",
-        "tracevault-pack": "tracevault_pack",
-        "tracevault-restore": "tracevault_restore",
-        "pack": "tracevault_pack",
-        "restore": "tracevault_restore",
-        "sign": "liquefy_sign",
-    }
-    module_name = mapping.get(cmd)
-    if not module_name:
-        raise SystemExit(f"Unknown command: {cmd}")
-    raise SystemExit(_dispatch_script(module_name, rest))
+    elif len(sys.argv) >= 2 and sys.argv[1] == "--version":
+        print(f"liquefy {_version()}")
+        return
+
+    else:
+        print(f"liquefy {_version()} — Local-First Agent Vault & Security Layer")
+        print()
+        print("Usage:  liquefy <command> [options]")
+        print()
+        print("Commands:")
+
+        max_name = max(len(n) for n in SUBCOMMAND_MAP)
+        for name, (_, _, desc) in SUBCOMMAND_MAP.items():
+            print(f"  {name:<{max_name + 2}} {desc}")
+
+        print()
+        print("Run 'liquefy <command> --help' for detailed usage.")
+        print()
+        print("Environment:")
+        print("  LIQUEFY_SECRET       Encryption key for secure vaults")
+        print("  LIQUEFY_TRACE_ID     Correlation ID for multi-agent chains")
+        print("  LIQUEFY_CAS_DIR      Content-addressed storage directory")
+        print("  LIQUEFY_AUDIT_DIR    Audit chain directory")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

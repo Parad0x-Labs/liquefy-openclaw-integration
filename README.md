@@ -394,6 +394,55 @@ make policy-kill DIR=./agent-output       # Write halt signal to stop agent
 - **Watch mode** — continuous monitoring with auto-halt on critical violations
 - **Custom policies** — configurable size limits, extensions, patterns
 
+### Content-Addressed Storage (Cross-Run Dedup)
+
+Blobs stored once by SHA-256, vaults become lightweight manifests over shared blobs:
+
+```bash
+make cas-ingest DIR=./agent-run-1    # First run: stores all blobs
+make cas-ingest DIR=./agent-run-2    # Second run: only new blobs stored
+make cas-status                      # Show dedup savings
+make cas-gc                          # Clean orphan blobs
+```
+
+- Same screenshots, prompts, configs across runs are never stored twice
+- Sharded blob directory (first 2 chars) for filesystem friendliness
+- Manifest-based restore: `make cas-restore MANIFEST=<id> OUT=./restored`
+
+### Unified CLI
+
+One entry point for all operations:
+
+```bash
+liquefy pack       --workspace ~/.openclaw --out ./vault --apply
+liquefy restore    ./vault/run_001 --out ./restored
+liquefy policy     audit --dir ./agent-output --json
+liquefy safe-run   --workspace ~/.openclaw --cmd "openclaw run"
+liquefy cas        ingest --dir ./agent-output
+liquefy tokens     scan --dir ./agent-output
+liquefy telemetry  push --webhook https://my-siem/api
+liquefy events     emit --agent-id a1 --session-id s1 --event model_call
+liquefy guard      save --dir .
+liquefy anchor     --vault-dir ./vault
+```
+
+### Agent Event Schema
+
+Structured traces with parent/child span trees:
+
+```bash
+make event-emit AGENT_ID=a1 SESSION_ID=s1 EVENT=model_call MODEL=gpt-4o
+make event-query SESSION_ID=s1
+make event-spans SESSION_ID=s1       # parent->child span tree
+make event-stats SESSION_ID=s1       # tokens, cost, duplicate prompts
+```
+
+- `agent_id`, `session_id`, `span_id`, `parent_span_id`, `trace_id`
+- Model call metadata: model, tokens, cost, duration
+- Tool call I/O refs, prompt hash, context hash
+- Error/retry/escalation markers
+- Duplicate prompt detection in stats
+
 ### Safe Run (Automated Rollback)
 
 Wrap agent execution with snapshot + auto-restore on violations:

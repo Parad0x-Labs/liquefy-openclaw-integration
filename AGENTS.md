@@ -234,6 +234,106 @@ python tools/liquefy_policy_enforcer.py watch   --dir ./agent-output --signal ./
 
 **Custom policies:** pass `--policy policy.json` with `max_file_size`, `forbidden_extensions`, etc.
 
+### Content-Addressed Storage (Cross-Run Dedup)
+
+Blobs stored once by SHA-256. Vaults become lightweight manifests over shared blobs. Agent runs that produce the same screenshots, prompts, configs, tool outputs share storage automatically.
+
+```bash
+# First run: all blobs are new
+make cas-ingest DIR=./agent-run-1
+
+# Second run: only changed files stored, identical blobs deduped
+make cas-ingest DIR=./agent-run-2
+
+# See savings
+make cas-status
+
+# Restore any vault from its manifest
+make cas-restore MANIFEST=<id> OUT=./restored
+
+# Clean up unreferenced blobs
+make cas-gc
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_cas.py ingest  --dir ./agent-output --trace-id task-42 --label "run #5" --json
+python tools/liquefy_cas.py restore --manifest abc123 --out ./restored --json
+python tools/liquefy_cas.py status  --json
+python tools/liquefy_cas.py gc      --json
+```
+
+**How it works:**
+1. Each file is hashed (SHA-256)
+2. Blob stored in sharded directory (`~/.liquefy/cas/blobs/ab/abcd1234...`)
+3. If blob already exists (from any previous run), skip — instant dedup
+4. Vault = manifest JSON pointing to blob hashes
+5. Restore reconstructs any vault from shared blobs
+
+**Supports:** `--trace-id` for multi-agent correlation, `--label` for human-readable vault names.
+
+### Unified CLI (`liquefy`)
+
+One Python-first entry point for all operations:
+
+```bash
+liquefy pack       --workspace ~/.openclaw --out ./vault --apply
+liquefy restore    ./vault/run_001 --out ./restored
+liquefy search     ./vault --query "error" --json
+liquefy policy     audit --dir ./agent-output --json
+liquefy safe-run   --workspace ~/.openclaw --cmd "openclaw run" --sentinels SOUL.md
+liquefy cas        ingest --dir ./agent-output --json
+liquefy tokens     scan --dir ./agent-output --json
+liquefy telemetry  push --webhook https://my-siem/api --json
+liquefy events     emit --agent-id a1 --session-id s1 --event model_call
+liquefy guard      save --dir . --json
+liquefy anchor     --vault-dir ./vault --json
+liquefy --version
+```
+
+Also installable as `pip install liquefy-openclaw` — the `liquefy` command is registered as a console script.
+
+### Agent Event Schema (Structured Traces)
+
+Canonical trace model for agent-native operations:
+
+```bash
+# Emit events (from agent code or CLI)
+python tools/liquefy_events.py emit \
+    --agent-id researcher-1 \
+    --session-id sess-42 \
+    --event model_call \
+    --model gpt-4o \
+    --input-tokens 1500 \
+    --output-tokens 300 \
+    --prompt "Analyze this dataset" \
+    --trace-id task-chain-99 \
+    --json
+
+# Query all events in a session
+python tools/liquefy_events.py query --session-id sess-42 --json
+
+# Build parent-child span tree
+python tools/liquefy_events.py spans --session-id sess-42 --json
+
+# Session statistics (tokens, cost, duplicate prompts)
+python tools/liquefy_events.py stats --session-id sess-42 --json
+```
+
+**Event fields:**
+- `agent_id`, `session_id`, `span_id`, `parent_span_id` — who did what
+- `trace_id` — cross-agent correlation (same as `--trace-id` everywhere)
+- `model`, `input_tokens`, `output_tokens`, `cost_usd`, `duration_ms` — model call metadata
+- `tool_name`, `tool_input_ref`, `tool_output_ref` — tool call tracking
+- `prompt_hash`, `context_hash` — deduplicate without storing raw prompts
+- `error`, `retry_count` — failure tracking
+- `metadata` — arbitrary key-value pairs
+
+**Event types:** `model_call`, `tool_call`, `tool_result`, `agent_start`, `agent_end`, `session_start`, `session_end`, `error`, `retry`, `escalation`, `handoff`, `checkpoint`, `policy_violation`, `custom`.
+
+**Span trees:** events linked by `parent_span_id` form a directed tree — reconstruct exactly how an agent reasoned through a task.
+
 ### Safe Run (Automated Rollback + Sentinel Monitoring)
 
 Wraps any agent execution with pre-flight state capture and automatic rollback on policy violations, crashes, or sentinel file tampering.

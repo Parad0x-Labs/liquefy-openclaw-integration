@@ -83,6 +83,12 @@ liquefy-tokens = "tools.liquefy_token_ledger:main"
 liquefy-guard = "tools.liquefy_config_guard:main"
 liquefy-anchor = "tools.liquefy_vault_anchor:main"
 liquefy-key = "tools.liquefy_key_backup:main"
+liquefy-policy = "tools.liquefy_policy_enforcer:main"
+liquefy-safe-run = "tools.liquefy_safe_run:main"
+liquefy-cas = "tools.liquefy_cas:main"
+liquefy-events = "tools.liquefy_events:main"
+liquefy-telemetry = "tools.liquefy_telemetry_forward:main"
+liquefy = "tools.liquefy_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["api*", "tools*"]

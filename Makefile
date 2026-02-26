@@ -99,6 +99,18 @@ help: ## Show this help
 	@echo "    make vault-verify VAULT=./vault         Verify vault vs anchor"
 	@echo "    make vault-show PROOF=./proof.json      Display anchor proof"
 	@echo ""
+	@echo "  CONTENT-ADDRESSED STORAGE"
+	@echo "    make cas-ingest DIR=./agent-output    Ingest into CAS"
+	@echo "    make cas-restore MANIFEST=<id> OUT=.  Restore from manifest"
+	@echo "    make cas-status                       Show CAS stats"
+	@echo "    make cas-gc                           Remove orphan blobs"
+	@echo ""
+	@echo "  AGENT EVENTS"
+	@echo "    make event-emit AGENT_ID=a1 SESSION_ID=s1 EVENT=model_call MODEL=gpt-4o"
+	@echo "    make event-query SESSION_ID=s1        Query session events"
+	@echo "    make event-spans SESSION_ID=s1        Build span tree"
+	@echo "    make event-stats SESSION_ID=s1        Session statistics"
+	@echo ""
 	@echo "  SAFE RUN (Automated Rollback)"
 	@echo "    make safe-run WORKSPACE=~/.openclaw CMD='openclaw run' SENTINELS=SOUL.md,HEARTBEAT.md"
 	@echo ""
@@ -402,6 +414,43 @@ vault-verify: $(VENV) ## Verify vault matches its on-chain anchor
 vault-show: $(VENV) ## Display an existing anchor proof
 	@test -n "$(PROOF)" || { echo "Usage: make vault-show PROOF=./vault/.anchor-proof.json"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py show --proof "$(PROOF)" --json
+
+# ─── Content-Addressed Storage ───
+
+cas-ingest: $(VENV) ## Ingest directory into CAS blob store
+	@test -n "$(DIR)" || { echo "Usage: make cas-ingest DIR=./agent-output"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cas.py ingest --dir "$(DIR)" \
+		$(if $(TRACE_ID),--trace-id "$(TRACE_ID)",) $(if $(LABEL),--label "$(LABEL)",) --json
+
+cas-restore: $(VENV) ## Restore vault from CAS manifest
+	@test -n "$(MANIFEST)" || { echo "Usage: make cas-restore MANIFEST=<id> OUT=./restored"; exit 1; }
+	@test -n "$(OUT)" || { echo "Usage: make cas-restore MANIFEST=<id> OUT=./restored"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cas.py restore --manifest "$(MANIFEST)" --out "$(OUT)" --json
+
+cas-status: $(VENV) ## Show CAS statistics
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cas.py status --json
+
+cas-gc: $(VENV) ## Remove unreferenced CAS blobs
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cas.py gc --json
+
+# ─── Agent Events ───
+
+event-emit: $(VENV) ## Emit a structured agent event
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_events.py emit \
+		--agent-id "$(AGENT_ID)" --session-id "$(SESSION_ID)" --event "$(EVENT)" \
+		$(if $(MODEL),--model "$(MODEL)",) $(if $(TRACE_ID),--trace-id "$(TRACE_ID)",) --json
+
+event-query: $(VENV) ## Query session events
+	@test -n "$(SESSION_ID)" || { echo "Usage: make event-query SESSION_ID=s1"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_events.py query --session-id "$(SESSION_ID)" --json
+
+event-spans: $(VENV) ## Build span tree from session
+	@test -n "$(SESSION_ID)" || { echo "Usage: make event-spans SESSION_ID=s1"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_events.py spans --session-id "$(SESSION_ID)" --json
+
+event-stats: $(VENV) ## Session stats or list all sessions
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_events.py stats \
+		$(if $(SESSION_ID),--session-id "$(SESSION_ID)",) --json
 
 # ─── Safe Run (Automated Rollback) ───
 
