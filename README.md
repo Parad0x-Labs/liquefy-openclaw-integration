@@ -1,11 +1,20 @@
-# 🧪 Liquefy: Entropy-Native Log Analytics
+# Liquefy: The Security & Compliance Layer for AI Agent Infrastructure
 
 ![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)
 ![License: Commercial](https://img.shields.io/badge/License-Commercial-orange.svg)
 ![Conduction: 24 Engines](https://img.shields.io/badge/Conduction-24_Engines-cyan?style=flat-square)
 ![Verification: Bit--Perfect](https://img.shields.io/badge/Verification-Bit--Perfect-white?style=flat-square)
 
-**Liquefy** is an enterprise-grade compression and observability engine designed for high-velocity telemetry.
+**Your AI agents are autonomous. Your compliance obligations aren't.**
+
+Liquefy is the local-first vault, audit, and policy enforcement layer that sits between your AI agents and disaster. It captures every agent action into tamper-proof, encrypted, bit-perfect archives — so when the auditor, the regulator, or the breach investigation arrives, you have provable answers instead of missing logs.
+
+### Why teams deploy Liquefy
+
+- **Prevent compliance disasters** — automatic secret redaction, tamper-proof audit chains, and HTML compliance reports mean you can prove what your agents did and didn't do.
+- **Stop rogue agents before damage is done** — active policy enforcement with kill switches, budget caps, and sentinel file monitoring. If an agent goes off-script, Liquefy halts it and rolls back the workspace.
+- **Sleep at night** — every agent run is captured, verified, and restorable. No silent data loss, no "we don't know what happened," no surprise $50K API bills.
+- **One layer for all frameworks** — works with OpenClaw, NanoClaw, LangChain, CrewAI, Claude Agent SDK, or any agent that touches the filesystem.
 
 ---
 
