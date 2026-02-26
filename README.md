@@ -1,20 +1,21 @@
-# Liquefy: The Security & Compliance Layer for AI Agent Infrastructure
+# Liquefy: 24-Engine Compression + Security Layer for AI Agents
 
 ![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)
 ![License: Commercial](https://img.shields.io/badge/License-Commercial-orange.svg)
 ![Conduction: 24 Engines](https://img.shields.io/badge/Conduction-24_Engines-cyan?style=flat-square)
 ![Verification: Bit--Perfect](https://img.shields.io/badge/Verification-Bit--Perfect-white?style=flat-square)
 
-**Your AI agents are autonomous. Your compliance obligations aren't.**
+**24 domain-aware compression engines. Bit-perfect verification. Tamper-proof audit trails. One tool.**
 
-Liquefy is the local-first vault, audit, and policy enforcement layer that sits between your AI agents and disaster. It captures every agent action into tamper-proof, encrypted, bit-perfect archives — so when the auditor, the regulator, or the breach investigation arrives, you have provable answers instead of missing logs.
+Liquefy is an entropy-native compression engine and security layer for AI agent infrastructure. It doesn't just gzip your logs — it understands them. JSON, SQL, VPC flow logs, PCAP, Parquet, agent traces, screenshots — each data type gets a specialized compression engine that outperforms generic compressors, then packs everything into encrypted, verified, restorable vaults.
 
 ### Why teams deploy Liquefy
 
-- **Prevent compliance disasters** — automatic secret redaction, tamper-proof audit chains, and HTML compliance reports mean you can prove what your agents did and didn't do.
-- **Stop rogue agents before damage is done** — active policy enforcement with kill switches, budget caps, and sentinel file monitoring. If an agent goes off-script, Liquefy halts it and rolls back the workspace.
-- **Sleep at night** — every agent run is captured, verified, and restorable. No silent data loss, no "we don't know what happened," no surprise $50K API bills.
-- **One layer for all frameworks** — works with OpenClaw, NanoClaw, LangChain, CrewAI, Claude Agent SDK, or any agent that touches the filesystem.
+- **24 compression engines** — domain-aware compressors for JSON, logs, SQL, network captures, images, and more. Not a wrapper around zstd — each engine exploits the structure of its data type for ratios generic tools can't touch.
+- **Bit-perfect verification (MRTV)** — every compress/decompress cycle is verified. Zero silent corruption. What goes in comes out identical, provably.
+- **Tamper-proof audit chains** — SHA-256 hash-chained logs of every operation. Automatic secret redaction. HTML compliance reports. When the auditor arrives, you have answers.
+- **Active agent protection** — policy enforcement with kill switches, token budget caps, sentinel file monitoring, and automated rollback. If an agent goes rogue, Liquefy halts it before damage is done.
+- **One layer for all frameworks** — OpenClaw, NanoClaw, LangChain, CrewAI, Claude Agent SDK, or any agent that touches the filesystem.
 
 ---
 
