@@ -79,7 +79,7 @@ jobs:
       - run: pip install -r requirements.txt || true
       - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
       - name: Run P0 + Mutations + Crash + Stress(5x)
-        run: PYTHONPATH=tools:api bash tests/redteam/run_all.sh 5
+        run: PY=python PYTHONPATH=tools:api bash tests/redteam/run_all.sh 5
 
   bench_compare:
     runs-on: ubuntu-latest
