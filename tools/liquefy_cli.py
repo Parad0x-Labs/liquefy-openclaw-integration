@@ -92,8 +92,19 @@ def main():
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
-    elif len(sys.argv) >= 2 and sys.argv[1] == "--version":
-        print(f"liquefy {_version()}")
+    elif len(sys.argv) >= 2 and sys.argv[1] in ("version", "--version"):
+        import json as _json
+        ver = _version()
+        if "--json" in sys.argv:
+            print(_json.dumps({
+                "schema_version": "liquefy.cli.v1",
+                "tool": "liquefy",
+                "command": "version",
+                "ok": True,
+                "result": {"version": "liquefy-cli-version-v1", "semver": ver},
+            }, indent=2))
+        else:
+            print(f"liquefy {ver}")
         return
 
     else:
