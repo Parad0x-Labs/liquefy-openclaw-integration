@@ -234,6 +234,72 @@ python tools/liquefy_policy_enforcer.py watch   --dir ./agent-output --signal ./
 
 **Custom policies:** pass `--policy policy.json` with `max_file_size`, `forbidden_extensions`, etc.
 
+### Safe Run (Automated Rollback + Sentinel Monitoring)
+
+Wraps any agent execution with pre-flight state capture and automatic rollback on policy violations, crashes, or sentinel file tampering.
+
+**The pattern:** snapshot workspace -> execute agent -> enforce policies -> check sentinels -> auto-restore if anything went wrong.
+
+```bash
+# Basic: snapshot ~/.openclaw, run agent, restore on policy violation
+make safe-run WORKSPACE=~/.openclaw CMD="openclaw run task.md"
+
+# With sentinel monitoring: SOUL.md, HEARTBEAT.md, auth-profiles.json
+make safe-run WORKSPACE=~/.openclaw CMD="openclaw run" SENTINELS=SOUL.md,HEARTBEAT.md,auth-profiles.json
+
+# With policy + trace-id for multi-agent chains
+make safe-run WORKSPACE=~/.openclaw CMD="python agent.py" POLICY=./policies/strict.yml TRACE_ID=task-42
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_safe_run.py \
+    --workspace ~/.openclaw \
+    --cmd "openclaw run task.md" \
+    --sentinels SOUL.md,HEARTBEAT.md,auth-profiles.json \
+    --policy ./policies/strict.yml \
+    --trace-id task-42 \
+    --json
+```
+
+**Four phases:**
+1. **Snapshot** — full workspace state captured (file hashes + copies)
+2. **Execute** — agent command runs with timeout protection
+3. **Enforce** — policy enforcer scans for secret leaks, forbidden files, etc.
+4. **Rollback** — if anything failed, workspace is restored to pre-run state
+
+**Sentinel files:** critical identity files (`SOUL.md`, `HEARTBEAT.md`, `auth-profiles.json`) are hashed before the run. If an agent or a malicious skill modifies them during execution, the tampering is detected and the workspace is rolled back automatically.
+
+**Use `--no-restore`** to report violations without auto-restoring (forensic mode).
+
+### Docker Jail Pattern
+
+Run OpenClaw inside a container, Liquefy outside on the host — so a compromised agent can't escape to your host machine.
+
+```yaml
+# docker-compose.override.yml
+services:
+  openclaw-agent:
+    image: openclaw/agent:latest
+    volumes:
+      - ./openclaw-workspace:/workspace
+    network_mode: none  # no network access unless explicitly needed
+
+  liquefy-auditor:
+    build: .
+    volumes:
+      - ./openclaw-workspace:/audit-target:ro  # read-only mount
+    command: >
+      python tools/liquefy_safe_run.py
+        --workspace /audit-target
+        --cmd "echo audit-only"
+        --sentinels SOUL.md,HEARTBEAT.md
+        --json
+```
+
+**Key principle:** the agent writes to `/workspace`, Liquefy reads from the same volume (read-only). If the agent gets compromised, it can't break out of the container, and Liquefy safely archives the evidence from a secure vantage point on the host.
+
 ### Multi-Agent Chain of Custody (trace-id)
 
 Pass a correlation ID between agent handoffs so you can trace a prompt from researcher -> executor -> verifier across separate vaults.

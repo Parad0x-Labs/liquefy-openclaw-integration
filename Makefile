@@ -99,6 +99,9 @@ help: ## Show this help
 	@echo "    make vault-verify VAULT=./vault         Verify vault vs anchor"
 	@echo "    make vault-show PROOF=./proof.json      Display anchor proof"
 	@echo ""
+	@echo "  SAFE RUN (Automated Rollback)"
+	@echo "    make safe-run WORKSPACE=~/.openclaw CMD='openclaw run' SENTINELS=SOUL.md,HEARTBEAT.md"
+	@echo ""
 	@echo "  POLICY ENFORCER (Kill Switch)"
 	@echo "    make policy-audit DIR=./agent-output    Scan for violations (safe)"
 	@echo "    make policy-enforce DIR=./agent-output  Block on critical/high"
@@ -399,6 +402,15 @@ vault-verify: $(VENV) ## Verify vault matches its on-chain anchor
 vault-show: $(VENV) ## Display an existing anchor proof
 	@test -n "$(PROOF)" || { echo "Usage: make vault-show PROOF=./vault/.anchor-proof.json"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py show --proof "$(PROOF)" --json
+
+# ─── Safe Run (Automated Rollback) ───
+
+safe-run: $(VENV) ## Snapshot -> run agent -> enforce -> auto-restore on violation
+	@test -n "$(WORKSPACE)" || { echo "Usage: make safe-run WORKSPACE=~/.openclaw CMD='openclaw run' [SENTINELS=SOUL.md,HEARTBEAT.md]"; exit 1; }
+	@test -n "$(CMD)" || { echo "Usage: make safe-run WORKSPACE=~/.openclaw CMD='openclaw run'"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_safe_run.py --workspace "$(WORKSPACE)" --cmd "$(CMD)" \
+		$(if $(POLICY),--policy "$(POLICY)",) $(if $(SENTINELS),--sentinels "$(SENTINELS)",) \
+		$(if $(TRACE_ID),--trace-id "$(TRACE_ID)",) --json
 
 # ─── Policy Enforcer (Kill Switch) ───
 

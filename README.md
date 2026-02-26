@@ -394,6 +394,18 @@ make policy-kill DIR=./agent-output       # Write halt signal to stop agent
 - **Watch mode** — continuous monitoring with auto-halt on critical violations
 - **Custom policies** — configurable size limits, extensions, patterns
 
+### Safe Run (Automated Rollback)
+
+Wrap agent execution with snapshot + auto-restore on violations:
+
+```bash
+make safe-run WORKSPACE=~/.openclaw CMD="openclaw run" SENTINELS=SOUL.md,HEARTBEAT.md
+```
+
+- **Snapshot** workspace before run, **restore** if policy violation or crash
+- **Sentinel monitoring** — detect tampering of SOUL.md, HEARTBEAT.md, auth-profiles.json
+- **Docker jail** pattern documented for host-isolated agent execution
+
 ### Multi-Agent Chain of Custody
 
 Trace prompts across agent handoffs (researcher -> executor -> verifier):
