@@ -98,7 +98,7 @@ def _load_events_from(chain_file: Path, cursor: int) -> List[Dict]:
 
 
 def _format_event(event: Dict, source: str = "liquefy") -> Dict:
-    return {
+    formatted = {
         "source": source,
         "schema": SCHEMA,
         "timestamp": event.get("ts", datetime.now(timezone.utc).isoformat()),
@@ -106,6 +106,9 @@ def _format_event(event: Dict, source: str = "liquefy") -> Dict:
         "seq": event.get("seq", 0),
         "data": event,
     }
+    if event.get("trace_id"):
+        formatted["trace_id"] = event["trace_id"]
+    return formatted
 
 
 def _send_webhook(url: str, events: List[Dict], token: Optional[str] = None,

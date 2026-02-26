@@ -234,6 +234,36 @@ python tools/liquefy_policy_enforcer.py watch   --dir ./agent-output --signal ./
 
 **Custom policies:** pass `--policy policy.json` with `max_file_size`, `forbidden_extensions`, etc.
 
+### Multi-Agent Chain of Custody (trace-id)
+
+Pass a correlation ID between agent handoffs so you can trace a prompt from researcher -> executor -> verifier across separate vaults.
+
+```bash
+# Agent A (researcher) packs its output with a trace ID
+python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault-a --apply --trace-id "task-42-researcher"
+
+# Agent B (executor) receives the same trace ID
+python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault-b --apply --trace-id "task-42-executor"
+
+# Policy enforcer carries the same trace ID
+python tools/liquefy_policy_enforcer.py enforce --dir ./vault-b --trace-id "task-42-executor" --json
+
+# Query the audit chain by trace_id to reconstruct the full multi-agent graph
+python -c "
+from api.liquefy_audit_chain import get_audit_chain
+chain = get_audit_chain()
+for e in chain.query():
+    if e.get('trace_id','').startswith('task-42'):
+        print(e['event'], e.get('trace_id'), e['ts'])
+"
+```
+
+- `--trace-id` flag on `liquefy_openclaw.py`, `liquefy_policy_enforcer.py`
+- Also reads `LIQUEFY_TRACE_ID` env var (for agent frameworks that set env)
+- Written into `.liquefy-trace-id` file inside the vault for offline correlation
+- Logged into the tamper-proof audit chain with every operation
+- Forwarded through Telemetry Forwarder to SIEM systems
+
 ### Telemetry Forwarder (SIEM Streaming)
 
 Push audit chain events to Splunk, Datadog, ELK, PagerDuty, Slack, or any SIEM.

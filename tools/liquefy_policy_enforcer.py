@@ -166,11 +166,12 @@ def _scan_directory(target_dir: Path, policy: Optional[Dict] = None) -> List[Dic
     return violations
 
 
-def _write_kill_signal(signal_path: Path, violations: List[Dict]) -> Dict:
+def _write_kill_signal(signal_path: Path, violations: List[Dict], trace_id: Optional[str] = None) -> Dict:
     signal_data = {
         "schema": SCHEMA,
         "action": "HALT",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        **({"trace_id": trace_id} if trace_id else {}),
         "reason": "Policy violations detected by Liquefy enforcer",
         "violation_count": len(violations),
         "critical_count": sum(1 for v in violations if v["severity"] == "critical"),
@@ -211,11 +212,14 @@ def cmd_audit(args: argparse.Namespace) -> int:
     high = [v for v in violations if v["severity"] == "high"]
     warning = [v for v in violations if v["severity"] == "warning"]
 
-    _audit_log("policy.audit", violations=len(violations), critical=len(critical))
+    trace_id = getattr(args, "trace_id", None) or os.environ.get("LIQUEFY_TRACE_ID")
+    _audit_log("policy.audit", violations=len(violations), critical=len(critical),
+               **({"trace_id": trace_id} if trace_id else {}))
 
     result = {
         "ok": len(critical) == 0,
         "mode": "audit",
+        **({"trace_id": trace_id} if trace_id else {}),
         "violations": len(violations),
         "critical": len(critical),
         "high": len(high),
@@ -252,11 +256,14 @@ def cmd_enforce(args: argparse.Namespace) -> int:
     high = [v for v in violations if v["severity"] == "high"]
 
     blocked = critical + high
-    _audit_log("policy.enforce", violations=len(violations), blocked=len(blocked))
+    trace_id = getattr(args, "trace_id", None) or os.environ.get("LIQUEFY_TRACE_ID")
+    _audit_log("policy.enforce", violations=len(violations), blocked=len(blocked),
+               **({"trace_id": trace_id} if trace_id else {}))
 
     result = {
         "ok": len(blocked) == 0,
         "mode": "enforce",
+        **({"trace_id": trace_id} if trace_id else {}),
         "action": "BLOCKED" if blocked else "ALLOWED",
         "violations": len(violations),
         "blocked": len(blocked),
@@ -297,8 +304,9 @@ def cmd_kill(args: argparse.Namespace) -> int:
             print(f"    Warnings: {len(violations)}")
         return 0
 
+    trace_id = getattr(args, "trace_id", None) or os.environ.get("LIQUEFY_TRACE_ID")
     signal_path = Path(args.signal) if args.signal else target_dir / ".liquefy-halt"
-    signal_data = _write_kill_signal(signal_path, critical)
+    signal_data = _write_kill_signal(signal_path, critical, trace_id=trace_id)
 
     if args.pid:
         try:
@@ -307,11 +315,12 @@ def cmd_kill(args: argparse.Namespace) -> int:
             pass
 
     _audit_log("policy.kill", critical=len(critical), signal_file=str(signal_path),
-               pid=args.pid)
+               pid=args.pid, **({"trace_id": trace_id} if trace_id else {}))
 
     result = {
         "ok": False,
         "mode": "kill",
+        **({"trace_id": trace_id} if trace_id else {}),
         "action": "HALT_SIGNAL_SENT",
         "signal_file": str(signal_path),
         "pid_terminated": args.pid,
@@ -389,6 +398,7 @@ def main():
         p = sub.add_parser(name, help=help_text)
         p.add_argument("--dir", required=True, help="Directory to scan")
         p.add_argument("--policy", help="Custom policy JSON file")
+        p.add_argument("--trace-id", help="Correlation ID for multi-agent chain-of-custody")
         p.add_argument("--json", action="store_true")
         if name == "kill":
             p.add_argument("--signal", help="Halt signal file path")

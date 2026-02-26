@@ -394,6 +394,18 @@ make policy-kill DIR=./agent-output       # Write halt signal to stop agent
 - **Watch mode** — continuous monitoring with auto-halt on critical violations
 - **Custom policies** — configurable size limits, extensions, patterns
 
+### Multi-Agent Chain of Custody
+
+Trace prompts across agent handoffs (researcher -> executor -> verifier):
+
+```bash
+python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault --apply --trace-id "task-42"
+python tools/liquefy_policy_enforcer.py enforce --dir ./vault --trace-id "task-42" --json
+```
+
+- `--trace-id` or `LIQUEFY_TRACE_ID` env var on all tools
+- Logged in audit chain, written to vault, forwarded to SIEM
+
 ### Telemetry Forwarder (SIEM Streaming)
 
 Push audit events to Splunk, Datadog, ELK, Slack, or any SIEM in real-time.

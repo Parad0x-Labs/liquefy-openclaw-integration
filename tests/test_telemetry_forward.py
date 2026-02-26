@@ -63,6 +63,16 @@ class TestFormatEvent:
         assert formatted["data"]["extra"] == "value"
         assert formatted["seq"] == 5
 
+    def test_includes_trace_id(self):
+        event = {"seq": 0, "ts": "2026-01-01T00:00:00Z", "event": "pack", "trace_id": "agent-chain-99"}
+        formatted = _format_event(event)
+        assert formatted["trace_id"] == "agent-chain-99"
+
+    def test_omits_trace_id_when_absent(self):
+        event = {"seq": 0, "ts": "2026-01-01T00:00:00Z", "event": "pack"}
+        formatted = _format_event(event)
+        assert "trace_id" not in formatted
+
 
 class TestLoadEvents:
     def test_load_all(self, chain_file):

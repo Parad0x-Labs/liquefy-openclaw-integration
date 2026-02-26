@@ -190,3 +190,43 @@ class TestWriteKillSignal:
         assert sig.exists()
         assert data["action"] == "HALT"
         assert data["schema"] == SCHEMA
+
+    def test_includes_trace_id(self, tmp_path):
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        data = _write_kill_signal(sig, violations, trace_id="agent-researcher-7f3a")
+        assert data["trace_id"] == "agent-researcher-7f3a"
+
+    def test_omits_trace_id_when_none(self, tmp_path):
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        data = _write_kill_signal(sig, violations)
+        assert "trace_id" not in data
+
+
+class TestTraceId:
+    def test_audit_includes_trace_id(self, clean_dir, capsys):
+        args = _Args(dir=str(clean_dir), trace_id="swarm-task-42")
+        ret = cmd_audit(args)
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        assert output["trace_id"] == "swarm-task-42"
+
+    def test_audit_omits_trace_id_when_absent(self, clean_dir, capsys):
+        args = _Args(dir=str(clean_dir))
+        ret = cmd_audit(args)
+        output = json.loads(capsys.readouterr().out.strip())
+        assert "trace_id" not in output
+
+    def test_enforce_includes_trace_id(self, dirty_dir, capsys):
+        args = _Args(dir=str(dirty_dir), trace_id="researcher-to-executor-9b")
+        ret = cmd_enforce(args)
+        output = json.loads(capsys.readouterr().out.strip())
+        assert output["trace_id"] == "researcher-to-executor-9b"
+
+    def test_kill_signal_file_has_trace_id(self, dirty_dir, capsys):
+        signal_file = dirty_dir / "test.halt"
+        args = _Args(dir=str(dirty_dir), signal=str(signal_file), trace_id="chain-abc-123")
+        cmd_kill(args)
+        signal_data = json.loads(signal_file.read_text())
+        assert signal_data["trace_id"] == "chain-abc-123"

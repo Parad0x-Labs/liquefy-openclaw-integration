@@ -612,6 +612,11 @@ def main():
         help="Optional cap on total bytes packed from eligible files (0 = no cap).",
     )
     ap.add_argument(
+        "--trace-id",
+        default=None,
+        help="Correlation ID for multi-agent chain-of-custody (passed between agent handoffs).",
+    )
+    ap.add_argument(
         "--json",
         action="store_true",
         help="Emit machine-readable JSON to stdout (suppress normal text output).",
@@ -703,6 +708,8 @@ def main():
     files = scan.pop("_eligible_pairs")
     risk_summary = scan.get("risk_summary", {}) if isinstance(scan, dict) else {}
 
+    trace_id = getattr(args, "trace_id", None) or os.environ.get("LIQUEFY_TRACE_ID")
+
     if args.dry_run:
         payload = {
             "schema_version": CLI_SCHEMA_VERSION,
@@ -715,6 +722,7 @@ def main():
             "verify_mode": args.verify_mode,
             "secure": bool(args.secure),
             "dry_run": True,
+            **({"trace_id": trace_id} if trace_id else {}),
             "result": {
                 **scan,
                 "touched_paths": [],
@@ -846,6 +854,16 @@ def main():
     ratio = float(index.get("ratio", 0.0))
     savings = (1.0 - (output_bytes / max(1, input_bytes))) * 100.0
 
+    if trace_id:
+        try:
+            from liquefy_audit_chain import audit_log
+            audit_log("openclaw.pack", trace_id=trace_id, workspace=str(workspace),
+                      files=copied, input_bytes=input_bytes, output_bytes=output_bytes)
+        except Exception:
+            pass
+        trace_file = out_dir / ".liquefy-trace-id"
+        trace_file.write_text(trace_id, encoding="utf-8")
+
     payload = {
         "schema_version": CLI_SCHEMA_VERSION,
         "tool": "liquefy_openclaw",
@@ -858,6 +876,7 @@ def main():
         "secure": bool(args.secure),
         "sign": bool(args.sign),
         "dry_run": False,
+        **({"trace_id": trace_id} if trace_id else {}),
         "result": {
             "scan": scan,
             "files_staged": copied,
