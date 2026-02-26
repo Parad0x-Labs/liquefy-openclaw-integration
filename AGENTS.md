@@ -53,6 +53,21 @@ python tools/tracevault_pack.py ./path/to/data --org default --out ./vault/outpu
 python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault/openclaw --json
 ```
 
+### Works with any agent framework
+
+Liquefy is framework-agnostic. OpenClaw, NanoClaw, LangChain, CrewAI, Claude Agent SDK, custom scripts — if it writes files, Liquefy handles it. No adapter needed.
+
+```bash
+# NanoClaw container output
+python tools/tracevault_pack.py ./nanoclaw-runs/latest --org dev --out ./vault/latest
+
+# LangChain traces
+python tools/tracevault_pack.py ./langchain-output --org dev --out ./vault/latest
+
+# Any agent output directory
+make quick DIR=./my-agent-output
+```
+
 ### Restore from a vault
 
 ```bash

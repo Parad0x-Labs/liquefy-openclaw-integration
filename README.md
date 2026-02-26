@@ -104,11 +104,22 @@ python tools/tracevault_restore.py --doctor --json
 
 All three wrappers support `--version`, `--self-test`, and `--doctor` (machine-readable with `--json`).
 
-### Drop-in for OpenClaw-style frameworks
+### Framework-Agnostic — Works With Any Agent Stack
+
+Liquefy doesn't care which framework runs your agents. If it produces files, we compress, verify, and audit them.
+
+| Framework | Status | Notes |
+|---|---|---|
+| **OpenClaw** | Native plugin + skill pack | Full integration, benchmarked |
+| **NanoClaw** | Works out of the box | Container output → `make quick` |
+| **LangChain** | Works out of the box | JSONL/JSON traces routed automatically |
+| **CrewAI** | Works out of the box | Agent run folders pack directly |
+| **Claude Agent SDK** | Works out of the box | Structured JSON output, ideal match |
+| **Custom / scripts** | Works out of the box | Any directory with logs/data |
 
 ```bash
-# At end of agent run, pack the output folder
-python tools/tracevault_pack.py ./openclaw/runs/latest --org dev --out ./vault/latest
+# At end of any agent run, pack the output folder
+python tools/tracevault_pack.py ./agent-output --org dev --out ./vault/latest
 ```
 
 ### One-command OpenClaw workspace pack
@@ -182,7 +193,7 @@ Free for personal/private, nonprofit, and academic use (including production in 
 
 **Decoder is always available.** Decompression and verification never require a license, a running service, or access to this repo. Archives are self-contained. Your data is never hostage.
 
-Not affiliated with OpenClaw or any agent framework vendor. See [docs/TRACE_VAULT.md](./docs/TRACE_VAULT.md) for details.
+Not affiliated with OpenClaw, NanoClaw, or any agent framework vendor. See [docs/TRACE_VAULT.md](./docs/TRACE_VAULT.md) for details.
 
 ### OpenClaw integration (1 minute)
 
