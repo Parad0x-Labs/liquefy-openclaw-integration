@@ -1,0 +1,2 @@
+{"tool":"grep","ok":true}
+{"tool":"curl","ok":false,"error":"timeout"}

@@ -1,0 +1,19 @@
+{
+  "schema": "liquefy.cas.v1",
+  "manifest_id": "11391a1f9c551288",
+  "timestamp": "2026-02-26T14:51:10.101658+00:00",
+  "source_dir": "/Users/sauliuskruopis/Desktop/27122025/liquefy/tests/redteam/tmp/src/dupes_a",
+  "file_count": 1,
+  "total_bytes": 8204,
+  "new_bytes": 8204,
+  "dedup_bytes": 0,
+  "new_blobs": 1,
+  "dedup_blobs": 0,
+  "dedup_ratio": 0.0,
+  "files": {
+    "same.bin": {
+      "sha256": "4e7cc52dca1a6bf46b89775f2dbf3c9a53dbdda23002999cd8c8b62c9d7241d5",
+      "size": 8204
+    }
+  }
+}
