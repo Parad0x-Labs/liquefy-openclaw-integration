@@ -87,6 +87,12 @@ help: ## Show this help
 	@echo "    make vision-restore SRC=./vault.vsnx    Restore all images from vault"
 	@echo "    make vision-stats SRC=./vault.vsnx      Show vault dedup stats"
 	@echo ""
+	@echo "  KEY BACKUP (Disaster Recovery)"
+	@echo "    make key-backup                        Export key to encrypted backup file"
+	@echo "    make key-recover SRC=./backup.enc       Recover key from backup"
+	@echo "    make key-card                           Generate printable recovery card"
+	@echo "    make key-verify SRC=./backup.enc        Verify backup is valid"
+	@echo ""
 	@echo "  CLOUD SYNC (S3 / R2 / MinIO)"
 	@echo "    make cloud-push VAULT=./vault BUCKET=x  Push vaults (encrypted) to cloud"
 	@echo "    make cloud-pull VAULT=./vault BUCKET=x  Restore vaults from cloud"
@@ -328,6 +334,22 @@ cloud-status: $(VENV) ## Show local vs remote sync status
 		--vault "$(VAULT)" --bucket "$(BUCKET)" \
 		$(if $(ENDPOINT),--endpoint "$(ENDPOINT)",) \
 		$(if $(PREFIX),--prefix "$(PREFIX)",) --json
+
+key-backup: $(VENV) ## Export encryption key to a passphrase-protected backup
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_key_backup.py export \
+		--output "$(or $(OUT),liquefy_key_backup.enc)"
+
+key-recover: $(VENV) ## Recover encryption key from a backup file
+	@test -n "$(SRC)" || { echo "Usage: make key-recover SRC=./liquefy_key_backup.enc"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_key_backup.py recover --input "$(SRC)"
+
+key-card: $(VENV) ## Generate printable recovery card
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_key_backup.py card \
+		--output "$(or $(OUT),RECOVERY_CARD.txt)"
+
+key-verify: $(VENV) ## Verify a key backup file can be decrypted
+	@test -n "$(SRC)" || { echo "Usage: make key-verify SRC=./liquefy_key_backup.enc"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_key_backup.py verify --input "$(SRC)"
 
 cloud-verify: $(VENV) ## Verify remote vault integrity against local
 	@test -n "$(VAULT)" || { echo "Usage: make cloud-verify VAULT=./vault BUCKET=my-backups"; exit 1; }

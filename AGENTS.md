@@ -176,6 +176,28 @@ python tools/liquefy_vision.py stats ./vault/vision.vsnx --json
 
 Install Pillow for perceptual dedup (`pip install Pillow`). Without it, falls back to exact SHA-256 dedup.
 
+### Key Backup (Disaster Recovery)
+
+If your machine dies and `LIQUEFY_SECRET` was only an env var, your encrypted cloud backups are bricks. Back up your key:
+
+```bash
+make key-backup                        # Export key (passphrase-protected)
+make key-card                          # Printable recovery card
+make key-recover SRC=./backup.enc      # Recover key on new machine
+make key-verify SRC=./backup.enc       # Verify backup is valid
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_key_backup.py export --output key_backup.enc
+python tools/liquefy_key_backup.py recover --input key_backup.enc
+python tools/liquefy_key_backup.py card --output RECOVERY_CARD.txt
+python tools/liquefy_key_backup.py verify --input key_backup.enc
+```
+
+The backup file is encrypted with your passphrase (AES-256-GCM, PBKDF2 600k iterations). Store it on a USB, in a password manager, or print the recovery card and put it in a safe.
+
 ### Cloud Sync (S3 / R2 / MinIO)
 
 Sync encrypted vaults to S3-compatible storage. Cloud provider sees only opaque blobs — sovereign means encrypted everywhere.

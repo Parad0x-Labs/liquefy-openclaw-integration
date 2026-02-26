@@ -128,6 +128,14 @@ def cmd_push(args: argparse.Namespace) -> int:
         print(json.dumps({"ok": False, "error": "No bucket specified. Use --bucket or LIQUEFY_S3_BUCKET"}))
         return 1
 
+    if os.environ.get("LIQUEFY_SECRET") and not args.json:
+        key_backup = vault_dir / ".liquefy-key-backup.enc"
+        if not key_backup.exists():
+            print("  WARNING: Encrypted vaults detected but no key backup found.")
+            print("  If this machine dies, your cloud backups are unrecoverable.")
+            print("  Run: python tools/liquefy_key_backup.py export")
+            print()
+
     s3 = _get_s3_client(endpoint, region)
     files = _collect_vaults(vault_dir)
     local_manifest = _load_local_manifest(vault_dir)
