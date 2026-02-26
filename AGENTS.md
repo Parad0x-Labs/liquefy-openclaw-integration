@@ -223,6 +223,19 @@ python tools/liquefy_token_ledger.py audit  --dir ./agent-output --json
 
 **Budget alerts**: set daily/monthly token or cost limits per org. Reports show usage percentage and warn when approaching limits.
 
+**Auto-detection:**
+- **Unknown models** — scan and audit automatically flag models not in the cost table with the exact command to add them
+- **Model switches** — audit detects when agents switch models mid-trace (e.g. gpt-4o → gpt-5) and flags for review
+
+**28 built-in models** (GPT-3.5/4/4o/5, o1/o3, Claude 3/3.5/4/4.5/4.6, Gemini 1.5/2.0, DeepSeek V3/R1, Llama 3.3, Mistral). Expandable:
+
+```bash
+make token-models                                               # List all models + costs
+python tools/liquefy_token_ledger.py models --add 'gpt-6:0.01:0.03'  # Add/update a model
+```
+
+Or drop a `model_costs.json` at `~/.liquefy/tokens/model_costs.json` or set `LIQUEFY_MODEL_COSTS` env var.
+
 All usage data is logged to the Liquefy audit chain for tamper-proof tracking.
 
 ### Config Guard (Update Protection)

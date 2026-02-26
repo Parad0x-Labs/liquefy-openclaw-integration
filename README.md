@@ -378,6 +378,8 @@ make token-audit DIR=./agent-output                   # Find waste
 - **Multi-provider** — parses OpenAI, Anthropic, LangChain, generic JSONL
 - **Waste detection** — duplicate prompts, oversized context, expensive models for trivial tasks
 - **Budgets** — daily/monthly token + cost limits with warnings
+- **Auto-detect** — flags unknown models and model switches with fix commands
+- **28 built-in models** — GPT-5, Claude 4.6, Gemini 2.0, DeepSeek R1, etc. User-expandable via `make token-models --add`
 - **Experimental** — cost estimates are approximate; use provider billing for exact amounts
 
 ### Config Guard (Update Protection)
