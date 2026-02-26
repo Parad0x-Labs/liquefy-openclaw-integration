@@ -17,11 +17,20 @@ Restore is bit-perfect.
 
 ## Quick Start (30 seconds)
 
+**macOS / Linux:**
 ```bash
 git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration
 cd liquefy-openclaw-integration
 make setup
 make quick DIR=~/openclaw/sessions
+```
+
+**Windows (PowerShell):**
+```powershell
+git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration
+cd liquefy-openclaw-integration
+.\setup.ps1
+.venv\Scripts\python tools\tracevault_pack.py .\your\data --org default --out .\vault\output --json
 ```
 
 See `AGENTS.md` for presets, full commands, and agent integration.

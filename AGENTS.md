@@ -5,17 +5,27 @@
 
 ## One-Line Setup
 
+**macOS / Linux:**
 ```bash
 make setup
 ```
 
 Or if make isn't available:
-
 ```bash
-bash setup.sh
+bash install.sh
 ```
 
-This creates a virtualenv, installs all dependencies, runs a smoke test, and prints "READY".
+**Windows (PowerShell):**
+```powershell
+.\setup.ps1
+```
+
+**Windows (CMD):**
+```cmd
+setup.bat
+```
+
+All paths create a virtualenv, install dependencies, run a smoke test, and print "READY".
 
 ## What Liquefy Does
 
