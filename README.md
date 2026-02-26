@@ -444,15 +444,22 @@ make event-stats SESSION_ID=s1       # tokens, cost, duplicate prompts
 - Error/retry/escalation markers
 - Duplicate prompt detection in stats
 
-### Safe Run (Automated Rollback)
+### Safe Run (Automated Rollback + Cost Cap + Watchdog)
 
 Wrap agent execution with snapshot + auto-restore on violations:
 
 ```bash
 make safe-run WORKSPACE=~/.openclaw CMD="openclaw run" SENTINELS=SOUL.md,HEARTBEAT.md
+
+# With cost cap and heartbeat watchdog
+python tools/liquefy_safe_run.py \
+    --workspace ~/.openclaw --cmd "python agent.py" \
+    --max-cost 5.00 --heartbeat --sentinels SOUL.md --json
 ```
 
 - **Snapshot** workspace before run, **restore** if policy violation or crash
+- **Token cost cap** (`--max-cost`) — auto-rollback if agent burns more than your USD limit (prevents economic DoS)
+- **Dead Man's Switch** (`--heartbeat`) — writes `.liquefy-heartbeat` every 5s; agent or watcher self-halts if monitoring dies
 - **Sentinel monitoring** — detect tampering of SOUL.md, HEARTBEAT.md, auth-profiles.json
 - **Docker jail** pattern documented for host-isolated agent execution
 

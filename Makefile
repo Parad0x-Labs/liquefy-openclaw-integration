@@ -112,7 +112,7 @@ help: ## Show this help
 	@echo "    make event-stats SESSION_ID=s1        Session statistics"
 	@echo ""
 	@echo "  SAFE RUN (Automated Rollback)"
-	@echo "    make safe-run WORKSPACE=~/.openclaw CMD='openclaw run' SENTINELS=SOUL.md,HEARTBEAT.md"
+	@echo "    make safe-run WORKSPACE=~/.openclaw CMD='openclaw run' SENTINELS=SOUL.md,HEARTBEAT.md MAX_COST=5.00 HEARTBEAT=1"
 	@echo ""
 	@echo "  POLICY ENFORCER (Kill Switch)"
 	@echo "    make policy-audit DIR=./agent-output    Scan for violations (safe)"
@@ -459,7 +459,8 @@ safe-run: $(VENV) ## Snapshot -> run agent -> enforce -> auto-restore on violati
 	@test -n "$(CMD)" || { echo "Usage: make safe-run WORKSPACE=~/.openclaw CMD='openclaw run'"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_safe_run.py --workspace "$(WORKSPACE)" --cmd "$(CMD)" \
 		$(if $(POLICY),--policy "$(POLICY)",) $(if $(SENTINELS),--sentinels "$(SENTINELS)",) \
-		$(if $(TRACE_ID),--trace-id "$(TRACE_ID)",) --json
+		$(if $(TRACE_ID),--trace-id "$(TRACE_ID)",) $(if $(MAX_COST),--max-cost "$(MAX_COST)",) \
+		$(if $(HEARTBEAT),--heartbeat,) --json
 
 # ─── Policy Enforcer (Kill Switch) ───
 

@@ -38,8 +38,10 @@ for _p in (API_DIR, TOOLS_DIR):
     if ps not in sys.path:
         sys.path.insert(0, ps)
 
-SCHEMA = "liquefy.safe-run.v1"
+SCHEMA = "liquefy.safe-run.v2"
 SNAPSHOT_DIR_NAME = ".liquefy-safe-run"
+HEARTBEAT_FILE = ".liquefy-heartbeat"
+HEARTBEAT_INTERVAL = 5  # seconds
 
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", ".venv", "venv"}
 
@@ -179,6 +181,82 @@ def _run_enforcer(workspace: Path, policy: Optional[str] = None, trace_id: Optio
         return {"ok": False, "error": str(e)}
 
 
+def _start_heartbeat(workspace: Path) -> Optional[int]:
+    """Spawn a background heartbeat writer. Returns PID or None."""
+    hb_path = workspace / HEARTBEAT_FILE
+    try:
+        import threading
+
+        def _writer():
+            while True:
+                try:
+                    hb_path.write_text(json.dumps({
+                        "pid": os.getpid(),
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "interval_s": HEARTBEAT_INTERVAL,
+                    }), encoding="utf-8")
+                except OSError:
+                    break
+                time.sleep(HEARTBEAT_INTERVAL)
+
+        t = threading.Thread(target=_writer, daemon=True)
+        t.start()
+        return os.getpid()
+    except Exception:
+        return None
+
+
+def _stop_heartbeat(workspace: Path):
+    hb = workspace / HEARTBEAT_FILE
+    try:
+        hb.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _check_token_cost(workspace: Path, max_cost: float) -> Optional[Dict]:
+    """Post-run check: scan workspace for token usage, return overspend info."""
+    try:
+        from liquefy_token_ledger import _scan_file, _estimate_cost
+    except ImportError:
+        return None
+
+    total_cost = 0.0
+    total_tokens = 0
+    for root, dirs, fnames in os.walk(workspace):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and d != SNAPSHOT_DIR_NAME]
+        for fname in fnames:
+            fpath = Path(root) / fname
+            if fpath.suffix in (".json", ".jsonl", ".log", ".txt"):
+                try:
+                    entries = _scan_file(fpath)
+                    for e in entries:
+                        total_tokens += e.get("total_tokens", 0)
+                        model = e.get("model", "unknown") or "unknown"
+                        cost = _estimate_cost(
+                            model,
+                            e.get("input_tokens", 0),
+                            e.get("output_tokens", 0),
+                        )
+                        total_cost += cost
+                except Exception:
+                    continue
+
+    if total_cost > max_cost:
+        return {
+            "exceeded": True,
+            "total_cost_usd": round(total_cost, 6),
+            "max_cost_usd": max_cost,
+            "total_tokens": total_tokens,
+        }
+    return {
+        "exceeded": False,
+        "total_cost_usd": round(total_cost, 6),
+        "max_cost_usd": max_cost,
+        "total_tokens": total_tokens,
+    }
+
+
 def _audit_log(event: str, **details):
     try:
         from liquefy_audit_chain import audit_log
@@ -199,6 +277,10 @@ def main():
     ap.add_argument("--sentinels", default="",
                     help="Comma-separated critical files to monitor (e.g. SOUL.md,HEARTBEAT.md,auth-profiles.json)")
     ap.add_argument("--timeout", type=int, default=300, help="Agent command timeout in seconds")
+    ap.add_argument("--max-cost", type=float,
+                    help="Kill and rollback if agent run exceeds this USD cost (requires token metadata in logs)")
+    ap.add_argument("--heartbeat", action="store_true",
+                    help="Write a heartbeat file so agents can verify monitoring is alive")
     ap.add_argument("--no-restore", action="store_true", help="Report violations but skip auto-restore")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
@@ -229,6 +311,15 @@ def main():
             print(f"    Sentinels: {', '.join(sentinels)}")
         print()
 
+    # ── Phase 1b: Start heartbeat (Dead Man's Switch) ──
+    hb_pid = None
+    if args.heartbeat:
+        hb_pid = _start_heartbeat(workspace)
+        if not args.json and hb_pid:
+            print(f"  Safe Run — Heartbeat active (every {HEARTBEAT_INTERVAL}s)")
+            print(f"    File: {workspace / HEARTBEAT_FILE}")
+            print()
+
     # ── Phase 2: Execute agent command ──
     start = time.time()
     try:
@@ -258,6 +349,10 @@ def main():
         print(f"    Duration: {elapsed}s")
         print()
 
+    # ── Phase 2b: Stop heartbeat ──
+    if hb_pid:
+        _stop_heartbeat(workspace)
+
     # ── Phase 3: Post-run enforcement ──
     enforce_result = _run_enforcer(workspace, args.policy, trace_id)
     policy_blocked = not enforce_result.get("ok", True)
@@ -266,7 +361,29 @@ def main():
     if sentinels:
         sentinel_tampered = _check_sentinels(workspace, sentinels, pre_sentinel_hashes)
 
-    needs_rollback = agent_crashed or policy_blocked or len(sentinel_tampered) > 0
+    # ── Phase 3b: Token cost enforcement ──
+    cost_result = None
+    cost_exceeded = False
+    if args.max_cost is not None:
+        cost_result = _check_token_cost(workspace, args.max_cost)
+        if cost_result and cost_result.get("exceeded"):
+            cost_exceeded = True
+            if not args.json:
+                print(f"  Safe Run — Cost EXCEEDED")
+                print(f"    Spent:   ${cost_result['total_cost_usd']:.4f}")
+                print(f"    Limit:   ${args.max_cost:.4f}")
+                print(f"    Tokens:  {cost_result['total_tokens']:,}")
+                print()
+            _audit_log("safe_run.cost_exceeded",
+                       cost_usd=cost_result["total_cost_usd"],
+                       limit_usd=args.max_cost,
+                       tokens=cost_result["total_tokens"],
+                       **({"trace_id": trace_id} if trace_id else {}))
+        elif cost_result and not args.json:
+            print(f"  Safe Run — Cost OK (${cost_result['total_cost_usd']:.4f} / ${args.max_cost:.4f})")
+            print()
+
+    needs_rollback = agent_crashed or policy_blocked or len(sentinel_tampered) > 0 or cost_exceeded
 
     if not args.json:
         if policy_blocked:
@@ -313,8 +430,10 @@ def main():
             "execute": {"exit_code": exit_code, "duration_s": elapsed, "crashed": agent_crashed},
             "enforce": enforce_result,
             "sentinels": {"monitored": sentinels, "tampered": sentinel_tampered},
+            **({"cost": cost_result} if cost_result else {}),
             "rollback": restore_result,
         },
+        "heartbeat_active": hb_pid is not None,
         "needs_rollback": needs_rollback,
         "rolled_back": restore_result is not None and restore_result.get("ok", False),
     }

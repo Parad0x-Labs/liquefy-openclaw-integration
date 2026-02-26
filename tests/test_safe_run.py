@@ -17,7 +17,11 @@ from liquefy_safe_run import (
     _restore_workspace,
     _hash_sentinel_files,
     _check_sentinels,
+    _start_heartbeat,
+    _stop_heartbeat,
+    _check_token_cost,
     SNAPSHOT_DIR_NAME,
+    HEARTBEAT_FILE,
 )
 
 
@@ -119,6 +123,64 @@ class TestSentinels:
         pre = _hash_sentinel_files(workspace, ["SOUL.md", "HEARTBEAT.md"])
         tampered = _check_sentinels(workspace, ["SOUL.md", "HEARTBEAT.md"], pre)
         assert len(tampered) == 0
+
+
+class TestHeartbeat:
+    def test_heartbeat_writes_file(self, workspace):
+        _start_heartbeat(workspace)
+        import time
+        time.sleep(1)
+        hb = workspace / HEARTBEAT_FILE
+        assert hb.exists()
+        data = json.loads(hb.read_text())
+        assert "pid" in data
+        assert "ts" in data
+        assert data["interval_s"] == 5
+        _stop_heartbeat(workspace)
+        assert not hb.exists()
+
+    def test_stop_removes_file(self, workspace):
+        _start_heartbeat(workspace)
+        import time
+        time.sleep(0.5)
+        _stop_heartbeat(workspace)
+        assert not (workspace / HEARTBEAT_FILE).exists()
+
+    def test_stop_on_missing_file(self, workspace):
+        _stop_heartbeat(workspace)
+
+
+class TestCostCheck:
+    def test_no_overspend(self, workspace):
+        (workspace / "trace.jsonl").write_text(json.dumps({
+            "model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+        }) + "\n")
+        result = _check_token_cost(workspace, max_cost=10.0)
+        assert result is not None
+        assert result["exceeded"] is False
+        assert result["total_cost_usd"] < 10.0
+
+    def test_overspend_detected(self, workspace):
+        lines = []
+        for i in range(50):
+            lines.append(json.dumps({
+                "model": "gpt-4",
+                "usage": {"prompt_tokens": 100000, "completion_tokens": 50000},
+            }))
+        (workspace / "heavy.jsonl").write_text("\n".join(lines) + "\n")
+        result = _check_token_cost(workspace, max_cost=0.01)
+        assert result is not None
+        assert result["exceeded"] is True
+        assert result["total_cost_usd"] > 0.01
+
+    def test_no_logs_returns_under_budget(self, tmp_path):
+        ws = tmp_path / "empty"
+        ws.mkdir()
+        result = _check_token_cost(ws, max_cost=5.0)
+        if result is not None:
+            assert result["exceeded"] is False
+            assert result["total_cost_usd"] == 0.0
 
 
 class TestFileSha256:

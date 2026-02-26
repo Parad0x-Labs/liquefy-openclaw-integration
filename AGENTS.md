@@ -375,15 +375,36 @@ python tools/liquefy_safe_run.py \
     --json
 ```
 
-**Four phases:**
+**Five phases:**
 1. **Snapshot** — full workspace state captured (file hashes + copies)
-2. **Execute** — agent command runs with timeout protection
-3. **Enforce** — policy enforcer scans for secret leaks, forbidden files, etc.
-4. **Rollback** — if anything failed, workspace is restored to pre-run state
+2. **Heartbeat** — optional Dead Man's Switch (`--heartbeat`): writes `.liquefy-heartbeat` every 5s so agents can verify monitoring is alive
+3. **Execute** — agent command runs with timeout protection
+4. **Enforce** — policy enforcer + token cost check (`--max-cost`) + sentinel comparison
+5. **Rollback** — if anything failed, workspace is restored to pre-run state
+
+```bash
+# With cost cap: kill + rollback if agent burns more than $5
+python tools/liquefy_safe_run.py \
+    --workspace ~/.openclaw \
+    --cmd "python my_agent.py" \
+    --max-cost 5.00 \
+    --heartbeat \
+    --json
+
+# Agent can check if monitoring is alive:
+# cat ~/.openclaw/.liquefy-heartbeat  →  {"pid": 12345, "ts": "...", "interval_s": 5}
+# If file is older than 2× interval, monitoring died — agent should self-halt.
+```
+
+**Token cost enforcement (--max-cost):** scans agent output logs for LLM token usage metadata after the run. If estimated cost exceeds the limit, triggers automatic rollback — prevents economic denial-of-service attacks where a rogue skill loops expensive API calls.
 
 **Sentinel files:** critical identity files (`SOUL.md`, `HEARTBEAT.md`, `auth-profiles.json`) are hashed before the run. If an agent or a malicious skill modifies them during execution, the tampering is detected and the workspace is rolled back automatically.
 
+**Dead Man's Switch (--heartbeat):** writes a heartbeat file every 5 seconds while the agent runs. Agents or external watchers can check this file — if it goes stale (older than 2× interval), they know Liquefy monitoring crashed and should self-halt. This prevents unmonitored execution.
+
 **Use `--no-restore`** to report violations without auto-restoring (forensic mode).
+
+**Known limitation:** multi-modal context poisoning (hidden text in images used for prompt injection) is out of scope for Liquefy's policy engine. Liquefy audits files, not pixel content. LLM providers are responsible for vision model safety filters.
 
 ### Docker Jail Pattern
 
