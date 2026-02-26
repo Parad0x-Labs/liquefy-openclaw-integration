@@ -104,6 +104,7 @@ help: ## Show this help
 	@echo "    make token-budget ORG=acme DAILY=500000 Set token budgets"
 	@echo "    make token-report ORG=acme              Usage report"
 	@echo "    make token-audit DIR=./agent-output     Detect token waste"
+	@echo "    make token-models                      List known models + costs"
 	@echo ""
 	@echo "  CONFIG GUARD (Update Protection)"
 	@echo "    make guard-save DIR=./my-agent          Snapshot before update"
@@ -408,6 +409,9 @@ token-report: $(VENV) ## [EXPERIMENTAL] Token usage report
 token-audit: $(VENV) ## [EXPERIMENTAL] Detect token waste
 	@test -n "$(DIR)" || { echo "Usage: make token-audit DIR=./agent-output"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_token_ledger.py audit --dir "$(DIR)" --json
+
+token-models: $(VENV) ## [EXPERIMENTAL] List known models and costs
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_token_ledger.py models --json
 
 # ─── Config Guard (Update Protection) ───
 

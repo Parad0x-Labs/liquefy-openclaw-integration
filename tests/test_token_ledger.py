@@ -18,10 +18,13 @@ from liquefy_token_ledger import (
     _scan_directory,
     _estimate_cost,
     _normalize_model,
+    _load_model_costs,
+    BUILTIN_MODEL_COSTS_PER_1K,
     cmd_scan,
     cmd_budget,
     cmd_report,
     cmd_audit,
+    cmd_models,
 )
 
 
@@ -299,3 +302,68 @@ class TestCmdAudit:
         args = _Args(dir=str(tmp_path))
         ret = cmd_audit(args)
         assert ret == 0
+
+
+class TestModelCosts:
+    def test_builtin_has_gpt5(self):
+        assert "gpt-5" in BUILTIN_MODEL_COSTS_PER_1K
+
+    def test_builtin_has_claude_4_6(self):
+        assert "claude-4.6-opus" in BUILTIN_MODEL_COSTS_PER_1K
+
+    def test_builtin_has_gemini(self):
+        assert "gemini-2.0-flash" in BUILTIN_MODEL_COSTS_PER_1K
+
+    def test_builtin_has_deepseek(self):
+        assert "deepseek-r1" in BUILTIN_MODEL_COSTS_PER_1K
+
+    def test_load_merges_custom(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        custom_dir = tmp_path / ".liquefy" / "tokens"
+        custom_dir.mkdir(parents=True)
+        (custom_dir / "model_costs.json").write_text(json.dumps({
+            "my-custom-model": {"input": 0.001, "output": 0.002},
+        }))
+        costs = _load_model_costs()
+        assert "my-custom-model" in costs
+        assert "gpt-4o" in costs
+
+    def test_custom_overrides_builtin(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        custom_dir = tmp_path / ".liquefy" / "tokens"
+        custom_dir.mkdir(parents=True)
+        (custom_dir / "model_costs.json").write_text(json.dumps({
+            "gpt-4o": {"input": 0.999, "output": 0.999},
+        }))
+        costs = _load_model_costs()
+        assert costs["gpt-4o"]["input"] == 0.999
+
+    def test_env_var_override(self, tmp_path, monkeypatch):
+        custom_file = tmp_path / "my_costs.json"
+        custom_file.write_text(json.dumps({
+            "env-model": {"input": 0.01, "output": 0.02},
+        }))
+        monkeypatch.setenv("LIQUEFY_MODEL_COSTS", str(custom_file))
+        costs = _load_model_costs()
+        assert "env-model" in costs
+
+    def test_cmd_models_list(self, capsys):
+        args = _Args(add=None)
+        ret = cmd_models(args)
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        assert output["ok"] is True
+        assert output["builtin_models"] > 20
+        assert "gpt-5" in output["models"]
+
+    def test_cmd_models_add(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        args = _Args(add="future-model:0.01:0.03")
+        ret = cmd_models(args)
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        assert output["added"] == "future-model"
+        custom_file = tmp_path / ".liquefy" / "tokens" / "model_costs.json"
+        assert custom_file.exists()
+        data = json.loads(custom_file.read_text())
+        assert "future-model" in data

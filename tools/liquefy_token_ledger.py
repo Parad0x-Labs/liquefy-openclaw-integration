@@ -49,21 +49,73 @@ LEDGER_FILE = "ledger.jsonl"
 BUDGET_FILE = "budgets.json"
 SCHEMA = "liquefy.token-ledger.v1"
 
-MODEL_COSTS_PER_1K = {
+BUILTIN_MODEL_COSTS_PER_1K = {
+    "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
     "gpt-4": {"input": 0.03, "output": 0.06},
     "gpt-4-turbo": {"input": 0.01, "output": 0.03},
     "gpt-4o": {"input": 0.005, "output": 0.015},
     "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-    "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
+    "gpt-5": {"input": 0.005, "output": 0.02},
+    "gpt-5-mini": {"input": 0.001, "output": 0.004},
+    "o1": {"input": 0.015, "output": 0.06},
+    "o1-mini": {"input": 0.003, "output": 0.012},
+    "o1-pro": {"input": 0.15, "output": 0.60},
+    "o3-mini": {"input": 0.0011, "output": 0.0044},
     "claude-3-opus": {"input": 0.015, "output": 0.075},
     "claude-3.5-sonnet": {"input": 0.003, "output": 0.015},
+    "claude-3.5-haiku": {"input": 0.0008, "output": 0.004},
     "claude-3-sonnet": {"input": 0.003, "output": 0.015},
     "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
     "claude-4-sonnet": {"input": 0.003, "output": 0.015},
     "claude-4-opus": {"input": 0.015, "output": 0.075},
+    "claude-4.5-sonnet": {"input": 0.003, "output": 0.015},
+    "claude-4.6-opus": {"input": 0.015, "output": 0.075},
+    "gemini-2.0-flash": {"input": 0.0001, "output": 0.0004},
+    "gemini-2.0-pro": {"input": 0.00125, "output": 0.005},
+    "gemini-1.5-pro": {"input": 0.00125, "output": 0.005},
+    "gemini-1.5-flash": {"input": 0.000075, "output": 0.0003},
+    "deepseek-v3": {"input": 0.00027, "output": 0.0011},
+    "deepseek-r1": {"input": 0.00055, "output": 0.00219},
+    "llama-3.3-70b": {"input": 0.0006, "output": 0.0006},
+    "mistral-large": {"input": 0.002, "output": 0.006},
 }
 
 DEFAULT_COST = {"input": 0.002, "output": 0.006}
+
+CUSTOM_COSTS_FILE = "model_costs.json"
+
+
+def _load_model_costs() -> Dict[str, Dict[str, float]]:
+    """Load model costs: custom overrides file > env var > built-in table.
+
+    Users can override by placing a model_costs.json in:
+    - ~/.liquefy/tokens/model_costs.json
+    - LIQUEFY_MODEL_COSTS env var pointing to a JSON file
+
+    Format: {"model-name": {"input": 0.003, "output": 0.015}, ...}
+    """
+    costs = dict(BUILTIN_MODEL_COSTS_PER_1K)
+
+    custom_paths = [
+        Path.home() / ".liquefy" / "tokens" / CUSTOM_COSTS_FILE,
+    ]
+    env_path = os.environ.get("LIQUEFY_MODEL_COSTS")
+    if env_path:
+        custom_paths.insert(0, Path(env_path))
+
+    for cp in custom_paths:
+        try:
+            if cp.exists():
+                custom = json.loads(cp.read_text("utf-8"))
+                if isinstance(custom, dict):
+                    costs.update(custom)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return costs
+
+
+MODEL_COSTS_PER_1K = _load_model_costs()
 
 
 def _ledger_dir(base: Optional[Path] = None) -> Path:
@@ -559,6 +611,64 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_models(args: argparse.Namespace) -> int:
+    """List known models and their costs, or update the custom cost table."""
+    costs = _load_model_costs()
+    custom_path = Path.home() / ".liquefy" / "tokens" / CUSTOM_COSTS_FILE
+    has_custom = custom_path.exists()
+
+    if args.add:
+        parts = args.add.split(":")
+        if len(parts) != 3:
+            print("ERROR: Format is MODEL:INPUT_PER_1K:OUTPUT_PER_1K  (e.g. gpt-5:0.005:0.02)")
+            return 1
+        model_name, inp, out = parts[0].strip().lower(), float(parts[1]), float(parts[2])
+        custom = {}
+        if custom_path.exists():
+            custom = json.loads(custom_path.read_text("utf-8"))
+        custom[model_name] = {"input": inp, "output": out}
+        custom_path.parent.mkdir(parents=True, exist_ok=True)
+        custom_path.write_text(json.dumps(custom, indent=2), encoding="utf-8")
+
+        global MODEL_COSTS_PER_1K
+        MODEL_COSTS_PER_1K = _load_model_costs()
+
+        if args.json:
+            print(json.dumps({"ok": True, "added": model_name, "input": inp, "output": out}))
+        else:
+            print(f"  Added/updated: {model_name} (${inp}/1K in, ${out}/1K out)")
+            print(f"  Saved to: {custom_path}")
+        return 0
+
+    result = {
+        "ok": True,
+        "builtin_models": len(BUILTIN_MODEL_COSTS_PER_1K),
+        "total_models": len(costs),
+        "has_custom_overrides": has_custom,
+        "custom_path": str(custom_path),
+        "models": {k: v for k, v in sorted(costs.items())},
+    }
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"  Token Ledger — Model Costs")
+        print(f"    Built-in:  {len(BUILTIN_MODEL_COSTS_PER_1K)} models")
+        print(f"    Custom:    {custom_path}")
+        if has_custom:
+            custom = json.loads(custom_path.read_text("utf-8"))
+            print(f"    Overrides: {len(custom)} models")
+        print()
+        for model, c in sorted(costs.items()):
+            print(f"    {model:<28s} ${c['input']:.6f}/1K in   ${c['output']:.6f}/1K out")
+        print()
+        print(f"  To add/update a model:")
+        print(f"    python tools/liquefy_token_ledger.py models --add 'gpt-6:0.01:0.03'")
+        print(f"  Or edit: {custom_path}")
+
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="liquefy-token-ledger",
@@ -589,8 +699,16 @@ def main():
     p_audit.add_argument("--dir", required=True, help="Agent output directory")
     p_audit.add_argument("--json", action="store_true")
 
+    p_models = sub.add_parser("models", help="List/update model cost table")
+    p_models.add_argument("--add", help="Add model: MODEL:INPUT_PER_1K:OUTPUT_PER_1K")
+    p_models.add_argument("--json", action="store_true")
+
     args = parser.parse_args()
-    commands = {"scan": cmd_scan, "budget": cmd_budget, "report": cmd_report, "audit": cmd_audit}
+    commands = {
+        "scan": cmd_scan, "budget": cmd_budget,
+        "report": cmd_report, "audit": cmd_audit,
+        "models": cmd_models,
+    }
 
     if args.command in commands:
         return commands[args.command](args)
