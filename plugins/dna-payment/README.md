@@ -151,7 +151,7 @@ vault-staging/dna-export/
 For real-time archival, DNA's server can stream events to a Liquefy vault directory as they happen:
 
 ```typescript
-import { LiquefySidecar } from "@dna/x402";
+import { LiquefySidecar } from "dna-x402";
 
 const sidecar = new LiquefySidecar({
   outDir: "./vault-live",

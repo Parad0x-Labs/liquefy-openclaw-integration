@@ -2,7 +2,7 @@
 
 ![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)
 ![License: Commercial](https://img.shields.io/badge/License-Commercial-orange.svg)
-![Conduction: 23 Engines](https://img.shields.io/badge/Conduction-23_Engines-cyan?style=flat-square)
+![Conduction: 24 Engines](https://img.shields.io/badge/Conduction-24_Engines-cyan?style=flat-square)
 ![Verification: Bit--Perfect](https://img.shields.io/badge/Verification-Bit--Perfect-white?style=flat-square)
 
 **Liquefy** is an enterprise-grade compression and observability engine designed for high-velocity telemetry.
@@ -295,6 +295,55 @@ python tools/tracevault_pack.py ./vault-staging/dna-payments \
 ```
 
 DNA can also run as a live sidecar, streaming payment events directly into vault directories in real-time. See [`plugins/dna-payment/README.md`](./plugins/dna-payment/README.md) for full integration docs.
+
+---
+
+### Vision — Screenshot Dedup (Engine #24)
+
+AI agents capture redundant screenshots (10-50 shots of the same static window). The Vision engine deduplicates near-identical images using perceptual hashing, storing only unique frames.
+
+```bash
+make vision-scan DIR=./agent-screenshots         # Report dedup potential
+make vision-pack DIR=./agent-screenshots          # Pack into VSNX vault (deduplicated)
+make vision-restore SRC=./vault/vision.vsnx       # Restore all images from vault
+make vision-stats SRC=./vault/vision.vsnx         # Show dedup stats
+```
+
+- **Perceptual hashing** — 8x8 average-hash (aHash) detects visually identical frames even with minor pixel differences
+- **Exact dedup** — SHA-256 catches byte-identical files (zero-cost)
+- **VSNX container** — compact binary format with manifest + compressed unique blobs
+- Install Pillow for full perceptual mode: `pip install Pillow`
+
+### Compliance Reports (One-Click Audit)
+
+Generate human-readable HTML compliance reports from the tamper-proof audit chain. Designed for CTOs and compliance officers who need proof without running terminal commands.
+
+```bash
+make compliance VAULT=./vault ORG=acme TITLE="Q1 Audit"  # HTML compliance report
+make compliance-verify VAULT=./vault                       # Pass/fail integrity check
+make compliance-timeline VAULT=./vault                     # Chronological event timeline
+```
+
+- **Chain verification** — SHA-256 hash chain integrity check with per-entry validation
+- **Event breakdown** — counts, types, timestamps, and activity summaries
+- **Dark-mode HTML** — clean, professional reports ready for auditors
+
+### Cloud Sync (S3 / R2 / MinIO)
+
+Sync encrypted vaults to any S3-compatible storage. The cloud provider sees only opaque blobs — "sovereign" means encrypted everywhere, not just local.
+
+```bash
+make cloud-push VAULT=./vault BUCKET=my-backups           # Incremental push
+make cloud-pull VAULT=./vault BUCKET=my-backups           # Restore from cloud
+make cloud-status VAULT=./vault BUCKET=my-backups         # Compare local vs remote
+make cloud-verify VAULT=./vault BUCKET=my-backups         # Verify remote integrity
+```
+
+- **Incremental sync** — only uploads changed/new vaults (SHA-256 manifest tracking)
+- **Any S3-compatible** — AWS S3, Cloudflare R2, MinIO, etc.
+- **Integrity verification** — confirms remote files match local hashes
+- Install boto3: `pip install boto3`
+
 ---
 
 ## 🛡️ Execution & Maintenance Policy

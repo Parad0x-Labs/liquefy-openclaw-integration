@@ -19,7 +19,7 @@ This creates a virtualenv, installs all dependencies, runs a smoke test, and pri
 
 ## What Liquefy Does
 
-Liquefy compresses, redacts, and vaults AI agent workspace data (session logs, JSONL traces, artifacts, memory files). It has 23 specialized compression engines that auto-detect data format and pick the best one. Everything is verified bit-perfect (MRTV — Mandatory Round-Trip Verification).
+Liquefy compresses, redacts, and vaults AI agent workspace data (session logs, JSONL traces, artifacts, screenshots, memory files). It has 24 specialized compression engines that auto-detect data format and pick the best one. Everything is verified bit-perfect (MRTV — Mandatory Round-Trip Verification).
 
 ## Quick Commands (Copy-Paste Ready)
 
@@ -131,7 +131,63 @@ Conflict resolution: `last_write`, `largest`, `priority`, or `both` (keep-both).
 
 ```bash
 make audit-verify                    # Verify tamper-proof hash chain is intact
+make compliance VAULT=./vault ORG=acme TITLE="Q1 Audit"  # Generate HTML compliance report
+make compliance-verify VAULT=./vault  # Chain integrity check (pass/fail)
+make compliance-timeline VAULT=./vault # Chronological event timeline (HTML)
 ```
+
+Or directly:
+
+```bash
+python tools/liquefy_compliance.py report --vault ./vault --org acme --title "Q1 Audit" --output report.html
+python tools/liquefy_compliance.py verify --vault ./vault --json
+python tools/liquefy_compliance.py timeline --vault ./vault --output timeline.html
+```
+
+### Vision — Screenshot Dedup (Engine #24)
+
+Agents capture redundant screenshots. Vision deduplicates near-identical images using perceptual hashing (aHash), storing only unique frames.
+
+```bash
+make vision-scan DIR=./agent-screenshots         # Report dedup potential
+make vision-pack DIR=./agent-screenshots          # Pack into VSNX vault (deduplicated)
+make vision-restore SRC=./vault/vision.vsnx       # Restore all images
+make vision-stats SRC=./vault/vision.vsnx         # Show dedup stats
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_vision.py scan  ./agent-screenshots --json
+python tools/liquefy_vision.py pack  ./agent-screenshots --out ./vault/vision.vsnx --json
+python tools/liquefy_vision.py restore ./vault/vision.vsnx --out ./restored --json
+python tools/liquefy_vision.py stats ./vault/vision.vsnx --json
+```
+
+Install Pillow for perceptual dedup (`pip install Pillow`). Without it, falls back to exact SHA-256 dedup.
+
+### Cloud Sync (S3 / R2 / MinIO)
+
+Sync encrypted vaults to S3-compatible storage. Cloud provider sees only opaque blobs — sovereign means encrypted everywhere.
+
+```bash
+make cloud-push VAULT=./vault BUCKET=my-backups                          # Push (incremental)
+make cloud-push VAULT=./vault BUCKET=my-r2 ENDPOINT=https://xxx.r2.cloudflarestorage.com  # R2
+make cloud-pull VAULT=./vault BUCKET=my-backups                          # Restore from cloud
+make cloud-status VAULT=./vault BUCKET=my-backups                        # Compare local vs remote
+make cloud-verify VAULT=./vault BUCKET=my-backups                        # Verify remote integrity
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_cloud_sync.py push   --vault ./vault --bucket my-backups --json
+python tools/liquefy_cloud_sync.py pull   --vault ./vault --bucket my-backups --json
+python tools/liquefy_cloud_sync.py status --vault ./vault --bucket my-backups --json
+python tools/liquefy_cloud_sync.py verify --vault ./vault --bucket my-backups --json
+```
+
+Environment variables: `LIQUEFY_S3_ENDPOINT`, `LIQUEFY_S3_BUCKET`, `LIQUEFY_S3_PREFIX`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
 
 ## Presets (Choose Your Risk Level)
 
@@ -264,8 +320,11 @@ python tools/liquefy_cli.py version --json
 | **Shared namespace** | File-lock coordination, atomic index | Production |
 | **Cross-agent merge** | 4 conflict resolution strategies | Production |
 | **Resource quotas** | Per-agent storage/rate/session limits | Production |
+| **Compliance reports** | `liquefy_compliance.py` | Production |
+| **Vision dedup** | `liquefy_vision.py` (Engine #24) | Production |
+| **Cloud sync (S3/R2/MinIO)** | `liquefy_cloud_sync.py` | Production |
 
-## Compression Engines (23 total, auto-selected)
+## Compression Engines (24 total, auto-selected)
 
 | Data Type | Engine | Typical Ratio |
 |-----------|--------|---------------|
@@ -282,6 +341,7 @@ python tools/liquefy_cli.py version --json
 | VMware logs | Domain-specific | 5-7x |
 | NetFlow | Domain-specific | 3-5x |
 | Everything else | Universal + Fallback | 3-7x |
+| **Screenshots/Images** | **Vision perceptual dedup** | **5-20x** |
 
 ## Environment Variables
 
@@ -295,6 +355,10 @@ python tools/liquefy_cli.py version --json
 | `LIQUEFY_DISABLE_COLUMNAR` | Set to `1` to skip columnar engines | (none) |
 | `LIQUEFY_FLEET_ROOT` | Fleet shared vault root | `~/.liquefy/fleet` |
 | `LIQUEFY_AUDIT_DIR` | Audit chain storage directory | `~/.liquefy/audit` |
+| `LIQUEFY_ORG` | Organization name for compliance reports | `default` |
+| `LIQUEFY_S3_ENDPOINT` | S3 endpoint URL (for R2/MinIO) | (none) |
+| `LIQUEFY_S3_BUCKET` | S3 bucket name | (none) |
+| `LIQUEFY_S3_PREFIX` | S3 key prefix | `liquefy/` |
 
 ## File Layout
 
@@ -316,6 +380,7 @@ liquefy/
 │   ├── vmware/             # VMware (1)
 │   ├── netflow/            # NetFlow (1)
 │   ├── universal/          # Universal + Fallback (2)
+│   ├── vision/             # Screenshot perceptual dedup (1) — Engine #24
 │   ├── liquefy_safety.py       # MRTV verification
 │   ├── liquefy_security.py     # LSEC v2 encryption
 │   ├── liquefy_primitives.py   # Shared varint/zigzag/bloom
@@ -327,7 +392,10 @@ liquefy/
 ├── tools/                      # CLI tools (all commands above)
 │   ├── liquefy_openclaw_plugin.py  # Native OpenClaw integration
 │   ├── liquefy_intelligence.py     # AI intelligence layer
-│   └── liquefy_fleet_cli.py        # Multi-agent fleet CLI
+│   ├── liquefy_fleet_cli.py        # Multi-agent fleet CLI
+│   ├── liquefy_compliance.py       # HTML compliance report generator
+│   ├── liquefy_vision.py           # Screenshot dedup CLI
+│   └── liquefy_cloud_sync.py       # S3/R2/MinIO vault sync
 ├── api/engines/community/      # Drop-in community engines (auto-registered)
 ├── patterns/community/         # Drop-in leak patterns (auto-registered)
 ├── skills/                     # ClawHub skills
@@ -351,5 +419,7 @@ If you're building an AI agent that uses Liquefy:
 8. **Extend**: Drop engines into `api/engines/community/` or patterns into `patterns/community/` — auto-discovered
 9. **OpenClaw Native**: Run `make openclaw-hook` once — Liquefy becomes the invisible default session store
 10. **Intelligence**: Use `make predict` / `make suggest` / `make summarize` for proactive insights
-11. **Compliance**: `make audit-verify` checks tamper-proof hash chain integrity
+11. **Compliance**: `make audit-verify` checks tamper-proof hash chain integrity. `make compliance VAULT=./vault` generates a beautiful HTML report for auditors
 12. **Fleet**: Running multiple agents? Use `make fleet-register` + `make fleet-ingest` for shared namespace with quotas
+13. **Vision**: Agent screenshots eating storage? `make vision-pack DIR=./screenshots` deduplicates near-identical frames (80-95% savings)
+14. **Cloud Sync**: `make cloud-push VAULT=./vault BUCKET=x` syncs encrypted vaults to S3/R2/MinIO — cloud sees only opaque blobs

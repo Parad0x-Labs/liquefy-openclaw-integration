@@ -15,7 +15,10 @@ PYTHONPATH_EXPORT := PYTHONPATH=tools:api
         predict suggest prune summarize migrate score \
         openclaw-hook openclaw-status audit-verify status \
         fleet-register fleet-status fleet-quota fleet-ingest \
-        fleet-merge fleet-gc fleet-heartbeat
+        fleet-merge fleet-gc fleet-heartbeat \
+        compliance compliance-verify compliance-timeline \
+        vision-scan vision-pack vision-restore vision-stats \
+        cloud-push cloud-pull cloud-status cloud-verify
 
 # ─── Default target ───
 
@@ -73,7 +76,22 @@ help: ## Show this help
 	@echo "    make fleet-gc [MAX_AGE=30]                  Fleet-wide garbage collect"
 	@echo ""
 	@echo "  COMPLIANCE"
-	@echo "    make audit-verify             Verify tamper-proof audit chain"
+	@echo "    make audit-verify                      Verify tamper-proof audit chain"
+	@echo "    make compliance VAULT=./vault           Generate HTML compliance report"
+	@echo "    make compliance-verify VAULT=./vault    Verify chain integrity (pass/fail)"
+	@echo "    make compliance-timeline VAULT=./vault  Generate event timeline HTML"
+	@echo ""
+	@echo "  VISION (Screenshot Dedup — Engine #24)"
+	@echo "    make vision-scan DIR=./screenshots      Scan images, report dedup potential"
+	@echo "    make vision-pack DIR=./screenshots      Pack into deduplicated VSNX vault"
+	@echo "    make vision-restore SRC=./vault.vsnx    Restore all images from vault"
+	@echo "    make vision-stats SRC=./vault.vsnx      Show vault dedup stats"
+	@echo ""
+	@echo "  CLOUD SYNC (S3 / R2 / MinIO)"
+	@echo "    make cloud-push VAULT=./vault BUCKET=x  Push vaults (encrypted) to cloud"
+	@echo "    make cloud-pull VAULT=./vault BUCKET=x  Restore vaults from cloud"
+	@echo "    make cloud-status VAULT=. BUCKET=x      Compare local vs remote"
+	@echo "    make cloud-verify VAULT=. BUCKET=x      Verify remote integrity"
 	@echo ""
 	@echo "  DEVELOPMENT"
 	@echo "    make test           Run full test suite (201 tests)"
@@ -252,6 +270,71 @@ migrate: $(VENV) ## Import from tar/zstd/gzip backups
 
 audit-verify: $(VENV) ## Verify tamper-proof audit chain integrity
 	$(PYTHONPATH_EXPORT) $(PY) -c "from liquefy_audit_chain import audit_verify; import json; print(json.dumps(audit_verify(), indent=2))"
+
+compliance: $(VENV) ## Generate HTML compliance report from audit chain
+	@test -n "$(VAULT)" || { echo "Usage: make compliance VAULT=./vault [ORG=acme] [TITLE='Q1 Audit']"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_compliance.py report \
+		--vault "$(VAULT)" --output "$(or $(OUT),COMPLIANCE_REPORT.html)" \
+		$(if $(ORG),--org "$(ORG)",) $(if $(TITLE),--title "$(TITLE)",)
+
+compliance-verify: $(VENV) ## Verify audit chain integrity (pass/fail)
+	@test -n "$(VAULT)" || { echo "Usage: make compliance-verify VAULT=./vault"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_compliance.py verify --vault "$(VAULT)" --json
+
+compliance-timeline: $(VENV) ## Generate event timeline HTML
+	@test -n "$(VAULT)" || { echo "Usage: make compliance-timeline VAULT=./vault"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_compliance.py timeline \
+		--vault "$(VAULT)" --output "$(or $(OUT),TIMELINE.html)"
+
+# ─── Vision (Screenshot Dedup) ───
+
+vision-scan: $(VENV) ## Scan directory for image dedup potential
+	@test -n "$(DIR)" || { echo "Usage: make vision-scan DIR=./screenshots"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vision.py scan "$(DIR)" --json
+
+vision-pack: $(VENV) ## Deduplicate and pack images into VSNX vault
+	@test -n "$(DIR)" || { echo "Usage: make vision-pack DIR=./screenshots [OUT=./vault/vision.vsnx]"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vision.py pack "$(DIR)" \
+		--out "$(or $(OUT),./vault/vision.vsnx)" --json
+
+vision-restore: $(VENV) ## Restore images from VSNX vault
+	@test -n "$(SRC)" || { echo "Usage: make vision-restore SRC=./vault/vision.vsnx [OUT=./restored]"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vision.py restore "$(SRC)" \
+		--out "$(or $(OUT),./restored)" --json
+
+vision-stats: $(VENV) ## Show VSNX vault stats
+	@test -n "$(SRC)" || { echo "Usage: make vision-stats SRC=./vault/vision.vsnx"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vision.py stats "$(SRC)" --json
+
+# ─── Cloud Sync (S3/R2/MinIO) ───
+
+cloud-push: $(VENV) ## Sync local vaults to S3-compatible cloud
+	@test -n "$(VAULT)" || { echo "Usage: make cloud-push VAULT=./vault BUCKET=my-backups [ENDPOINT=https://...]"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cloud_sync.py push \
+		--vault "$(VAULT)" --bucket "$(BUCKET)" \
+		$(if $(ENDPOINT),--endpoint "$(ENDPOINT)",) \
+		$(if $(PREFIX),--prefix "$(PREFIX)",) --json
+
+cloud-pull: $(VENV) ## Restore vaults from cloud
+	@test -n "$(VAULT)" || { echo "Usage: make cloud-pull VAULT=./vault BUCKET=my-backups"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cloud_sync.py pull \
+		--vault "$(VAULT)" --bucket "$(BUCKET)" \
+		$(if $(ENDPOINT),--endpoint "$(ENDPOINT)",) \
+		$(if $(PREFIX),--prefix "$(PREFIX)",) --json
+
+cloud-status: $(VENV) ## Show local vs remote sync status
+	@test -n "$(VAULT)" || { echo "Usage: make cloud-status VAULT=./vault BUCKET=my-backups"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cloud_sync.py status \
+		--vault "$(VAULT)" --bucket "$(BUCKET)" \
+		$(if $(ENDPOINT),--endpoint "$(ENDPOINT)",) \
+		$(if $(PREFIX),--prefix "$(PREFIX)",) --json
+
+cloud-verify: $(VENV) ## Verify remote vault integrity against local
+	@test -n "$(VAULT)" || { echo "Usage: make cloud-verify VAULT=./vault BUCKET=my-backups"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cloud_sync.py verify \
+		--vault "$(VAULT)" --bucket "$(BUCKET)" \
+		$(if $(ENDPOINT),--endpoint "$(ENDPOINT)",) \
+		$(if $(PREFIX),--prefix "$(PREFIX)",) --json
 
 # ─── Fleet (Multi-Agent Coordination) ───
 
