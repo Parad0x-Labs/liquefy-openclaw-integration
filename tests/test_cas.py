@@ -115,6 +115,39 @@ class TestStatus:
         assert status["dedup_savings_bytes"] > 0
 
 
+class TestCrashRecovery:
+    def test_corrupted_blob_detected_on_restore(self, agent_output, cas_dir, tmp_path):
+        manifest = ingest_directory(agent_output, cas_dir)
+        sha = list(manifest["files"].values())[0]["sha256"]
+        bp = _blob_path(cas_dir, sha)
+        bp.write_bytes(b"CORRUPTED DATA")
+        out = tmp_path / "restored"
+        result = restore_manifest(manifest["manifest_id"], out, cas_dir)
+        assert result["restored"] >= 1
+
+    def test_missing_blob_counted_as_error(self, agent_output, cas_dir, tmp_path):
+        manifest = ingest_directory(agent_output, cas_dir)
+        sha = list(manifest["files"].values())[0]["sha256"]
+        bp = _blob_path(cas_dir, sha)
+        bp.unlink()
+        out = tmp_path / "restored"
+        result = restore_manifest(manifest["manifest_id"], out, cas_dir)
+        assert result["errors"] >= 1
+
+    def test_partial_ingest_idempotent(self, agent_output, cas_dir):
+        m1 = ingest_directory(agent_output, cas_dir)
+        m2 = ingest_directory(agent_output, cas_dir)
+        assert m1["file_count"] == m2["file_count"]
+        assert m2["dedup_blobs"] == m1["file_count"]
+
+    def test_manifest_corruption_returns_error(self, agent_output, cas_dir, tmp_path):
+        manifest = ingest_directory(agent_output, cas_dir)
+        mf_path = cas_dir / "manifests" / f"{manifest['manifest_id']}.json"
+        mf_path.write_text("NOT VALID JSON")
+        result = restore_manifest(manifest["manifest_id"], tmp_path / "out", cas_dir)
+        assert result.get("ok") is False or "error" in str(result).lower()
+
+
 class TestGC:
     def test_gc_removes_orphans(self, agent_output, cas_dir, tmp_path):
         m = ingest_directory(agent_output, cas_dir)

@@ -15,6 +15,8 @@ from liquefy_policy_enforcer import (
     _scan_secrets,
     _scan_directory,
     _write_kill_signal,
+    _compute_hmac,
+    verify_halt_signal,
     cmd_audit,
     cmd_enforce,
     cmd_kill,
@@ -202,6 +204,86 @@ class TestWriteKillSignal:
         violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
         data = _write_kill_signal(sig, violations)
         assert "trace_id" not in data
+
+
+class TestHardenedHalt:
+    def test_halt_has_nonce(self, tmp_path):
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        data = _write_kill_signal(sig, violations)
+        assert "nonce" in data
+        assert len(data["nonce"]) == 32
+
+    def test_halt_has_expiry(self, tmp_path):
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        data = _write_kill_signal(sig, violations, ttl=60)
+        assert "expires_at" in data
+
+    def test_halt_signed_with_secret(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("LIQUEFY_SECRET", "test-secret-key-123")
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        data = _write_kill_signal(sig, violations)
+        assert "_hmac" in data
+        assert len(data["_hmac"]) == 64
+
+    def test_halt_not_signed_without_secret(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("LIQUEFY_SECRET", raising=False)
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        data = _write_kill_signal(sig, violations)
+        assert "_hmac" not in data
+
+    def test_verify_valid_signed(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("LIQUEFY_SECRET", "verify-test-key")
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        _write_kill_signal(sig, violations)
+        result = verify_halt_signal(sig, secret="verify-test-key")
+        assert result["valid"] is True
+        assert result["signed"] is True
+
+    def test_verify_tampered_rejected(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("LIQUEFY_SECRET", "tamper-test-key")
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        _write_kill_signal(sig, violations)
+        data = json.loads(sig.read_text())
+        data["violation_count"] = 999
+        sig.write_text(json.dumps(data))
+        result = verify_halt_signal(sig, secret="tamper-test-key")
+        assert result["valid"] is False
+        assert "mismatch" in result["error"]
+
+    def test_verify_wrong_key_rejected(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("LIQUEFY_SECRET", "correct-key")
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        _write_kill_signal(sig, violations)
+        result = verify_halt_signal(sig, secret="wrong-key")
+        assert result["valid"] is False
+
+    def test_verify_expired_rejected(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("LIQUEFY_SECRET", raising=False)
+        sig = tmp_path / "halt.json"
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        _write_kill_signal(sig, violations, ttl=0)
+        import time
+        time.sleep(0.1)
+        result = verify_halt_signal(sig)
+        assert result["valid"] is False
+        assert "expired" in result["error"].lower() or "expire" in result["error"].lower()
+
+    def test_verify_missing_file(self, tmp_path):
+        result = verify_halt_signal(tmp_path / "nonexistent.json")
+        assert result["valid"] is False
+
+    def test_nonce_unique_across_calls(self, tmp_path):
+        violations = [{"type": "secret_leak", "severity": "critical", "message": "test"}]
+        d1 = _write_kill_signal(tmp_path / "h1.json", violations)
+        d2 = _write_kill_signal(tmp_path / "h2.json", violations)
+        assert d1["nonce"] != d2["nonce"]
 
 
 class TestTraceId:

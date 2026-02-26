@@ -392,6 +392,7 @@ make policy-kill DIR=./agent-output       # Write halt signal to stop agent
 - **Secret detection** — API keys, tokens, AWS creds, private keys, JWTs
 - **Forbidden files** — `.exe`, `.dll`, `.vbs`, executables blocked
 - **Watch mode** — continuous monitoring with auto-halt on critical violations
+- **Hardened halt** — HMAC-signed signals, nonce replay protection, TTL expiry, process group kill
 - **Custom policies** — configurable size limits, extensions, patterns
 
 ### Content-Addressed Storage (Cross-Run Dedup)

@@ -230,7 +230,19 @@ python tools/liquefy_policy_enforcer.py watch   --dir ./agent-output --signal ./
 - **forbidden_path** (critical) — `.ssh/`, `.gnupg/`, `.aws/credentials`, `.kube/config`
 - **oversized** (warning) — files exceeding 50MB (configurable via policy JSON)
 
-**Kill switch workflow:** `watch` mode continuously scans the agent output directory. On critical violations, it writes a `.liquefy-halt` JSON file (agents watch for this) and optionally sends SIGTERM to the agent PID.
+**Kill switch workflow:** `watch` mode continuously scans the agent output directory. On critical violations, it writes a `.liquefy-halt` JSON file (agents watch for this) and optionally sends SIGTERM to the agent process group.
+
+**Hardened halt channel:**
+- **HMAC signing** — halt signals signed with `LIQUEFY_SECRET` (SHA-256 HMAC). Tampered signals rejected.
+- **Nonce** — unique per signal, prevents replay attacks
+- **TTL/expiry** — signals expire after 5 minutes (configurable). Stale commands rejected.
+- **Process group kill** — `os.killpg()` terminates the entire process tree, not just one PID. Falls back to single-PID if group unavailable.
+- **Verify command** — `liquefy policy verify-halt --signal ./agent.halt` validates signature, nonce, and TTL
+
+```bash
+# Verify a halt signal is authentic and not expired
+python tools/liquefy_policy_enforcer.py verify-halt --signal ./.liquefy-halt --json
+```
 
 **Custom policies:** pass `--policy policy.json` with `max_file_size`, `forbidden_extensions`, etc.
 

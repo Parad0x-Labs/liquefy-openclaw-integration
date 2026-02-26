@@ -172,7 +172,10 @@ def restore_manifest(manifest_id: str, out_dir: Path, cas_dir: Optional[Path] = 
     if not mf_path.exists():
         return {"ok": False, "error": f"Manifest not found: {manifest_id}"}
 
-    manifest = json.loads(mf_path.read_text("utf-8"))
+    try:
+        manifest = json.loads(mf_path.read_text("utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        return {"ok": False, "error": f"Corrupt manifest: {e}"}
     out_dir.mkdir(parents=True, exist_ok=True)
 
     restored = 0

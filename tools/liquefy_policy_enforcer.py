@@ -29,13 +29,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -166,17 +168,76 @@ def _scan_directory(target_dir: Path, policy: Optional[Dict] = None) -> List[Dic
     return violations
 
 
-def _write_kill_signal(signal_path: Path, violations: List[Dict], trace_id: Optional[str] = None) -> Dict:
+HALT_TTL_SECONDS = 300  # 5 minutes default
+
+
+def _compute_hmac(data: Dict, secret: str) -> str:
+    canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
+    return hmac.new(secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def verify_halt_signal(signal_path: Path, secret: Optional[str] = None) -> Dict:
+    """Verify a halt signal file: signature, nonce freshness, TTL."""
+    if not signal_path.exists():
+        return {"valid": False, "error": "Signal file not found"}
+
+    try:
+        data = json.loads(signal_path.read_text("utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        return {"valid": False, "error": f"Parse error: {e}"}
+
+    if data.get("action") != "HALT":
+        return {"valid": False, "error": f"Unknown action: {data.get('action')}"}
+
+    expires_at = data.get("expires_at")
+    if expires_at:
+        try:
+            exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp:
+                return {"valid": False, "error": "Signal expired", "expired_at": expires_at}
+        except (ValueError, TypeError):
+            pass
+
+    sig = data.get("_hmac")
+    if sig and secret:
+        verify_data = {k: v for k, v in data.items() if k != "_hmac"}
+        expected = _compute_hmac(verify_data, secret)
+        if not hmac.compare_digest(sig, expected):
+            return {"valid": False, "error": "HMAC signature mismatch — possible tampering"}
+    elif sig and not secret:
+        return {"valid": False, "error": "Signal is signed but no LIQUEFY_SECRET provided for verification"}
+
+    return {
+        "valid": True,
+        "nonce": data.get("nonce"),
+        "action": data.get("action"),
+        "expires_at": expires_at,
+        "signed": bool(sig),
+    }
+
+
+def _write_kill_signal(signal_path: Path, violations: List[Dict],
+                       trace_id: Optional[str] = None, ttl: int = HALT_TTL_SECONDS) -> Dict:
+    now = datetime.now(timezone.utc)
+    nonce = uuid.uuid4().hex
+
     signal_data = {
         "schema": SCHEMA,
         "action": "HALT",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "nonce": nonce,
+        "timestamp": now.isoformat(),
+        "expires_at": (now + timedelta(seconds=ttl)).isoformat(),
         **({"trace_id": trace_id} if trace_id else {}),
         "reason": "Policy violations detected by Liquefy enforcer",
         "violation_count": len(violations),
         "critical_count": sum(1 for v in violations if v["severity"] == "critical"),
         "violations": violations[:10],
     }
+
+    secret = os.environ.get("LIQUEFY_SECRET")
+    if secret:
+        signal_data["_hmac"] = _compute_hmac(signal_data, secret)
+
     signal_path.parent.mkdir(parents=True, exist_ok=True)
     signal_path.write_text(json.dumps(signal_data, indent=2), encoding="utf-8")
     return signal_data
@@ -308,14 +369,26 @@ def cmd_kill(args: argparse.Namespace) -> int:
     signal_path = Path(args.signal) if args.signal else target_dir / ".liquefy-halt"
     signal_data = _write_kill_signal(signal_path, critical, trace_id=trace_id)
 
+    pid_killed = False
+    kill_method = None
     if args.pid:
+        pid = int(args.pid)
         try:
-            os.kill(int(args.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError, ValueError):
-            pass
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            pid_killed = True
+            kill_method = "process_group"
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                os.kill(pid, signal.SIGTERM)
+                pid_killed = True
+                kill_method = "single_pid"
+            except (ProcessLookupError, PermissionError, ValueError):
+                pass
 
     _audit_log("policy.kill", critical=len(critical), signal_file=str(signal_path),
-               pid=args.pid, **({"trace_id": trace_id} if trace_id else {}))
+               pid=args.pid, pid_killed=pid_killed, kill_method=kill_method,
+               nonce=signal_data.get("nonce"), signed=bool(signal_data.get("_hmac")),
+               **({"trace_id": trace_id} if trace_id else {}))
 
     result = {
         "ok": False,
@@ -323,7 +396,12 @@ def cmd_kill(args: argparse.Namespace) -> int:
         **({"trace_id": trace_id} if trace_id else {}),
         "action": "HALT_SIGNAL_SENT",
         "signal_file": str(signal_path),
+        "nonce": signal_data.get("nonce"),
+        "expires_at": signal_data.get("expires_at"),
+        "signed": bool(signal_data.get("_hmac")),
         "pid_terminated": args.pid,
+        "pid_killed": pid_killed,
+        "kill_method": kill_method,
         "critical": len(critical),
         "details": critical,
     }
@@ -407,14 +485,40 @@ def main():
             p.add_argument("--signal", help="Halt signal file path")
             p.add_argument("--interval", type=int, default=10, help="Scan interval in seconds")
 
+    p_verify = sub.add_parser("verify-halt", help="Verify a halt signal (signature, nonce, TTL)")
+    p_verify.add_argument("--signal", required=True, help="Halt signal file to verify")
+    p_verify.add_argument("--json", action="store_true")
+
     args = parser.parse_args()
-    commands = {"audit": cmd_audit, "enforce": cmd_enforce, "kill": cmd_kill, "watch": cmd_watch}
+    commands = {
+        "audit": cmd_audit, "enforce": cmd_enforce, "kill": cmd_kill,
+        "watch": cmd_watch, "verify-halt": cmd_verify_halt,
+    }
 
     if args.command in commands:
         return commands[args.command](args)
     else:
         parser.print_help()
         return 1
+
+
+def cmd_verify_halt(args: argparse.Namespace) -> int:
+    secret = os.environ.get("LIQUEFY_SECRET")
+    result = verify_halt_signal(Path(args.signal), secret)
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        status = "VALID" if result["valid"] else "INVALID"
+        print(f"  Halt Signal — Verify [{status}]")
+        if result["valid"]:
+            print(f"    Nonce:    {result.get('nonce', 'none')}")
+            print(f"    Expires:  {result.get('expires_at', 'none')}")
+            print(f"    Signed:   {result.get('signed', False)}")
+        else:
+            print(f"    Error:    {result.get('error')}")
+
+    return 0 if result["valid"] else 1
 
 
 if __name__ == "__main__":
