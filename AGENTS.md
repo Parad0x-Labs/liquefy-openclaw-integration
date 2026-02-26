@@ -191,6 +191,40 @@ python tools/liquefy_vision.py stats ./vault/vision.vsnx --json
 
 Install Pillow for perceptual dedup (`pip install Pillow`). Without it, falls back to exact SHA-256 dedup.
 
+### Token Ledger [EXPERIMENTAL]
+
+Track, budget, and audit LLM token usage across agent runs. Parses OpenAI, Anthropic, LangChain, and generic JSONL traces.
+
+> **EXPERIMENTAL**: Token counts are extracted from agent logs on a best-effort basis. Actual billing may differ from estimates. Use provider dashboards for exact costs.
+
+```bash
+make token-scan DIR=./agent-output                              # Scan logs for usage
+make token-budget ORG=acme DAILY=500000 MONTHLY=10000000        # Set limits
+make token-report ORG=acme PERIOD=today                         # Usage report
+make token-audit DIR=./agent-output                             # Detect waste
+```
+
+Or directly:
+
+```bash
+python tools/liquefy_token_ledger.py scan   --dir ./agent-output --json
+python tools/liquefy_token_ledger.py budget --org acme --daily 500000 --monthly 10000000
+python tools/liquefy_token_ledger.py report --org acme --period today --json
+python tools/liquefy_token_ledger.py audit  --dir ./agent-output --json
+```
+
+**What it detects:**
+- **Duplicate prompts** — identical prompts sent multiple times (wasted tokens)
+- **Oversized context** — inputs exceeding 100K tokens
+- **Model overkill** — small tasks routed to expensive models (GPT-4 for 50-token outputs)
+- **High input/output ratio** — sending too much context for small responses
+
+**Cost estimates** for GPT-4, GPT-4o, GPT-4o-mini, GPT-3.5-turbo, Claude 3/3.5/4 Opus/Sonnet/Haiku. Unknown models use a conservative default.
+
+**Budget alerts**: set daily/monthly token or cost limits per org. Reports show usage percentage and warn when approaching limits.
+
+All usage data is logged to the Liquefy audit chain for tamper-proof tracking.
+
 ### Config Guard (Update Protection)
 
 Never lose your customizations to a framework update again. Config Guard snapshots your configs, skills, prompts, and env files before an update and restores them after.

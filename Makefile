@@ -99,6 +99,12 @@ help: ## Show this help
 	@echo "    make vault-verify VAULT=./vault         Verify vault vs anchor"
 	@echo "    make vault-show PROOF=./proof.json      Display anchor proof"
 	@echo ""
+	@echo "  TOKEN LEDGER [EXPERIMENTAL]"
+	@echo "    make token-scan DIR=./agent-output      Scan logs for token usage"
+	@echo "    make token-budget ORG=acme DAILY=500000 Set token budgets"
+	@echo "    make token-report ORG=acme              Usage report"
+	@echo "    make token-audit DIR=./agent-output     Detect token waste"
+	@echo ""
 	@echo "  CONFIG GUARD (Update Protection)"
 	@echo "    make guard-save DIR=./my-agent          Snapshot before update"
 	@echo "    make guard-restore DIR=./my-agent       Restore after update"
@@ -381,6 +387,27 @@ vault-verify: $(VENV) ## Verify vault matches its on-chain anchor
 vault-show: $(VENV) ## Display an existing anchor proof
 	@test -n "$(PROOF)" || { echo "Usage: make vault-show PROOF=./vault/.anchor-proof.json"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py show --proof "$(PROOF)" --json
+
+# ─── Token Ledger [EXPERIMENTAL] ───
+
+token-scan: $(VENV) ## [EXPERIMENTAL] Scan agent logs for token usage
+	@test -n "$(DIR)" || { echo "Usage: make token-scan DIR=./agent-output"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_token_ledger.py scan --dir "$(DIR)" --json
+
+token-budget: $(VENV) ## [EXPERIMENTAL] Set token budgets per org
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_token_ledger.py budget \
+		--org "$(or $(ORG),default)" \
+		$(if $(DAILY),--daily $(DAILY),) $(if $(MONTHLY),--monthly $(MONTHLY),) \
+		$(if $(DAILY_COST),--daily-cost $(DAILY_COST),) --json
+
+token-report: $(VENV) ## [EXPERIMENTAL] Token usage report
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_token_ledger.py report \
+		--org "$(or $(ORG),default)" --period "$(or $(PERIOD),all)" \
+		$(if $(DIR),--dir "$(DIR)",) --json
+
+token-audit: $(VENV) ## [EXPERIMENTAL] Detect token waste
+	@test -n "$(DIR)" || { echo "Usage: make token-audit DIR=./agent-output"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_token_ledger.py audit --dir "$(DIR)" --json
 
 # ─── Config Guard (Update Protection) ───
 

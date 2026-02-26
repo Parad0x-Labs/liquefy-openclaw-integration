@@ -364,6 +364,22 @@ make cloud-verify VAULT=./vault BUCKET=my-backups         # Verify remote integr
 - **Integrity verification** — confirms remote files match local hashes
 - Install boto3: `pip install boto3`
 
+### Token Ledger [EXPERIMENTAL]
+
+Track where your tokens go, set budgets, and catch waste before the bill arrives.
+
+```bash
+make token-scan  DIR=./agent-output                   # Extract usage from logs
+make token-budget ORG=acme DAILY=500000               # Set daily limit
+make token-report ORG=acme PERIOD=today               # Usage breakdown
+make token-audit DIR=./agent-output                   # Find waste
+```
+
+- **Multi-provider** — parses OpenAI, Anthropic, LangChain, generic JSONL
+- **Waste detection** — duplicate prompts, oversized context, expensive models for trivial tasks
+- **Budgets** — daily/monthly token + cost limits with warnings
+- **Experimental** — cost estimates are approximate; use provider billing for exact amounts
+
 ### Config Guard (Update Protection)
 
 Framework update overwrites your configs? Not anymore.
