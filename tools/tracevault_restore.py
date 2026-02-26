@@ -244,7 +244,8 @@ def run_decompress(
 def safe_restore_target_path(out_dir: Path, rel_path: str) -> Path:
     rel_text = str(rel_path).replace("\\", "/")
     rel = Path(rel_text)
-    if rel.is_absolute():
+    # is_absolute() misses Unix-style leading "/" on Windows (no drive letter)
+    if rel.is_absolute() or rel_text.startswith("/"):
         raise ValueError("invalid_restore_path:absolute")
     if any(part == ".." for part in rel.parts):
         raise ValueError("invalid_restore_path:traversal")

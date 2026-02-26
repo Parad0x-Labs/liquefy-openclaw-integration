@@ -1,0 +1,15 @@
+# Force LF line endings on all text files to prevent CRLF hash mismatches on Windows
+* text=auto eol=lf
+
+# Binary test fixtures — never convert
+tests/golden/**/*.json  text eol=lf
+tests/fixtures/**       binary
+*.bin                   binary
+*.zst                   binary
+*.liq                   binary
+
+# Shell scripts must stay LF
+*.sh text eol=lf
+
+# Python must stay LF
+*.py text eol=lf
