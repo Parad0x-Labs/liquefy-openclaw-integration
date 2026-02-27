@@ -17,6 +17,9 @@ BUILD.md
 *_POST.md
 *_TWEET*
 
+# Scaffolded agent workspaces (user-generated, contain local paths)
+/agents/
+
 # Local analysis / one-off reports (never publish)
 api/CORRECTED_PERFORMANCE_REPORT.md
 api/FINAL_SPEED_COMPRESSION_REPORT.md

@@ -13,11 +13,13 @@ Usage:
   ./liquefy decompress <archive> <output>
   ./liquefy search <vault_dir> --query "<expr>" [--limit N] [--ignore-case] [--regex] [--json]
   ./liquefy openclaw --workspace ~/.openclaw --out ./openclaw-vault [--verify-mode full|fast|off] [--workers N] [--secure]
+  ./liquefy agents <list|show|map|scaffold> [options]
   ./liquefy sign <sign|verify-signature> <vault_dir> [--json]
 
 Notes:
-  - Uses the public decode-only appliance (no compression, no tuning).
-  - Runs offline: --network=none, read-only rootfs, dropped caps.
+  - decode/verify/decompress run in the public decode-only appliance.
+  - search/openclaw/sign/agents run local Python tools from this repo.
+  - Appliance execution runs offline: --network=none, read-only rootfs, dropped caps.
 EOF
 }
 
@@ -70,6 +72,10 @@ case "$cmd" in
   openclaw)
     shift
     exec python3 "$(dirname "$0")/tools/liquefy_openclaw.py" "$@"
+    ;;
+  agents)
+    shift
+    exec python3 "$(dirname "$0")/tools/liquefy_agents.py" "$@"
     ;;
   sign)
     shift

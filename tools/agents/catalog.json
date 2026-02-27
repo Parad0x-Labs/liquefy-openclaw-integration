@@ -1,0 +1,269 @@
+{
+  "schema": "liquefy.agent.catalog.v1",
+  "schema_version": 1,
+  "tool_version": "v1",
+  "agents": [
+    {
+      "id": "research-agent",
+      "name": "Research Agent",
+      "category": "knowledge",
+      "risk": "low",
+      "description": "Collects sources, builds concise briefs, and hands structured findings to downstream agents.",
+      "inputs": ["query", "scope", "time_window"],
+      "outputs": ["research_brief.md", "citations.json"],
+      "interacts_with": ["data-enrichment-agent", "reporting-agent"],
+      "liquefy_profile": "ratio",
+      "default_policy": "policies/strict.yml"
+    },
+    {
+      "id": "ops-automation-agent",
+      "name": "Ops Automation Agent",
+      "category": "operations",
+      "risk": "medium",
+      "description": "Executes operational checklists, triages failures, and opens actionable incident reports.",
+      "inputs": ["runbook", "environment", "priority"],
+      "outputs": ["ops_report.json", "incident_timeline.md"],
+      "interacts_with": ["workflow-orchestrator-agent", "reporting-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml"
+    },
+    {
+      "id": "data-enrichment-agent",
+      "name": "Data Enrichment Agent",
+      "category": "data",
+      "risk": "medium",
+      "description": "Normalizes records, adds metadata/tags, and emits clean JSONL for search/index pipelines.",
+      "inputs": ["dataset_path", "enrichment_rules"],
+      "outputs": ["enriched.jsonl", "quality_report.json"],
+      "interacts_with": ["reporting-agent", "batch-compute-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/balanced.yml"
+    },
+    {
+      "id": "customer-support-agent",
+      "name": "Customer Support Agent",
+      "category": "support",
+      "risk": "medium",
+      "description": "Classifies requests, drafts responses, and escalates policy-sensitive cases.",
+      "inputs": ["ticket_stream", "policy_context"],
+      "outputs": ["draft_responses.jsonl", "escalation_queue.json"],
+      "interacts_with": ["ops-automation-agent", "reporting-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml"
+    },
+    {
+      "id": "inbox-triage-agent",
+      "name": "Inbox Triage Agent",
+      "category": "communications",
+      "risk": "high",
+      "description": "Classifies inbox messages, drafts replies, and queues escalations without sending by default.",
+      "inputs": ["mailbox_stream", "priority_rules", "contact_book"],
+      "outputs": ["draft_replies.jsonl", "triage_queue.json"],
+      "interacts_with": ["email-campaign-agent", "calendar-coordinator-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml",
+      "safe_defaults": {
+        "action_mode": "draft_only",
+        "require_approval": true,
+        "max_actions_per_run": 25,
+        "max_actions_per_hour": 80,
+        "quiet_hours_utc": "22:00-07:00",
+        "recipient_allowlist_required": true,
+        "allow_external_links": false,
+        "deny_content_patterns": ["adult", "porn", "nsfw", "gambling", "scam"]
+      }
+    },
+    {
+      "id": "email-campaign-agent",
+      "name": "Email Campaign Agent",
+      "category": "communications",
+      "risk": "high",
+      "description": "Prepares segmented email campaigns with hard throttle controls and approval gates.",
+      "inputs": ["campaign_brief", "recipient_segments", "brand_policy"],
+      "outputs": ["campaign_drafts.json", "send_plan.json"],
+      "interacts_with": ["inbox-triage-agent", "reporting-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml",
+      "safe_defaults": {
+        "action_mode": "draft_only",
+        "require_approval": true,
+        "max_actions_per_run": 15,
+        "max_actions_per_hour": 40,
+        "quiet_hours_utc": "21:00-08:00",
+        "recipient_allowlist_required": true,
+        "allow_external_links": true,
+        "deny_content_patterns": ["adult", "porn", "nsfw", "gambling", "scam"]
+      }
+    },
+    {
+      "id": "telegram-community-agent",
+      "name": "Telegram Community Agent",
+      "category": "social",
+      "risk": "high",
+      "description": "Builds Telegram post drafts and moderation actions with anti-spam rails.",
+      "inputs": ["community_feed", "post_brief", "moderation_policy"],
+      "outputs": ["tg_drafts.jsonl", "moderation_actions.json"],
+      "interacts_with": ["social-publisher-agent", "reporting-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml",
+      "safe_defaults": {
+        "action_mode": "draft_only",
+        "require_approval": true,
+        "max_actions_per_run": 20,
+        "max_actions_per_hour": 60,
+        "quiet_hours_utc": "22:00-07:00",
+        "recipient_allowlist_required": false,
+        "allow_external_links": true,
+        "deny_content_patterns": ["adult", "porn", "nsfw", "gambling", "scam"]
+      }
+    },
+    {
+      "id": "social-publisher-agent",
+      "name": "Social Publisher Agent",
+      "category": "social",
+      "risk": "high",
+      "description": "Creates cross-platform social content drafts and enforces posting throttles before publish.",
+      "inputs": ["content_brief", "channel_policy", "schedule"],
+      "outputs": ["social_drafts.jsonl", "publish_queue.json"],
+      "interacts_with": ["telegram-community-agent", "reporting-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml",
+      "safe_defaults": {
+        "action_mode": "draft_only",
+        "require_approval": true,
+        "max_actions_per_run": 12,
+        "max_actions_per_hour": 30,
+        "quiet_hours_utc": "21:00-08:00",
+        "recipient_allowlist_required": false,
+        "allow_external_links": true,
+        "deny_content_patterns": ["adult", "porn", "nsfw", "gambling", "scam"]
+      }
+    },
+    {
+      "id": "calendar-coordinator-agent",
+      "name": "Calendar Coordinator Agent",
+      "category": "productivity",
+      "risk": "medium",
+      "description": "Proposes meetings and schedule changes with conflict checks; no auto-booking without approval.",
+      "inputs": ["calendar_state", "meeting_requests", "availability_rules"],
+      "outputs": ["proposed_events.json", "conflict_report.json"],
+      "interacts_with": ["inbox-triage-agent", "ops-automation-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml",
+      "safe_defaults": {
+        "action_mode": "draft_only",
+        "require_approval": true,
+        "max_actions_per_run": 20,
+        "max_actions_per_hour": 40,
+        "quiet_hours_utc": "22:00-06:00",
+        "recipient_allowlist_required": false,
+        "allow_external_links": false,
+        "deny_content_patterns": ["adult", "porn", "nsfw", "gambling", "scam"]
+      }
+    },
+    {
+      "id": "reporting-agent",
+      "name": "Reporting Agent",
+      "category": "analytics",
+      "risk": "low",
+      "description": "Builds executive summaries and operational dashboards from structured outputs.",
+      "inputs": ["source_artifacts", "audience"],
+      "outputs": ["summary.md", "kpi_snapshot.json"],
+      "interacts_with": ["research-agent", "ops-automation-agent", "customer-support-agent"],
+      "liquefy_profile": "ratio",
+      "default_policy": "policies/strict.yml"
+    },
+    {
+      "id": "batch-compute-agent",
+      "name": "Batch Compute Agent",
+      "category": "compute",
+      "risk": "medium",
+      "description": "Runs scheduled long jobs (OCR/transforms/indexing) with deterministic output checkpoints.",
+      "inputs": ["job_spec", "input_root"],
+      "outputs": ["batch_results.jsonl", "checkpoint_manifest.json"],
+      "interacts_with": ["streaming-gateway-agent", "workflow-orchestrator-agent"],
+      "liquefy_profile": "speed",
+      "default_policy": "policies/balanced.yml"
+    },
+    {
+      "id": "streaming-gateway-agent",
+      "name": "Streaming Gateway Agent",
+      "category": "integration",
+      "risk": "high",
+      "description": "Bridges inbound events to internal pipelines with strict schema and replay-safe trace IDs.",
+      "inputs": ["event_stream", "routing_rules"],
+      "outputs": ["normalized_events.jsonl", "delivery_report.json"],
+      "interacts_with": ["batch-compute-agent", "workflow-orchestrator-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml"
+    },
+    {
+      "id": "workflow-orchestrator-agent",
+      "name": "Workflow Orchestrator Agent",
+      "category": "orchestration",
+      "risk": "high",
+      "description": "Coordinates agent handoffs, enforces contracts, and records chain-of-custody markers.",
+      "inputs": ["workflow_graph", "handoff_contracts"],
+      "outputs": ["workflow_state.json", "handoff_log.jsonl"],
+      "interacts_with": ["openapi-tool-wrapper-agent", "mcp-tool-seller-agent", "reporting-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml"
+    },
+    {
+      "id": "openapi-tool-wrapper-agent",
+      "name": "OpenAPI Tool Wrapper Agent",
+      "category": "developer",
+      "risk": "medium",
+      "description": "Converts OpenAPI specs into validated tool wrappers and contract stubs for agent use.",
+      "inputs": ["openapi_spec", "target_runtime"],
+      "outputs": ["tool_wrappers/", "contract_report.json"],
+      "interacts_with": ["workflow-orchestrator-agent", "mcp-tool-seller-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml"
+    },
+    {
+      "id": "mcp-tool-seller-agent",
+      "name": "MCP Tool Seller Agent",
+      "category": "marketplace",
+      "risk": "high",
+      "description": "Publishes and versions tool metadata/catalog entries for controlled marketplace exposure.",
+      "inputs": ["tool_manifest", "pricing_policy"],
+      "outputs": ["mcp_catalog_entry.json", "publish_audit.json"],
+      "interacts_with": ["openapi-tool-wrapper-agent", "workflow-orchestrator-agent"],
+      "liquefy_profile": "default",
+      "default_policy": "policies/strict.yml"
+    }
+  ],
+  "chains": [
+    {
+      "id": "research_to_publish",
+      "name": "Research to Publish",
+      "description": "Source collection -> enrichment -> report generation",
+      "sequence": ["research-agent", "data-enrichment-agent", "reporting-agent"]
+    },
+    {
+      "id": "support_resolution",
+      "name": "Support Resolution",
+      "description": "Ticket triage -> ops escalation -> executive report",
+      "sequence": ["customer-support-agent", "ops-automation-agent", "reporting-agent"]
+    },
+    {
+      "id": "integration_backbone",
+      "name": "Integration Backbone",
+      "description": "Tool wrappers + orchestration + controlled publishing",
+      "sequence": ["openapi-tool-wrapper-agent", "workflow-orchestrator-agent", "mcp-tool-seller-agent"]
+    },
+    {
+      "id": "communications_ops",
+      "name": "Communications Ops",
+      "description": "Inbox triage -> campaign/social drafts -> reporting",
+      "sequence": ["inbox-triage-agent", "email-campaign-agent", "social-publisher-agent", "reporting-agent"]
+    },
+    {
+      "id": "calendar_assist",
+      "name": "Calendar Assist",
+      "description": "Inbox prioritization -> calendar proposals with approval gate",
+      "sequence": ["inbox-triage-agent", "calendar-coordinator-agent"]
+    }
+  ]
+}

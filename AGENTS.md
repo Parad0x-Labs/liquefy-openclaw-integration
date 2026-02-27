@@ -883,3 +883,4 @@ If you're building an AI agent that uses Liquefy:
 12. **Fleet**: Running multiple agents? Use `make fleet-register` + `make fleet-ingest` for shared namespace with quotas
 13. **Vision**: Agent screenshots eating storage? `make vision-pack DIR=./screenshots` deduplicates near-identical frames (80-95% savings)
 14. **Cloud Sync**: `make cloud-push VAULT=./vault BUCKET=x` syncs encrypted vaults to S3/R2/MinIO — cloud sees only opaque blobs
+15. **Agent Blueprints**: `liquefy agents list` shows 15 ready-made templates. `liquefy agents scaffold <id>` generates a full workspace with guardrails, handoff contracts, and safe-run wiring. See `docs/OPENCLAW_AGENT_BLUEPRINTS.md`

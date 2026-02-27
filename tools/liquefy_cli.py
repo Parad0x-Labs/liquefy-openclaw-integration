@@ -44,6 +44,7 @@ SUBCOMMAND_MAP = {
     "pack":      ("liquefy_openclaw",         "main",     "Pack OpenClaw workspace into vault"),
     "restore":   ("tracevault_restore",        "main",     "Restore files from vault"),
     "search":    ("liquefy_search",            "main",     "Search across vaults"),
+    "agents":    ("liquefy_agents",            "main",     "Agent templates, interaction maps, scaffolding"),
     "policy":    ("liquefy_policy_enforcer",   "main",     "Policy enforcement (audit/enforce/kill/watch)"),
     "safe-run":  ("liquefy_safe_run",          "main",     "Snapshot -> run -> enforce -> auto-rollback"),
     "cas":       ("liquefy_cas",               "main",     "Content-addressed storage (ingest/restore/gc)"),

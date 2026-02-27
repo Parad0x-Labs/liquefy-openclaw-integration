@@ -343,6 +343,26 @@ DNA can also run as a live sidecar, streaming payment events directly into vault
 
 ---
 
+### Agent Blueprints — Catalog, Chains & Scaffolding
+
+15 ready-made agent templates with built-in guardrails, interaction chains, and one-command scaffolding. Each template comes with safe defaults (draft-only mode, action caps, quiet hours, content deny-lists) so high-risk agents like email campaigns or social publishers can't go rogue out of the box.
+
+```bash
+liquefy agents list                                          # Browse 15 templates
+liquefy agents show inbox-triage-agent                       # Inspect guardrails & I/O contract
+liquefy agents map                                           # Show all interaction chains
+liquefy agents scaffold email-campaign-agent --runtime openclaw --out ./agents  # Generate workspace
+```
+
+- **Interaction chains** — pre-wired multi-agent flows (research-to-publish, support-resolution, communications-ops, etc.)
+- **Handoff contracts** — machine-readable JSON defining inputs, outputs, and peer agents
+- **Safe defaults** — communications agents ship `draft_only` with approval gates, action throttles, and recipient allowlists
+- **Runtime agnostic** — scaffolds for OpenClaw, NanoClaw, or generic Python runners
+
+See [`docs/OPENCLAW_AGENT_BLUEPRINTS.md`](./docs/OPENCLAW_AGENT_BLUEPRINTS.md) for the full catalog and chain documentation.
+
+---
+
 ### Vision — Screenshot Dedup (Engine #24)
 
 AI agents capture redundant screenshots (10-50 shots of the same static window). The Vision engine deduplicates near-identical images using perceptual hashing, storing only unique frames.
