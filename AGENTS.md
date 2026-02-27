@@ -885,3 +885,4 @@ If you're building an AI agent that uses Liquefy:
 14. **Cloud Sync**: `make cloud-push VAULT=./vault BUCKET=x` syncs encrypted vaults to S3/R2/MinIO — cloud sees only opaque blobs
 15. **Agent Blueprints**: `liquefy agents list` shows 15 ready-made templates. `liquefy agents scaffold <id>` generates a full workspace with guardrails, handoff contracts, and safe-run wiring. See `docs/OPENCLAW_AGENT_BLUEPRINTS.md`
 16. **State Guard**: Agent crashed and forgot its wallet balance? `liquefy state-guard init ~/.openclaw --files wallet-state.json --strict` declares critical state. `check` verifies before each run, `checkpoint` backs up after, `recover` restores on crash. No more session-reset amnesia
+17. **History Guard**: Agent has email/calendar/social access? `liquefy history-guard init` sets up continuous backup pulls + approval-gated destructive commands. Pre-action snapshots + auto-recovery. See `docs/OPENCLAW_HISTORY_GUARD.md`

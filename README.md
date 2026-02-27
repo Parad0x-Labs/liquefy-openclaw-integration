@@ -383,6 +383,29 @@ liquefy state-guard recover ~/.openclaw                # Restore last checkpoint
 
 ---
 
+### History Guard — Continuous Backup + Anti-Nuke Gate
+
+Agents with access to email, calendar, Telegram, Discord, or social accounts can go rogue and delete everything. History Guard continuously pulls authorized exports from configured providers, vaults them with compression + encryption, and gates risky commands behind approval tokens and pre-action snapshots.
+
+```bash
+liquefy history-guard init --workspace ~/.openclaw                       # Create config with provider templates
+liquefy history-guard set-approval-token --workspace ~/.openclaw         # Set approval hash for risky ops
+liquefy history-guard pull-once --workspace ~/.openclaw --json           # One-shot pull + vault cycle
+liquefy history-guard watch --workspace ~/.openclaw --poll-seconds 60    # Continuous pull daemon
+liquefy history-guard gate-action --workspace ~/.openclaw --command "python nuke_inbox.py" --json
+liquefy history-guard status --workspace ~/.openclaw --json              # Provider health dashboard
+```
+
+- **Risky command detection** — regex pattern matching (delete, remove, purge, wipe, ban, revoke, etc.) blocks dangerous commands without approval
+- **Approval token gate** — SHA-256 hashed token stored in config, verified via environment variable at runtime (HMAC-safe comparison)
+- **Pre-action snapshots** — full workspace vault created before any risky command executes, with tar.gz fallback if pack fails
+- **Auto-recovery** — if the gated command fails, workspace is automatically restored from the pre-action snapshot
+- **Provider framework** — pluggable exporters for Gmail, Calendar, Discord, Telegram, X, Instagram (bring your own pull script)
+
+See [`docs/OPENCLAW_HISTORY_GUARD.md`](./docs/OPENCLAW_HISTORY_GUARD.md) for architecture, approval model, and provider contract.
+
+---
+
 ### Vision — Screenshot Dedup (Engine #24)
 
 AI agents capture redundant screenshots (10-50 shots of the same static window). The Vision engine deduplicates near-identical images using perceptual hashing, storing only unique frames.
