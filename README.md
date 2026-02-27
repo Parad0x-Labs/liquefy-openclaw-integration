@@ -363,6 +363,26 @@ See [`docs/OPENCLAW_AGENT_BLUEPRINTS.md`](./docs/OPENCLAW_AGENT_BLUEPRINTS.md) f
 
 ---
 
+### State Guard — Session Reset Protection
+
+An agent crashes, the session resets, and suddenly it doesn't know there's $450K in the wallet. State Guard prevents this by declaring critical state files, verifying them before every run, and checkpointing them after. If state goes missing or drifts, the agent is blocked from acting until recovery.
+
+```bash
+liquefy state-guard init ~/.openclaw --files wallet-state.json positions.json --strict
+liquefy state-guard check ~/.openclaw --json          # Pre-flight: PASS or BLOCK
+liquefy state-guard checkpoint ~/.openclaw             # Post-flight: hash + backup state
+liquefy state-guard status ~/.openclaw                 # Dashboard: file health at a glance
+liquefy state-guard recover ~/.openclaw                # Restore last checkpointed state
+```
+
+- **Drift detection** — SHA-256 comparison between checkpointed and current state; catches silent corruption or unintended writes
+- **Strict mode** — blocks the agent from running if any declared state file is missing or drifted (`--strict`)
+- **Auto-discovery** — detects common state file patterns (`*-state.json`, `*-history.jsonl`) in the workspace
+- **Checkpoint + recover** — full file backups with one-command restore after crashes or resets
+- **Staleness checks** — warns when state files haven't been updated within the configured window
+
+---
+
 ### Vision — Screenshot Dedup (Engine #24)
 
 AI agents capture redundant screenshots (10-50 shots of the same static window). The Vision engine deduplicates near-identical images using perceptual hashing, storing only unique frames.

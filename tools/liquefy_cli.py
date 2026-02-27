@@ -51,6 +51,7 @@ SUBCOMMAND_MAP = {
     "tokens":    ("liquefy_token_ledger",      "main",     "Token ledger (scan/budget/report/audit)"),
     "telemetry": ("liquefy_telemetry_forward", "main",     "Forward audit events to SIEM"),
     "guard":     ("liquefy_config_guard",      "main",     "Config Guard (save/restore/diff)"),
+    "state-guard": ("liquefy_state_guard",     "main",     "State Guard (init/check/checkpoint/recover)"),
     "anchor":    ("liquefy_vault_anchor",      "main",     "On-chain vault integrity proofs"),
     "events":    ("liquefy_events",            "main",     "Agent event trace operations"),
     "vision":    ("liquefy_vision",            "main",     "Vision dedup engine"),
