@@ -13,7 +13,7 @@ Liquefy is an entropy-native compression engine and security layer for AI agent 
 
 - **24 compression engines** — domain-aware compressors for JSON, logs, SQL, network captures, images, and more. Not a wrapper around zstd — each engine exploits the structure of its data type for ratios generic tools can't touch.
 - **Bit-perfect verification (MRTV)** — every compress/decompress cycle is verified. Zero silent corruption. What goes in comes out identical, provably.
-- **Tamper-proof audit chains** — SHA-256 hash-chained logs of every operation. Automatic secret redaction. HTML compliance reports. When the auditor arrives, you have answers.
+- **Cryptographic Flight Recorder** — SHA-256 hash-chained audit trails with on-chain anchoring (Solana). Automatic secret redaction. One-click HTML forensic reports. When the auditor, regulator, or lawyer arrives, you have mathematically verifiable proof — not just logs.
 - **Active agent protection** — policy enforcement with kill switches, token budget caps, sentinel file monitoring, and automated rollback. If an agent goes rogue, Liquefy halts it before damage is done.
 - **One layer for all frameworks** — OpenClaw, NanoClaw, LangChain, CrewAI, Claude Agent SDK, or any agent that touches the filesystem.
 
@@ -359,19 +359,21 @@ make vision-stats SRC=./vault/vision.vsnx         # Show dedup stats
 - **VSNX container** — compact binary format with manifest + compressed unique blobs
 - Install Pillow for full perceptual mode: `pip install Pillow`
 
-### Compliance Reports (One-Click Audit)
+### Cryptographic Flight Recorder (Forensic Replay & Tamper-Proofing)
 
-Generate human-readable HTML compliance reports from the tamper-proof audit chain. Designed for CTOs and compliance officers who need proof without running terminal commands.
+Every agent run is captured into a cryptographically signed, tamper-proof "black box." If an agent goes rogue — drops a database, leaks customer data, burns $50K in API calls — you don't grep through JSON. You open an HTML report and see exactly what happened, verified by an unbroken SHA-256 hash chain that proves the logs were not altered after the fact.
 
 ```bash
-make compliance VAULT=./vault ORG=acme TITLE="Q1 Audit"  # HTML compliance report
-make compliance-verify VAULT=./vault                       # Pass/fail integrity check
-make compliance-timeline VAULT=./vault                     # Chronological event timeline
+make compliance VAULT=./vault ORG=acme TITLE="Q1 Audit"  # HTML forensic report
+make compliance-verify VAULT=./vault                       # Verify chain integrity (pass/fail)
+make compliance-timeline VAULT=./vault                     # Chronological event replay
+make vault-anchor VAULT=./vault                            # Anchor proof to Solana blockchain
 ```
 
-- **Chain verification** — SHA-256 hash chain integrity check with per-entry validation
-- **Event breakdown** — counts, types, timestamps, and activity summaries
-- **Dark-mode HTML** — clean, professional reports ready for auditors
+- **SHA-256 hash chain** — every audit event links to the previous via cryptographic hash. Tamper with one entry and the entire chain breaks. Verified per-entry by `compliance verify`.
+- **On-chain anchoring** — vault integrity proofs (file hashes, chain tip, key fingerprint) can be anchored to Solana. Third parties can independently verify your logs existed at a specific point in time without seeing the data.
+- **One-click HTML reports** — professional forensic dashboards designed for CTOs, compliance officers, and legal teams who need answers without touching a terminal.
+- **Holds up in audits** — SOC2, regulatory review, or incident investigation. The combination of hash-chained logs + on-chain timestamp proofs gives you mathematical certainty, not just "trust us."
 
 ### Cloud Sync (S3 / R2 / MinIO)
 
