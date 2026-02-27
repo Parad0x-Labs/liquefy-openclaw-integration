@@ -232,7 +232,7 @@ python tools/openclaw_tracevault.py pack --agent <agentId> --since-days 7 --out 
 ## ⚖️ License
 Liquefy is licensed under the **Business Source License 1.1 (BUSL-1.1)**:
 - **Free use (including production)**: Personal/private non-commercial, nonprofit, and academic/educational/research use are permitted under the Additional Use Grant (see `LICENSE`).
-- **Commercial / for-profit use**: Requires a commercial license from Parad0x Labs (including internal company use, SaaS/hosted services, embedding, and paid-client work). See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md).
+- **Commercial / for-profit use**: Requires a commercial license from Parad0x Labs (including internal company use, SaaS/hosted services, embedding, and paid-client work). **30-Day Evaluation License available** for proof-of-concept testing — no registration required. See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md).
 - **Change Date**: 2028-02-22 — after this date, automatically converts to **GPL-2.0-or-later**.
 - **Decode-only recovery**: Always free. No license required to decompress or verify `.null` archives.
 

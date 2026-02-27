@@ -33,7 +33,7 @@ The following activities **require a commercial license** (non-exhaustive):
 
 | Activity | Example |
 |----------|---------|
-| **Internal business use** | Running Liquefy on corporate machines, CI/CD runners, or cloud instances for any business purpose — including evaluation, staging, and pre-production |
+| **Internal business use** | Running Liquefy on corporate machines, CI/CD runners, or cloud instances for any business purpose (a 30-Day Evaluation License is available for initial testing — see below) |
 | **SaaS / hosted / managed service** | Offering Liquefy-powered compression, auditing, or vault functionality as part of a paid or ad-supported service |
 | **Embedded / bundled product** | Shipping Liquefy (or substantial portions) inside a commercial product, platform, or appliance |
 | **Monetized wrapper** | Building a paid product, managed offering, or "open-source" project that commercially resells access to Liquefy functionality |
@@ -61,6 +61,22 @@ The following activities **require a commercial license** (non-exhaustive):
 - OSS project selling hosted/API access to Liquefy-powered functionality
 - Agency or contractor using Liquefy on behalf of a paying client
 - Commercial product embedding Liquefy as part of its pipeline
+
+## 30-Day Evaluation License
+
+Commercial entities may use Liquefy under a **30-Day Evaluation License** for the purpose of technical evaluation, proof-of-concept testing, and integration validation — without purchasing a commercial license.
+
+**Terms:**
+
+- **Duration:** 30 calendar days from first use within the organization.
+- **Scope:** Non-production, evaluation-only. Testing on staging environments, developer machines, and CI/CD test pipelines is permitted.
+- **Not permitted:** Production workloads, customer-facing deployments, or processing live business data during the evaluation period.
+- **No registration required:** The evaluation license is automatic. No key, no phone-home, no approval needed to start testing.
+- **After 30 days:** Continued use of any kind — including non-production — requires a purchased Commercial License. Organizations must either purchase a license or remove Liquefy from all systems.
+
+**Getting started with your evaluation:**
+
+We recommend scheduling a brief kickoff call so we can ensure your team has the optimal configuration for your environment. Email `hello@parad0xlabs.com` with subject `Liquefy Evaluation — [Company Name]` and we'll get you set up.
 
 ## Commercial tiers
 
