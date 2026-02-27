@@ -16,11 +16,13 @@ Usage:
   ./liquefy agents <list|show|map|scaffold> [options]
   ./liquefy state-guard <init|check|checkpoint|status|recover> <workspace> [options]
   ./liquefy history-guard <init|set-approval-token|pull-once|watch|gate-action|status> [options]
+  ./liquefy redact <scan|apply|profile> <path> [--out DIR] [--json]
+  ./liquefy denoise <filter|stats|extract> <path> [--out DIR] [--trace-id ID] [--json]
   ./liquefy sign <sign|verify-signature> <vault_dir> [--json]
 
 Notes:
   - decode/verify/decompress run in the public decode-only appliance.
-  - search/openclaw/sign/agents/state-guard/history-guard run local Python tools from this repo.
+  - All other commands run local Python tools from this repo.
   - Appliance execution runs offline: --network=none, read-only rootfs, dropped caps.
 EOF
 }
@@ -86,6 +88,14 @@ case "$cmd" in
   history-guard)
     shift
     exec python3 "$(dirname "$0")/tools/liquefy_history_guard.py" "$@"
+    ;;
+  redact)
+    shift
+    exec python3 "$(dirname "$0")/tools/liquefy_redact.py" "$@"
+    ;;
+  denoise)
+    shift
+    exec python3 "$(dirname "$0")/tools/liquefy_denoise.py" "$@"
     ;;
   sign)
     shift

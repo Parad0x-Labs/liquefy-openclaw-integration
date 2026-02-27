@@ -53,6 +53,8 @@ SUBCOMMAND_MAP = {
     "guard":     ("liquefy_config_guard",      "main",     "Config Guard (save/restore/diff)"),
     "state-guard": ("liquefy_state_guard",     "main",     "State Guard (init/check/checkpoint/recover)"),
     "history-guard": ("liquefy_history_guard", "main",     "Continuous pull + anti-nuke action gating"),
+    "redact":    ("liquefy_redact",            "main",     "PII/secret redaction before LLM ingestion"),
+    "denoise":   ("liquefy_denoise",           "main",     "Log de-noising for context window optimization"),
     "anchor":    ("liquefy_vault_anchor",      "main",     "On-chain vault integrity proofs"),
     "events":    ("liquefy_events",            "main",     "Agent event trace operations"),
     "vision":    ("liquefy_vision",            "main",     "Vision dedup engine"),

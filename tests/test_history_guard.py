@@ -272,3 +272,91 @@ def test_history_guard_gate_action_allows_with_token_and_avoids_recursive_snapsh
     assert str(snapshot_vault).startswith(
         ("/tmp/liquefy-history-guard-snapshots", "/private/tmp/liquefy-history-guard-snapshots")
     )
+
+
+def test_history_guard_export_graph_json_contract(tmp_path):
+    workspace = tmp_path / "workspace"
+    _run_json(
+        [
+            sys.executable,
+            str(HISTORY_GUARD),
+            "init",
+            "--workspace",
+            str(workspace),
+            "--json",
+        ]
+    )
+
+    payload = _run_json(
+        [
+            sys.executable,
+            str(HISTORY_GUARD),
+            "export-graph",
+            "--workspace",
+            str(workspace),
+            "--max-runs-per-provider",
+            "5",
+            "--max-actions",
+            "20",
+            "--json",
+        ]
+    )
+    assert payload["schema_version"] == "liquefy.history-guard.cli.v1"
+    assert payload["tool"] == "liquefy_history_guard"
+    assert payload["command"] == "export-graph"
+    assert payload["ok"] is True
+
+    result = payload["result"]
+    out_path = Path(result["out_path"])
+    assert out_path.exists()
+    graph = result["graph"]
+    assert graph["schema"] == "liquefy.history_graph.v1"
+    assert graph["schema_version"] == 1
+    assert graph["node_count"] >= 1
+    assert graph["edge_count"] >= 1
+    assert any(n.get("kind") == "workspace" for n in graph["nodes"])
+    assert any(n.get("kind") == "provider" for n in graph["nodes"])
+
+
+def test_history_guard_render_graph_writes_html(tmp_path):
+    in_path = tmp_path / "graph.json"
+    out_path = tmp_path / "graph.html"
+    graph = {
+        "schema": "liquefy.history_graph.v1",
+        "schema_version": 1,
+        "generated_at_utc": "2026-01-01T00:00:00Z",
+        "nodes": [
+            {"id": "workspace:/tmp/ws", "kind": "workspace", "label": "ws"},
+            {"id": "provider:gmail", "kind": "provider", "label": "gmail"},
+        ],
+        "edges": [
+            {"source": "workspace:/tmp/ws", "target": "provider:gmail", "rel": "configured_provider", "weight": 1.0}
+        ],
+    }
+    in_path.write_text(json.dumps(graph, indent=2) + "\n", encoding="utf-8")
+
+    payload = _run_json(
+        [
+            sys.executable,
+            str(HISTORY_GUARD),
+            "render-graph",
+            "--in",
+            str(in_path),
+            "--out",
+            str(out_path),
+            "--title",
+            "Test Graph",
+            "--json",
+        ]
+    )
+    assert payload["schema_version"] == "liquefy.history-guard.cli.v1"
+    assert payload["tool"] == "liquefy_history_guard"
+    assert payload["command"] == "render-graph"
+    assert payload["ok"] is True
+    assert out_path.exists()
+    html = out_path.read_text(encoding="utf-8")
+    assert "<canvas id=\"graph\"></canvas>" in html
+    assert "const graph =" in html
+    assert "id=\"noteText\"" in html
+    assert "id=\"saveNote\"" in html
+    assert "Controls: Drag node = move." in html

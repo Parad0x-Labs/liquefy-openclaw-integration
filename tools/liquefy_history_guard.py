@@ -1147,6 +1147,887 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 
+def _resolve_vault_root(workspace: Path, cfg: Dict[str, Any]) -> Path:
+    root = Path(str(cfg.get("vault_root", workspace / ".liquefy" / "history_vaults"))).expanduser()
+    if not root.is_absolute():
+        root = workspace / root
+    return root
+
+
+def _resolve_snapshot_root(workspace: Path, cfg: Dict[str, Any]) -> Path:
+    raw = str(cfg.get("snapshot_vault_root", "/tmp/liquefy-history-guard-snapshots")).strip()
+    root = Path(raw).expanduser()
+    if not root.is_absolute():
+        root = workspace / root
+    try:
+        workspace_resolved = workspace.resolve()
+        root_resolved = root.resolve()
+        if workspace_resolved == root_resolved or workspace_resolved in root_resolved.parents:
+            root = Path("/tmp") / "liquefy-history-guard-snapshots"
+    except Exception:
+        root = Path("/tmp") / "liquefy-history-guard-snapshots"
+    return root / workspace.name
+
+
+def _build_history_graph(
+    workspace: Path,
+    cfg: Dict[str, Any],
+    state: Dict[str, Any],
+    max_runs_per_provider: int,
+    max_actions: int,
+) -> Dict[str, Any]:
+    providers_cfg = sorted(cfg.get("providers", []), key=lambda p: str(p.get("id", "")))
+    state_providers = state.get("providers", {})
+    actions = list(state.get("actions", []))
+
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+    seen_nodes: set[str] = set()
+
+    def add_node(node: Dict[str, Any]) -> None:
+        nid = str(node.get("id", "")).strip()
+        if not nid or nid in seen_nodes:
+            return
+        seen_nodes.add(nid)
+        nodes.append(node)
+
+    def add_edge(source: str, target: str, rel: str, weight: float = 1.0) -> None:
+        edges.append({"source": source, "target": target, "rel": rel, "weight": float(weight)})
+
+    workspace_node_id = f"workspace:{workspace}"
+    add_node(
+        {
+            "id": workspace_node_id,
+            "kind": "workspace",
+            "label": workspace.name or "workspace",
+            "path": str(workspace),
+        }
+    )
+
+    vault_root = _resolve_vault_root(workspace, cfg)
+    snapshot_root = _resolve_snapshot_root(workspace, cfg)
+
+    for provider in providers_cfg:
+        provider_id = _safe_provider_id(str(provider.get("id", "")))
+        provider_node_id = f"provider:{provider_id}"
+        provider_state = state_providers.get(provider_id, {})
+        add_node(
+            {
+                "id": provider_node_id,
+                "kind": "provider",
+                "label": provider_id,
+                "provider_type": str(provider.get("type", "unknown")),
+                "enabled": bool(provider.get("enabled", False)),
+                "interval_seconds": int(_provider_interval_seconds(provider, cfg)),
+                "last_ok": provider_state.get("last_ok"),
+                "last_pull_utc": provider_state.get("last_pull_utc"),
+                "last_files_exported": int(provider_state.get("last_files_exported", 0)),
+                "last_exported_bytes": int(provider_state.get("last_exported_bytes", 0)),
+            }
+        )
+        add_edge(workspace_node_id, provider_node_id, "configured_provider")
+
+        provider_runs_root = vault_root / provider_id
+        run_dirs: List[Path] = []
+        if provider_runs_root.exists():
+            run_dirs = sorted(
+                [p for p in provider_runs_root.iterdir() if p.is_dir() and not p.name.startswith(".")],
+                key=lambda p: p.name,
+                reverse=True,
+            )
+        for run_dir in run_dirs[: max(1, int(max_runs_per_provider))]:
+            run_node_id = f"vault_run:{provider_id}:{run_dir.name}"
+            try:
+                vault_bytes = _count_total_bytes(_collect_files(run_dir))
+            except Exception:
+                vault_bytes = 0
+            add_node(
+                {
+                    "id": run_node_id,
+                    "kind": "vault_run",
+                    "label": run_dir.name,
+                    "provider_id": provider_id,
+                    "path": str(run_dir),
+                    "vault_bytes": int(vault_bytes),
+                }
+            )
+            add_edge(provider_node_id, run_node_id, "vault_run")
+
+    for idx, action in enumerate(actions[-max(1, int(max_actions)) :], start=1):
+        a_type = str(action.get("type", "action"))
+        action_id = f"action:{idx}:{str(action.get('ts', 'unknown'))}:{a_type}"
+        add_node(
+            {
+                "id": action_id,
+                "kind": "action",
+                "label": a_type,
+                "ts": action.get("ts"),
+                "command": action.get("command"),
+                "risky": bool(action.get("risky", False)),
+                "approval_ok": action.get("approval_ok"),
+                "action_rc": action.get("action_rc"),
+            }
+        )
+        add_edge(workspace_node_id, action_id, "recorded_action")
+
+        snap_dir = str(action.get("snapshot_dir", "")).strip()
+        if snap_dir:
+            snap_name = Path(snap_dir).name
+            snap_id = f"snapshot:{snap_name}"
+            add_node(
+                {
+                    "id": snap_id,
+                    "kind": "snapshot",
+                    "label": snap_name,
+                    "path": snap_dir,
+                }
+            )
+            add_edge(action_id, snap_id, "snapshot")
+
+    # Include latest snapshot directories even if actions were trimmed.
+    snap_dirs: List[Path] = []
+    if snapshot_root.exists():
+        snap_dirs = sorted(
+            [p for p in snapshot_root.iterdir() if p.is_dir() and not p.name.startswith(".")],
+            key=lambda p: p.name,
+            reverse=True,
+        )
+    for snap_dir in snap_dirs[: max(1, int(max_actions))]:
+        snap_name = snap_dir.name
+        snap_id = f"snapshot:{snap_name}"
+        if snap_id in seen_nodes:
+            continue
+        add_node(
+            {
+                "id": snap_id,
+                "kind": "snapshot",
+                "label": snap_name,
+                "path": str(snap_dir),
+            }
+        )
+        add_edge(workspace_node_id, snap_id, "snapshot_dir")
+
+    nodes_sorted = sorted(nodes, key=lambda n: str(n.get("id", "")))
+    edges_sorted = sorted(
+        edges,
+        key=lambda e: (str(e.get("source", "")), str(e.get("target", "")), str(e.get("rel", ""))),
+    )
+    node_kinds: Dict[str, int] = {}
+    for node in nodes_sorted:
+        kind = str(node.get("kind", "unknown"))
+        node_kinds[kind] = node_kinds.get(kind, 0) + 1
+
+    return {
+        "schema": "liquefy.history_graph.v1",
+        "schema_version": 1,
+        "generated_at_utc": _utc_now(),
+        "workspace": str(workspace),
+        "vault_root": str(vault_root),
+        "snapshot_root": str(snapshot_root),
+        "node_count": len(nodes_sorted),
+        "edge_count": len(edges_sorted),
+        "node_kinds": node_kinds,
+        "nodes": nodes_sorted,
+        "edges": edges_sorted,
+    }
+
+
+def cmd_export_graph(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace).expanduser().resolve()
+    cfg, cpath, err = _load_config(workspace, Path(args.config).expanduser().resolve() if args.config else None)
+    if err:
+        res = {"error": err}
+        if args.json:
+            _emit("export-graph", False, res, Path(args.json_file).expanduser().resolve() if args.json_file else None)
+        else:
+            print(err, file=sys.stderr)
+        return 1
+
+    assert cfg is not None
+    assert cpath is not None
+    state_path = _default_paths(workspace)["state"]
+    state = _load_state(state_path)
+    graph = _build_history_graph(
+        workspace=workspace,
+        cfg=cfg,
+        state=state,
+        max_runs_per_provider=max(1, int(args.max_runs_per_provider)),
+        max_actions=max(1, int(args.max_actions)),
+    )
+
+    out_path = Path(args.out).expanduser().resolve() if args.out else (workspace / ".liquefy" / "history_graph.json")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(graph, indent=2) + "\n", encoding="utf-8")
+
+    result = {
+        "workspace": str(workspace),
+        "config_path": str(cpath),
+        "state_path": str(state_path),
+        "out_path": str(out_path),
+        "graph": graph,
+    }
+    if args.json:
+        _emit("export-graph", True, result, Path(args.json_file).expanduser().resolve() if args.json_file else None)
+    else:
+        print(f"export-graph: wrote {out_path}")
+        print(f"  nodes={graph['node_count']} edges={graph['edge_count']}")
+    return 0
+
+
+def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
+    graph_json = json.dumps(graph, separators=(",", ":")).replace("</", "<\\/")
+    safe_title = str(title).replace("<", "&lt;").replace(">", "&gt;")
+    template = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>__TITLE__</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --fg: #d6dde6;
+      --muted: #8b949e;
+      --edge: #39414a;
+      --workspace: #58a6ff;
+      --provider: #2ea043;
+      --vault: #f2cc60;
+      --action: #ff7b72;
+      --snapshot: #a371f7;
+      --other: #8b949e;
+      --panel: rgba(13, 17, 23, 0.92);
+      --border: #2b3440;
+      --accent: #58a6ff;
+    }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+    #topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid #222a33;
+      background: #0d1117;
+    }
+    #title {
+      font-weight: 700;
+      font-size: 15px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #meta {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: right;
+    }
+    #stage {
+      position: relative;
+      flex: 1;
+      min-height: 600px;
+      overflow: hidden;
+      background:
+        radial-gradient(1200px 800px at 20% -10%, rgba(88,166,255,0.10), transparent 65%),
+        radial-gradient(1000px 700px at 120% 20%, rgba(163,113,247,0.08), transparent 65%),
+        var(--bg);
+    }
+    #graph {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+    #graph.dragging {
+      cursor: grabbing;
+    }
+    .panel {
+      position: absolute;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      backdrop-filter: blur(6px);
+    }
+    #controls {
+      left: 12px;
+      top: 12px;
+      padding: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-width: 650px;
+    }
+    #controls button {
+      background: #1f2937;
+      color: var(--fg);
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 6px 9px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #controls button:hover {
+      border-color: var(--accent);
+    }
+    #legend {
+      right: 12px;
+      top: 12px;
+      padding: 10px 12px;
+      min-width: 190px;
+    }
+    .lg {
+      display: flex;
+      align-items: center;
+      margin: 4px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-right: 8px;
+      border: 1px solid rgba(255,255,255,0.25);
+    }
+    #notes {
+      right: 12px;
+      bottom: 12px;
+      width: 320px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #notes h4 {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    #selectedNode {
+      font-size: 12px;
+      color: var(--fg);
+      padding: 6px 8px;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.2);
+      min-height: 18px;
+      word-break: break-all;
+    }
+    #noteText {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      background: rgba(0,0,0,0.25);
+      color: var(--fg);
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 8px;
+      box-sizing: border-box;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    #noteActions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    #noteActions button {
+      background: #1f2937;
+      color: var(--fg);
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    #help {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    @media (max-width: 980px) {
+      #legend, #notes {
+        position: static;
+        margin: 12px;
+      }
+      #stage {
+        overflow: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="topbar">
+    <div id="title">__TITLE__</div>
+    <div id="meta"></div>
+  </div>
+  <div id="stage">
+    <canvas id="graph"></canvas>
+    <div id="controls" class="panel">
+      <button id="btnResetView">Reset View</button>
+      <button id="btnCenter">Center</button>
+      <button id="btnShuffle">Re-layout</button>
+      <button id="btnPause">Pause Physics</button>
+      <button id="btnResume">Resume Physics</button>
+    </div>
+    <div id="legend" class="panel">
+      <div class="lg"><span class="dot" style="background: var(--workspace)"></span>workspace</div>
+      <div class="lg"><span class="dot" style="background: var(--provider)"></span>provider</div>
+      <div class="lg"><span class="dot" style="background: var(--vault)"></span>vault_run</div>
+      <div class="lg"><span class="dot" style="background: var(--action)"></span>action</div>
+      <div class="lg"><span class="dot" style="background: var(--snapshot)"></span>snapshot</div>
+      <div class="lg"><span class="dot" style="background: var(--other)"></span>other</div>
+    </div>
+    <div id="notes" class="panel">
+      <h4>Node Notes</h4>
+      <div id="selectedNode">No node selected</div>
+      <textarea id="noteText" placeholder="Attach notes to the selected node..."></textarea>
+      <div id="noteActions">
+        <button id="saveNote">Save note</button>
+        <button id="clearNote">Clear note</button>
+        <button id="exportNotes">Export notes</button>
+      </div>
+      <div id="help">
+        Controls: Drag node = move. Drag empty = rotate. Shift+drag or middle/right drag = pan.
+        Scroll = zoom. Connections stay attached while rearranging.
+      </div>
+    </div>
+  </div>
+  <script>
+  const graph = __GRAPH_JSON__;
+  const canvas = document.getElementById("graph");
+  const ctx = canvas.getContext("2d");
+  const meta = document.getElementById("meta");
+  const selectedNodeEl = document.getElementById("selectedNode");
+  const noteTextEl = document.getElementById("noteText");
+  const btnSaveNote = document.getElementById("saveNote");
+  const btnClearNote = document.getElementById("clearNote");
+  const btnExportNotes = document.getElementById("exportNotes");
+  const btnResetView = document.getElementById("btnResetView");
+  const btnCenter = document.getElementById("btnCenter");
+  const btnShuffle = document.getElementById("btnShuffle");
+  const btnPause = document.getElementById("btnPause");
+  const btnResume = document.getElementById("btnResume");
+
+  const kindColor = {
+    workspace: "#58a6ff",
+    provider: "#2ea043",
+    vault_run: "#f2cc60",
+    action: "#ff7b72",
+    snapshot: "#a371f7",
+    other: "#8b949e",
+  };
+
+  function hashKey(s) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(16);
+  }
+
+  const notesStoreKey = "liquefy-history-graph-notes:" + hashKey(String(graph.workspace || "workspace"));
+  let notesMap = {};
+  try {
+    const raw = localStorage.getItem(notesStoreKey);
+    if (raw) {
+      notesMap = JSON.parse(raw);
+      if (!notesMap || typeof notesMap !== "object") notesMap = {};
+    }
+  } catch (_) {
+    notesMap = {};
+  }
+
+  function persistNotes() {
+    try {
+      localStorage.setItem(notesStoreKey, JSON.stringify(notesMap));
+    } catch (_) {}
+  }
+
+  const width = () => canvas.clientWidth || 1200;
+  const height = () => canvas.clientHeight || 720;
+  const rand = (seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647)(42);
+
+  const nodes = (graph.nodes || []).map((n, i) => {
+    const ring = Math.max(1, Math.sqrt(graph.nodes.length || 1));
+    const angle = (i / Math.max(1, graph.nodes.length)) * Math.PI * 2;
+    const radius = 120 + (i % Math.ceil(ring)) * 35;
+    return {
+      ...n,
+      x: Math.cos(angle) * radius + (rand() - 0.5) * 40,
+      y: Math.sin(angle) * radius + (rand() - 0.5) * 40,
+      z: (rand() - 0.5) * 220,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      fixed: false,
+    };
+  });
+
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const edges = (graph.edges || [])
+    .map(e => ({ ...e, a: byId.get(e.source), b: byId.get(e.target) }))
+    .filter(e => e.a && e.b);
+
+  let camera = {
+    rotX: 0.52,
+    rotY: 0.58,
+    panX: 0,
+    panY: 0,
+    zoom: 1.0,
+    depth: 720,
+  };
+  let physicsPaused = false;
+  let selectedNode = null;
+  let dragMode = "none"; // none | node | rotate | pan
+  let lastMouse = { x: 0, y: 0 };
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(canvas.clientWidth * dpr);
+    canvas.height = Math.floor(canvas.clientHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+
+  function project(node) {
+    const cosY = Math.cos(camera.rotY), sinY = Math.sin(camera.rotY);
+    const cosX = Math.cos(camera.rotX), sinX = Math.sin(camera.rotX);
+    const x1 = node.x * cosY + node.z * sinY;
+    const z1 = -node.x * sinY + node.z * cosY;
+    const y2 = node.y * cosX - z1 * sinX;
+    const z2 = node.y * sinX + z1 * cosX;
+    const p = camera.depth / (camera.depth + z2 + 420);
+    const sx = width() / 2 + camera.panX + x1 * p * camera.zoom;
+    const sy = height() / 2 + camera.panY + y2 * p * camera.zoom;
+    const r = Math.max(3.5, Math.min(14, 5.5 * p * camera.zoom));
+    return { sx, sy, p, z: z2, r };
+  }
+
+  function pickNode(mx, my) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const n of nodes) {
+      const pr = project(n);
+      const dx = pr.sx - mx;
+      const dy = pr.sy - my;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= pr.r + 5 && dist < bestDist) {
+        best = n;
+        bestDist = dist;
+      }
+    }
+    return best;
+  }
+
+  function updateSelectedNodeUI() {
+    if (!selectedNode) {
+      selectedNodeEl.textContent = "No node selected";
+      noteTextEl.value = "";
+      return;
+    }
+    selectedNodeEl.textContent = `${selectedNode.label || selectedNode.id} (${selectedNode.kind || "other"})`;
+    noteTextEl.value = String(notesMap[selectedNode.id] || "");
+  }
+
+  btnSaveNote.addEventListener("click", () => {
+    if (!selectedNode) return;
+    const val = String(noteTextEl.value || "").trim();
+    if (val) notesMap[selectedNode.id] = val;
+    else delete notesMap[selectedNode.id];
+    persistNotes();
+  });
+  btnClearNote.addEventListener("click", () => {
+    if (!selectedNode) return;
+    delete notesMap[selectedNode.id];
+    noteTextEl.value = "";
+    persistNotes();
+  });
+  btnExportNotes.addEventListener("click", () => {
+    const payload = {
+      schema: "liquefy.history_graph_notes.v1",
+      schema_version: 1,
+      workspace: graph.workspace || null,
+      generated_at_utc: new Date().toISOString(),
+      notes: notesMap,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "history_graph_notes.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  btnResetView.addEventListener("click", () => {
+    camera = { rotX: 0.52, rotY: 0.58, panX: 0, panY: 0, zoom: 1.0, depth: 720 };
+  });
+  btnCenter.addEventListener("click", () => {
+    camera.panX = 0;
+    camera.panY = 0;
+  });
+  btnShuffle.addEventListener("click", () => {
+    for (const n of nodes) {
+      n.x += (rand() - 0.5) * 140;
+      n.y += (rand() - 0.5) * 140;
+      n.z += (rand() - 0.5) * 140;
+    }
+  });
+  btnPause.addEventListener("click", () => { physicsPaused = true; });
+  btnResume.addEventListener("click", () => { physicsPaused = false; });
+
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const delta = Math.sign(e.deltaY);
+    const factor = delta > 0 ? 0.92 : 1.09;
+    camera.zoom = Math.max(0.25, Math.min(4.0, camera.zoom * factor));
+  }, { passive: false });
+
+  canvas.addEventListener("mousedown", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    lastMouse = { x: mx, y: my };
+
+    const picked = pickNode(mx, my);
+    if (picked && e.button === 0 && !e.shiftKey) {
+      selectedNode = picked;
+      selectedNode.fixed = true;
+      dragMode = "node";
+      updateSelectedNodeUI();
+      canvas.classList.add("dragging");
+      return;
+    }
+
+    if (e.button === 1 || e.button === 2 || e.shiftKey) dragMode = "pan";
+    else dragMode = "rotate";
+    canvas.classList.add("dragging");
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (selectedNode) selectedNode.fixed = false;
+    dragMode = "none";
+    canvas.classList.remove("dragging");
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (dragMode === "none") return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const dx = mx - lastMouse.x;
+    const dy = my - lastMouse.y;
+    lastMouse = { x: mx, y: my };
+
+    if (dragMode === "rotate") {
+      camera.rotY += dx * 0.008;
+      camera.rotX += dy * 0.008;
+      camera.rotX = Math.max(-1.35, Math.min(1.35, camera.rotX));
+      return;
+    }
+    if (dragMode === "pan") {
+      camera.panX += dx;
+      camera.panY += dy;
+      return;
+    }
+    if (dragMode === "node" && selectedNode) {
+      const pr = project(selectedNode);
+      const k = Math.max(0.15, pr.p * camera.zoom);
+      selectedNode.x += dx / k;
+      selectedNode.y += dy / k;
+      selectedNode.vx = 0;
+      selectedNode.vy = 0;
+      selectedNode.vz = 0;
+    }
+  });
+
+  function tick() {
+    if (physicsPaused) return;
+    for (const n of nodes) {
+      if (n.fixed) continue;
+      n.vx *= 0.87;
+      n.vy *= 0.87;
+      n.vz *= 0.87;
+    }
+
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dz = b.z - a.z;
+        const d2 = dx * dx + dy * dy + dz * dz + 0.01;
+        const rep = 2200 / d2;
+        const fx = rep * dx;
+        const fy = rep * dy;
+        const fz = rep * dz;
+        if (!a.fixed) { a.vx -= fx; a.vy -= fy; a.vz -= fz; }
+        if (!b.fixed) { b.vx += fx; b.vy += fy; b.vz += fz; }
+      }
+    }
+
+    for (const e of edges) {
+      const dx = e.b.x - e.a.x;
+      const dy = e.b.y - e.a.y;
+      const dz = e.b.z - e.a.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      const target = 130;
+      const force = (dist - target) * 0.012;
+      const fx = (dx / dist) * force;
+      const fy = (dy / dist) * force;
+      const fz = (dz / dist) * force;
+      if (!e.a.fixed) { e.a.vx += fx; e.a.vy += fy; e.a.vz += fz; }
+      if (!e.b.fixed) { e.b.vx -= fx; e.b.vy -= fy; e.b.vz -= fz; }
+    }
+
+    for (const n of nodes) {
+      if (n.fixed) continue;
+      n.x += n.vx;
+      n.y += n.vy;
+      n.z += n.vz;
+      n.x = Math.max(-1400, Math.min(1400, n.x));
+      n.y = Math.max(-1400, Math.min(1400, n.y));
+      n.z = Math.max(-1400, Math.min(1400, n.z));
+    }
+  }
+
+  function draw() {
+    const w = width();
+    const h = height();
+    ctx.clearRect(0, 0, w, h);
+    const projected = new Map();
+    for (const n of nodes) projected.set(n.id, project(n));
+
+    const edgeDraw = edges.map(e => ({
+      e,
+      a: projected.get(e.a.id),
+      b: projected.get(e.b.id),
+    })).filter(x => x.a && x.b);
+    edgeDraw.sort((x, y) => ((x.a.z + x.b.z) - (y.a.z + y.b.z)));
+
+    for (const row of edgeDraw) {
+      const depth = Math.max(0.12, Math.min(0.95, (row.a.p + row.b.p) / 2));
+      ctx.strokeStyle = "rgba(57,65,74," + depth.toFixed(3) + ")";
+      ctx.lineWidth = 0.8 + 0.9 * depth;
+      ctx.beginPath();
+      ctx.moveTo(row.a.sx, row.a.sy);
+      ctx.lineTo(row.b.sx, row.b.sy);
+      ctx.stroke();
+    }
+
+    const nodeDraw = nodes.map(n => ({ n, p: projected.get(n.id) })).filter(x => x.p);
+    nodeDraw.sort((a, b) => a.p.z - b.p.z);
+    for (const row of nodeDraw) {
+      const n = row.n;
+      const p = row.p;
+      const color = kindColor[n.kind] || kindColor.other;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      if (selectedNode && selectedNode.id === n.id) {
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, p.r + 2.2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(214,221,230," + Math.max(0.45, Math.min(1, p.p)).toFixed(3) + ")";
+      ctx.font = "11px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif";
+      ctx.fillText(String(n.label || n.id), p.sx + p.r + 4, p.sy + 3);
+    }
+  }
+
+  function frame() {
+    tick();
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  meta.textContent = `nodes=${nodes.length} edges=${edges.length} generated=${graph.generated_at_utc || "n/a"} notes_key=${notesStoreKey}`;
+  resize();
+  updateSelectedNodeUI();
+  requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
+"""
+    return template.replace("__TITLE__", safe_title).replace("__GRAPH_JSON__", graph_json)
+
+
+def cmd_render_graph(args: argparse.Namespace) -> int:
+    in_path = Path(args.input).expanduser().resolve()
+    if not in_path.exists():
+        res = {"error": f"input graph not found: {in_path}"}
+        if args.json:
+            _emit("render-graph", False, res, Path(args.json_file).expanduser().resolve() if args.json_file else None)
+        else:
+            print(res["error"], file=sys.stderr)
+        return 1
+
+    try:
+        payload = json.loads(in_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        res = {"error": f"failed to parse input graph JSON: {exc}"}
+        if args.json:
+            _emit("render-graph", False, res, Path(args.json_file).expanduser().resolve() if args.json_file else None)
+        else:
+            print(res["error"], file=sys.stderr)
+        return 1
+
+    graph = payload
+    if isinstance(payload, dict) and "result" in payload and isinstance(payload.get("result"), dict):
+        maybe_graph = payload["result"].get("graph")
+        if isinstance(maybe_graph, dict):
+            graph = maybe_graph
+
+    if not isinstance(graph, dict) or not isinstance(graph.get("nodes"), list) or not isinstance(graph.get("edges"), list):
+        res = {"error": "input JSON does not contain graph nodes/edges"}
+        if args.json:
+            _emit("render-graph", False, res, Path(args.json_file).expanduser().resolve() if args.json_file else None)
+        else:
+            print(res["error"], file=sys.stderr)
+        return 1
+
+    out_path = Path(args.out).expanduser().resolve() if args.out else in_path.with_suffix(".html")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    html = _render_graph_html(graph, str(args.title))
+    out_path.write_text(html, encoding="utf-8")
+
+    result = {
+        "input_path": str(in_path),
+        "out_path": str(out_path),
+        "node_count": len(graph.get("nodes", [])),
+        "edge_count": len(graph.get("edges", [])),
+        "title": str(args.title),
+    }
+    if args.json:
+        _emit("render-graph", True, result, Path(args.json_file).expanduser().resolve() if args.json_file else None)
+    else:
+        print(f"render-graph: wrote {out_path}")
+        print(f"  nodes={result['node_count']} edges={result['edge_count']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="liquefy-history-guard",
@@ -1205,6 +2086,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--json", action="store_true")
     p_status.add_argument("--json-file", default=None)
     p_status.set_defaults(fn=cmd_status)
+
+    p_graph = sub.add_parser("export-graph", help="Export history/provider relationships as graph JSON")
+    p_graph.add_argument("--workspace", required=True)
+    p_graph.add_argument("--config", default=None)
+    p_graph.add_argument("--out", default=None, help="Output graph JSON path")
+    p_graph.add_argument("--max-runs-per-provider", type=int, default=20)
+    p_graph.add_argument("--max-actions", type=int, default=100)
+    p_graph.add_argument("--json", action="store_true")
+    p_graph.add_argument("--json-file", default=None)
+    p_graph.set_defaults(fn=cmd_export_graph)
+
+    p_render = sub.add_parser("render-graph", help="Render graph JSON to a standalone interactive HTML file")
+    p_render.add_argument("--in", dest="input", required=True, help="Input graph JSON path")
+    p_render.add_argument("--out", default=None, help="Output HTML path")
+    p_render.add_argument("--title", default="Liquefy History Guard Graph")
+    p_render.add_argument("--json", action="store_true")
+    p_render.add_argument("--json-file", default=None)
+    p_render.set_defaults(fn=cmd_render_graph)
 
     return ap
 

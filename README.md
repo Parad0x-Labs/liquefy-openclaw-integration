@@ -406,6 +406,42 @@ See [`docs/OPENCLAW_HISTORY_GUARD.md`](./docs/OPENCLAW_HISTORY_GUARD.md) for arc
 
 ---
 
+### PII Redaction — Strip Before LLM Ingestion
+
+Agents process emails, logs, and user data that contain PII (emails, IPs, API keys, phone numbers, SSNs, wallet addresses). The Redact tool strips sensitive values and replaces them with typed placeholders BEFORE data enters an LLM context window or leaves your network. Unlike LeakHunter (which blocks), Redact produces a clean, usable copy.
+
+```bash
+liquefy redact scan ./agent-output --json                    # Dry-run: report PII without changes
+liquefy redact apply ./agent-output --out ./clean --json     # Redact to output directory
+liquefy redact apply ./agent-output                          # Redact in-place
+liquefy redact profile ./agent-output --json                 # PII density + impact estimate
+```
+
+- **20+ PII patterns** — emails, IPv4/IPv6, phone numbers, SSNs, credit cards, AWS/GitHub/OpenAI/Anthropic/Stripe/Slack keys, bearer tokens, PEM blocks, ETH addresses
+- **Category filtering** — redact only specific types (`--categories email ipv4`)
+- **Wallet opt-in** — Solana address detection disabled by default (high false-positive risk), enable with `--include-wallets`
+- **Profile mode** — estimate PII density and byte impact before committing to redaction
+
+---
+
+### Log De-Noise — Context Window Tax Killer
+
+Logs are 90% garbage (heartbeats, health checks, status 200s, metrics scrapes). The De-Noise tool strips routine noise and keeps only signal lines (errors, warnings, crashes, security events, state changes, payment activity) plus configurable context around them. Reduces LLM context window token cost by 60-95%.
+
+```bash
+liquefy denoise stats ./logs --json                          # Estimate noise ratio
+liquefy denoise filter ./logs --out ./signal --json          # Filter noise, keep signal + context
+liquefy denoise filter ./logs --context 5 --keep-neutral     # More context, keep neutral lines
+liquefy denoise extract ./logs --trace-id abc-123 --json     # Extract error clusters for a trace ID
+```
+
+- **Signal detection** — errors, warnings, HTTP 4xx/5xx, crashes, security events, payment activity, state changes, data loss
+- **Noise detection** — HTTP 200/204/304, heartbeats, health endpoints, debug traces, metrics scrapes, cache hits, static assets, session refreshes
+- **Context preservation** — keeps N lines before/after each signal so you don't lose stack traces
+- **Trace extraction** — pull error/warning clusters around a specific trace ID for targeted debugging
+
+---
+
 ### Vision — Screenshot Dedup (Engine #24)
 
 AI agents capture redundant screenshots (10-50 shots of the same static window). The Vision engine deduplicates near-identical images using perceptual hashing, storing only unique frames.
