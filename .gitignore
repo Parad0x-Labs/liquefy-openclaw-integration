@@ -10,6 +10,13 @@ CURSOR_FIXED_HANDOVER*
 CURSOR_SUGGESTED_GIT_TREE*
 BUILD.md
 
+# Social media drafts / promo posts (never publish to repo)
+*DISCORD_POST*
+*X_POST*
+*LAUNCH_POST*
+*_POST.md
+*_TWEET*
+
 # Local analysis / one-off reports (never publish)
 api/CORRECTED_PERFORMANCE_REPORT.md
 api/FINAL_SPEED_COMPRESSION_REPORT.md
