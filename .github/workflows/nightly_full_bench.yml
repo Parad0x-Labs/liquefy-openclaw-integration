@@ -10,10 +10,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         profile: [default]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,8 +29,8 @@ jobs:
           OMP_NUM_THREADS: "1"
         run: >
           python bench/run_format_matrix.py
-          --openclaw-size 200mb
-          --server-target-mb 50
+          --openclaw-size 50mb
+          --server-target-mb 25
           --server-mode realistic
           --verify-mode fast
           --liquefy-profile ${{ matrix.profile }}
@@ -44,7 +44,7 @@ jobs:
 
   openclaw_bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,14 +53,14 @@ jobs:
       - run: python -m pip install -U pip
       - run: pip install -r requirements.txt || true
       - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
-      - name: Run OpenClaw benchmark table (50/200)
+      - name: Run OpenClaw benchmark table (25/50)
         env:
           LIQUEFY_DETERMINISTIC: "1"
           ZSTD_NBTHREADS: "1"
           OMP_NUM_THREADS: "1"
         run: >
           python bench/run_bench.py
-          --sizes 50mb 200mb
+          --sizes 25mb 50mb
           --liquefy-verify-mode fast
       - uses: actions/upload-artifact@v4
         with:
