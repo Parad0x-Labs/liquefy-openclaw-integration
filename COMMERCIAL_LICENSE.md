@@ -76,7 +76,7 @@ Commercial entities may use Liquefy under a **30-Day Evaluation License** for th
 
 **Getting started with your evaluation:**
 
-We recommend scheduling a brief kickoff call so we can ensure your team has the optimal configuration for your environment. Email `hello@parad0xlabs.com` with subject `Liquefy Evaluation — [Company Name]` and we'll get you set up.
+We recommend scheduling a brief kickoff call so we can ensure your team has the optimal configuration for your environment. Reach out to Parad0x Labs at `hello@parad0xlabs.com` and we'll get you set up.
 
 ## Commercial tiers
 
@@ -93,7 +93,7 @@ All tiers include the full Liquefy feature set. The difference is support respon
 For commercial terms, enterprise deployment approvals, and pricing:
 
 - **Email:** `hello@parad0xlabs.com`
-- **Subject line:** `Liquefy Commercial License — [Company Name]`
+- **X (Twitter):** [@Parad0x_Labs](https://x.com/Parad0x_Labs)
 
 ---
 If this summary conflicts with `LICENSE`, the `LICENSE` file prevails.
