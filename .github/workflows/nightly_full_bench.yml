@@ -53,14 +53,14 @@ jobs:
       - run: python -m pip install -U pip
       - run: pip install -r requirements.txt || true
       - run: pip install pytest==8.4.2 zstandard==0.25.0 xxhash==3.6.0
-      - name: Run OpenClaw benchmark table (25/50)
+      - name: Run OpenClaw benchmark table (50/200)
         env:
           LIQUEFY_DETERMINISTIC: "1"
           ZSTD_NBTHREADS: "1"
           OMP_NUM_THREADS: "1"
         run: >
           python bench/run_bench.py
-          --sizes 25mb 50mb
+          --sizes 50mb 200mb
           --liquefy-verify-mode fast
       - uses: actions/upload-artifact@v4
         with:
