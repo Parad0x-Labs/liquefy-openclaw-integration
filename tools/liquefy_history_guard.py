@@ -15,9 +15,11 @@ provider pull commands that write exported data to local paths.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import shlex
@@ -114,8 +116,16 @@ def _save_json(path: Path, payload: Dict[str, Any]) -> None:
 
 
 
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+def _hash_token(token: str, salt_b64: str) -> str:
+    salt = base64.b64decode(salt_b64.encode("ascii"))
+    derived = hashlib.pbkdf2_hmac(
+        "sha256",
+        token.encode("utf-8"),
+        salt,
+        250_000,
+        dklen=32,
+    )
+    return base64.b64encode(derived).decode("ascii")
 
 
 
@@ -571,12 +581,17 @@ def _verify_approval(cfg: Dict[str, Any], env: Dict[str, str]) -> tuple[bool, st
     if not expected_hash:
         return False, "LIQUEFY_APPROVAL_CONFIG_MISSING"
 
+    kdf = str(cfg.get("approval_token_kdf", "")).strip() or "legacy_sha256"
+    salt_b64 = str(cfg.get("approval_token_salt_b64", "")).strip()
+    if kdf != "pbkdf2_sha256_v1" or not salt_b64:
+        return False, "LIQUEFY_APPROVAL_CONFIG_WEAK_HASH"
+
     env_var = str(cfg.get("approval_env_var", "LIQUEFY_APPROVAL_TOKEN"))
     provided = env.get(env_var, "")
     if not provided:
         return False, "LIQUEFY_APPROVAL_REQUIRED"
 
-    provided_hash = _hash_token(provided)
+    provided_hash = _hash_token(provided, salt_b64)
     if not hmac.compare_digest(expected_hash, provided_hash):
         return False, "LIQUEFY_APPROVAL_INVALID"
 
@@ -622,6 +637,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         "export_root": str(workspace / ".liquefy" / "provider_exports"),
         "approval_env_var": "LIQUEFY_APPROVAL_TOKEN",
         "approval_token_sha256": "",
+        "approval_token_kdf": "",
+        "approval_token_salt_b64": "",
         "risky_patterns": DEFAULT_RISKY_PATTERNS,
         "auto_recover_to_dir": True,
         "providers": [
@@ -741,7 +758,10 @@ def cmd_set_approval_token(args: argparse.Namespace) -> int:
             print(res["error"], file=sys.stderr)
         return 1
 
-    cfg["approval_token_sha256"] = _hash_token(token)
+    salt_b64 = base64.b64encode(os.urandom(16)).decode("ascii")
+    cfg["approval_token_sha256"] = _hash_token(token, salt_b64)
+    cfg["approval_token_kdf"] = "pbkdf2_sha256_v1"
+    cfg["approval_token_salt_b64"] = salt_b64
     cfg["approval_token_set_at_utc"] = _utc_now()
     _save_json(cpath, cfg)
 
@@ -1169,6 +1189,256 @@ def _resolve_snapshot_root(workspace: Path, cfg: Dict[str, Any]) -> Path:
     return root / workspace.name
 
 
+def _classify_file_type(path: Path) -> str:
+    ext = path.suffix.lower()
+    name = path.name.lower()
+    joined = "/".join(x.lower() for x in path.parts)
+    if any(tok in joined for tok in ("personal", "private", "journal", "diary", "notes")) and ext in {
+        ".md",
+        ".txt",
+        ".json",
+        ".jsonl",
+    }:
+        return "personal"
+    if ext in {".json", ".jsonl"}:
+        return "json"
+    if ext in {".py", ".pyi"}:
+        return "python"
+    if ext in {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}:
+        return "javascript"
+    if ext in {".md", ".markdown"}:
+        return "markdown"
+    if ext in {".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf"}:
+        return "config"
+    if ext in {".csv", ".tsv"}:
+        return "csv"
+    if ext in {".sql"}:
+        return "sql"
+    if ext in {".log"}:
+        return "log"
+    if ext in {".html", ".htm", ".xml"}:
+        return "markup"
+    if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".tiff"}:
+        return "image"
+    if ext in {".mp3", ".wav", ".m4a", ".flac", ".aac"}:
+        return "audio"
+    if ext in {".mp4", ".mov", ".mkv", ".webm", ".avi"}:
+        return "video"
+    if ext in {".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar"}:
+        return "archive"
+    if ext in {".txt", ".text"} or name in {"readme", "readme.txt", "license", "copying"}:
+        return "text"
+    if ext:
+        return "binary"
+    return "other"
+
+
+def _dominant_file_type(counts: Dict[str, int]) -> str:
+    if not counts:
+        return "other"
+    return sorted(counts.items(), key=lambda kv: (-int(kv[1]), kv[0]))[0][0]
+
+
+def _summarize_path(path: Path, max_files: int = 2000) -> Dict[str, Any]:
+    if not path.exists():
+        return {
+            "exists": False,
+            "kind": "missing",
+            "file_count": 0,
+            "dir_count": 0,
+            "total_size_bytes": 0,
+            "file_type_counts": {},
+            "dominant_file_type": "other",
+            "truncated": False,
+        }
+    if path.is_file():
+        try:
+            size = int(path.stat().st_size)
+        except Exception:
+            size = 0
+        ftype = _classify_file_type(path)
+        return {
+            "exists": True,
+            "kind": "file",
+            "file_count": 1,
+            "dir_count": 0,
+            "total_size_bytes": size,
+            "file_type_counts": {ftype: 1},
+            "dominant_file_type": ftype,
+            "truncated": False,
+        }
+    if not path.is_dir():
+        return {
+            "exists": True,
+            "kind": "other",
+            "file_count": 0,
+            "dir_count": 0,
+            "total_size_bytes": 0,
+            "file_type_counts": {},
+            "dominant_file_type": "other",
+            "truncated": False,
+        }
+
+    file_count = 0
+    dir_count = 0
+    total_size = 0
+    type_counts: Dict[str, int] = {}
+    truncated = False
+    stack: List[Path] = [path]
+    while stack:
+        cur = stack.pop()
+        children: List[Path] = []
+        try:
+            children = [p for p in cur.iterdir() if not p.name.startswith(".")]
+        except Exception:
+            children = []
+        for child in children:
+            if child.is_dir():
+                dir_count += 1
+                stack.append(child)
+                continue
+            if not child.is_file():
+                continue
+            if file_count >= max_files:
+                truncated = True
+                continue
+            file_count += 1
+            try:
+                total_size += int(child.stat().st_size)
+            except Exception:
+                pass
+            ftype = _classify_file_type(child)
+            type_counts[ftype] = type_counts.get(ftype, 0) + 1
+
+    ordered_counts = {k: int(v) for k, v in sorted(type_counts.items(), key=lambda kv: (-kv[1], kv[0]))}
+    return {
+        "exists": True,
+        "kind": "dir",
+        "file_count": int(file_count),
+        "dir_count": int(dir_count),
+        "total_size_bytes": int(total_size),
+        "file_type_counts": ordered_counts,
+        "dominant_file_type": _dominant_file_type(ordered_counts),
+        "truncated": bool(truncated),
+    }
+
+
+def _path_tree_preview(path: Path, depth: int, max_entries: int) -> Dict[str, Any]:
+    stats = _summarize_path(path, max_files=800)
+    if depth <= 0 or not path.exists():
+        return {**stats, "entries": []}
+    if path.is_file():
+        return {**stats, "entries": []}
+    if not path.is_dir():
+        return {**stats, "entries": []}
+
+    entries: List[Dict[str, Any]] = []
+    listed: List[Path] = []
+    try:
+        listed = sorted([p for p in path.iterdir() if not p.name.startswith(".")], key=lambda p: p.name)
+    except Exception:
+        listed = []
+
+    for child in listed[: max(1, int(max_entries))]:
+        child_stats = _summarize_path(child, max_files=400)
+        if child.is_dir():
+            preview = _path_tree_preview(child, depth=depth - 1, max_entries=max_entries)
+            entries.append(
+                {
+                    "name": child.name,
+                    "kind": "dir",
+                    "path": str(child),
+                    "children": preview.get("entries", []),
+                    "file_count": int(child_stats.get("file_count", 0)),
+                    "total_size_bytes": int(child_stats.get("total_size_bytes", 0)),
+                    "dominant_file_type": str(child_stats.get("dominant_file_type", "other")),
+                    "file_type_counts": dict(child_stats.get("file_type_counts", {})),
+                    "truncated": bool(child_stats.get("truncated", False)),
+                }
+            )
+        elif child.is_file():
+            try:
+                sz = int(child.stat().st_size)
+            except Exception:
+                sz = 0
+            ftype = _classify_file_type(child)
+            entries.append(
+                {
+                    "name": child.name,
+                    "kind": "file",
+                    "path": str(child),
+                    "size_bytes": sz,
+                    "total_size_bytes": sz,
+                    "file_count": 1,
+                    "dominant_file_type": ftype,
+                    "file_type_counts": {ftype: 1},
+                    "children": [],
+                }
+            )
+    return {**stats, "entries": entries}
+
+
+def _importance_tier(score: int) -> str:
+    if score >= 75:
+        return "critical"
+    if score >= 55:
+        return "high"
+    if score >= 35:
+        return "medium"
+    return "low"
+
+
+def _compute_node_importance(node: Dict[str, Any], degree: int, total_size_bytes: int) -> Dict[str, Any]:
+    kind = str(node.get("kind", "other"))
+    base_by_kind = {
+        "workspace": 26,
+        "provider": 18,
+        "vault_run": 16,
+        "snapshot": 12,
+        "action": 10,
+    }
+    score = int(base_by_kind.get(kind, 8))
+    reasons: List[str] = [f"kind={kind}"]
+
+    degree = max(0, int(degree))
+    if degree:
+        degree_boost = min(28, degree * 6)
+        score += degree_boost
+        reasons.append(f"connections={degree}")
+
+    total_size_bytes = max(0, int(total_size_bytes))
+    if total_size_bytes > 0:
+        size_norm = min(1.0, math.log1p(total_size_bytes) / math.log1p(1 << 30))
+        size_boost = int(round(size_norm * 26))
+        if size_boost > 0:
+            score += size_boost
+            reasons.append(f"size={total_size_bytes}B")
+
+    if kind == "workspace":
+        score += 10
+        reasons.append("root_scope")
+    if kind == "provider" and bool(node.get("enabled", False)):
+        score += 8
+        reasons.append("provider_enabled")
+    if kind == "provider" and node.get("last_ok") is False:
+        score += 5
+        reasons.append("last_pull_failed")
+    if kind == "action" and bool(node.get("risky", False)):
+        score += 16
+        reasons.append("risky_action")
+    if kind == "vault_run" and total_size_bytes > 0:
+        score += 6
+        reasons.append("vault_payload")
+
+    score = max(base_by_kind.get(kind, 8), min(100, int(score)))
+    tier = _importance_tier(score)
+    return {
+        "importance_score": score,
+        "importance_tier": tier,
+        "importance_reason": ", ".join(reasons[:4]),
+    }
+
+
 def _build_history_graph(
     workspace: Path,
     cfg: Dict[str, Any],
@@ -1317,6 +1587,66 @@ def _build_history_graph(
         kind = str(node.get("kind", "unknown"))
         node_kinds[kind] = node_kinds.get(kind, 0) + 1
 
+    path_tree_map: Dict[str, Dict[str, Any]] = {}
+    for node in nodes_sorted:
+        node_id = str(node.get("id", ""))
+        raw_path = str(node.get("path", "")).strip()
+        if not node_id or not raw_path:
+            continue
+        p = Path(raw_path)
+        # Keep preview bounded; 2 levels gives root->children->grandchildren expansion.
+        path_tree_map[node_id] = _path_tree_preview(p, depth=2, max_entries=20)
+
+    degree_by_id: Dict[str, int] = {}
+    for edge in edges_sorted:
+        source = str(edge.get("source", "")).strip()
+        target = str(edge.get("target", "")).strip()
+        if source:
+            degree_by_id[source] = degree_by_id.get(source, 0) + 1
+        if target:
+            degree_by_id[target] = degree_by_id.get(target, 0) + 1
+
+    for node in nodes_sorted:
+        node_id = str(node.get("id", ""))
+        node_kind = str(node.get("kind", "other"))
+        preview = path_tree_map.get(node_id)
+        path_stats = None
+        if isinstance(preview, dict):
+            path_stats = {
+                "exists": bool(preview.get("exists", False)),
+                "kind": str(preview.get("kind", "other")),
+                "file_count": int(preview.get("file_count", 0)),
+                "dir_count": int(preview.get("dir_count", 0)),
+                "total_size_bytes": int(preview.get("total_size_bytes", 0)),
+                "file_type_counts": {
+                    str(k): int(v) for k, v in dict(preview.get("file_type_counts", {})).items()
+                },
+                "dominant_file_type": str(preview.get("dominant_file_type", "other")),
+                "truncated": bool(preview.get("truncated", False)),
+            }
+            node["path_stats"] = path_stats
+
+        file_type_counts = dict(path_stats.get("file_type_counts", {})) if isinstance(path_stats, dict) else {}
+        dominant_file_type = str(path_stats.get("dominant_file_type", "other")) if isinstance(path_stats, dict) else "other"
+        total_size_bytes = int(path_stats.get("total_size_bytes", 0)) if isinstance(path_stats, dict) else 0
+
+        if total_size_bytes <= 0:
+            if node_kind == "vault_run":
+                total_size_bytes = int(node.get("vault_bytes", 0))
+            elif node_kind == "provider":
+                total_size_bytes = int(node.get("last_exported_bytes", 0))
+
+        node["file_type_counts"] = file_type_counts
+        node["dominant_file_type"] = dominant_file_type
+        node["total_size_bytes"] = int(max(0, total_size_bytes))
+
+        importance = _compute_node_importance(
+            node=node,
+            degree=degree_by_id.get(node_id, 0),
+            total_size_bytes=int(max(0, total_size_bytes)),
+        )
+        node.update(importance)
+
     return {
         "schema": "liquefy.history_graph.v1",
         "schema_version": 1,
@@ -1327,6 +1657,7 @@ def _build_history_graph(
         "node_count": len(nodes_sorted),
         "edge_count": len(edges_sorted),
         "node_kinds": node_kinds,
+        "path_tree_map": path_tree_map,
         "nodes": nodes_sorted,
         "edges": edges_sorted,
     }
@@ -1407,10 +1738,7 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
       color: var(--fg);
       font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    body {
-      display: flex;
-      flex-direction: column;
-    }
+    body { display: flex; flex-direction: column; }
     #topbar {
       display: flex;
       align-items: center;
@@ -1445,15 +1773,8 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
         radial-gradient(1000px 700px at 120% 20%, rgba(163,113,247,0.08), transparent 65%),
         var(--bg);
     }
-    #graph {
-      width: 100%;
-      height: 100%;
-      display: block;
-      cursor: grab;
-    }
-    #graph.dragging {
-      cursor: grabbing;
-    }
+    #graph { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+    #graph.dragging { cursor: grabbing; }
     .panel {
       position: absolute;
       background: var(--panel);
@@ -1469,18 +1790,18 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      max-width: 650px;
+      max-width: 680px;
     }
-    #controls button {
+    #controls button, #noteActions button, #inspectActions button {
       background: #1f2937;
       color: var(--fg);
       border: 1px solid #374151;
       border-radius: 8px;
       padding: 6px 9px;
-      font-size: 12px;
+      font-size: 11px;
       cursor: pointer;
     }
-    #controls button:hover {
+    #controls button:hover, #noteActions button:hover, #inspectActions button:hover {
       border-color: var(--accent);
     }
     #legend {
@@ -1512,14 +1833,25 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
       flex-direction: column;
       gap: 8px;
     }
-    #notes h4 {
+    #inspector {
+      left: 12px;
+      bottom: 12px;
+      width: 360px;
+      max-height: 56vh;
+      overflow: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #notes h4, #inspector h4 {
       margin: 0;
       font-size: 12px;
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    #selectedNode {
+    #selectedNode, #inspectorBody {
       font-size: 12px;
       color: var(--fg);
       padding: 6px 8px;
@@ -1527,7 +1859,13 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
       border-radius: 8px;
       background: rgba(0,0,0,0.2);
       min-height: 18px;
-      word-break: break-all;
+      word-break: break-word;
+    }
+    #inspectorBody {
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre-wrap;
+      max-height: 230px;
+      overflow: auto;
     }
     #noteText {
       width: 100%;
@@ -1541,33 +1879,38 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
       box-sizing: border-box;
       font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
     }
-    #noteActions {
+    #noteActions, #inspectActions {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
     }
-    #noteActions button {
-      background: #1f2937;
+    #aliasTagRow {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    #aliasTagRow input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(0,0,0,0.25);
       color: var(--fg);
       border: 1px solid #374151;
       border-radius: 8px;
-      padding: 6px 8px;
-      font-size: 11px;
-      cursor: pointer;
+      padding: 7px;
+      font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
     }
-    #help {
+    #help, #mergeHint {
       color: var(--muted);
       font-size: 11px;
       line-height: 1.35;
     }
+    #mergeHint strong { color: var(--fg); }
     @media (max-width: 980px) {
-      #legend, #notes {
+      #legend, #notes, #inspector {
         position: static;
         margin: 12px;
       }
-      #stage {
-        overflow: auto;
-      }
+      #stage { overflow: auto; }
     }
   </style>
 </head>
@@ -1603,18 +1946,45 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
         <button id="exportNotes">Export notes</button>
       </div>
       <div id="help">
-        Controls: Drag node = move. Drag empty = rotate. Shift+drag or middle/right drag = pan.
+        Controls: Click = select. Double-click or Expand Context = add mini nodes.
+        Click empty space = clear selection/focus. Drag node = move/merge.
+        Drag empty = rotate. Shift+drag or middle/right drag = pan.
         Scroll = zoom. Connections stay attached while rearranging.
       </div>
+    </div>
+    <div id="inspector" class="panel">
+      <h4>Node Inspector</h4>
+      <div id="inspectorBody">Click a node to inspect context</div>
+      <div id="inspectActions">
+        <button id="expandContext">Expand Context</button>
+        <button id="clearContext">Clear Context</button>
+        <button id="collapseChildren">Collapse Children</button>
+        <button id="collapseAll">Collapse All</button>
+        <button id="openPath">Open Path</button>
+        <button id="copyPath">Copy Path</button>
+      </div>
+      <div id="aliasTagRow">
+        <input id="aliasInput" placeholder="alias" />
+        <input id="tagsInput" placeholder="tags (comma-separated)" />
+      </div>
+      <div id="inspectActions">
+        <button id="saveAliasTags">Save Alias/Tags</button>
+        <button id="clearAliasTags">Clear Alias/Tags</button>
+      </div>
+      <div id="mergeHint"><strong>Merge:</strong> drag one node and drop it onto another node to merge.</div>
     </div>
   </div>
   <script>
   const graph = __GRAPH_JSON__;
+  const pathTreeMap = graph.path_tree_map || {};
   const canvas = document.getElementById("graph");
   const ctx = canvas.getContext("2d");
   const meta = document.getElementById("meta");
   const selectedNodeEl = document.getElementById("selectedNode");
   const noteTextEl = document.getElementById("noteText");
+  const inspectorBodyEl = document.getElementById("inspectorBody");
+  const aliasInput = document.getElementById("aliasInput");
+  const tagsInput = document.getElementById("tagsInput");
   const btnSaveNote = document.getElementById("saveNote");
   const btnClearNote = document.getElementById("clearNote");
   const btnExportNotes = document.getElementById("exportNotes");
@@ -1623,6 +1993,14 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
   const btnShuffle = document.getElementById("btnShuffle");
   const btnPause = document.getElementById("btnPause");
   const btnResume = document.getElementById("btnResume");
+  const btnExpandContext = document.getElementById("expandContext");
+  const btnClearContext = document.getElementById("clearContext");
+  const btnCollapseChildren = document.getElementById("collapseChildren");
+  const btnCollapseAll = document.getElementById("collapseAll");
+  const btnOpenPath = document.getElementById("openPath");
+  const btnCopyPath = document.getElementById("copyPath");
+  const btnSaveAliasTags = document.getElementById("saveAliasTags");
+  const btnClearAliasTags = document.getElementById("clearAliasTags");
 
   const kindColor = {
     workspace: "#58a6ff",
@@ -1632,6 +2010,96 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
     snapshot: "#a371f7",
     other: "#8b949e",
   };
+  const fileTypeColor = {
+    personal: "#ff4da6",
+    json: "#40c9ff",
+    python: "#8adf54",
+    javascript: "#ffd84d",
+    markdown: "#8fa2ba",
+    config: "#f8b46b",
+    csv: "#3fd5a9",
+    sql: "#d794ff",
+    log: "#ff9b78",
+    markup: "#9fb8ff",
+    image: "#cf8dff",
+    audio: "#ff9fd3",
+    video: "#ffaf61",
+    archive: "#adb6c4",
+    text: "#c2ccd7",
+    binary: "#7f8ea3",
+    other: "#8b949e",
+  };
+
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  function hexToRgb(hex) {
+    const m = String(hex || "").trim().replace("#", "");
+    if (m.length !== 6) return { r: 139, g: 148, b: 158 };
+    return {
+      r: parseInt(m.slice(0, 2), 16),
+      g: parseInt(m.slice(2, 4), 16),
+      b: parseInt(m.slice(4, 6), 16),
+    };
+  }
+
+  function rgbToHex(r, g, b) {
+    const toHex = (v) => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, "0");
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+  }
+
+  function shadeColor(hex, factor) {
+    const rgb = hexToRgb(hex);
+    return rgbToHex(rgb.r * factor, rgb.g * factor, rgb.b * factor);
+  }
+
+  function importanceShadeFactor(score) {
+    const s = clamp(Number(score || 0), 0, 100);
+    return 0.58 + (s / 100) * 0.60;
+  }
+
+  function nodeImportanceTier(score) {
+    const s = Number(score || 0);
+    if (s >= 75) return "critical";
+    if (s >= 55) return "high";
+    if (s >= 35) return "medium";
+    return "low";
+  }
+
+  function nodeSizeBytes(node) {
+    return Number(node.total_size_bytes || node.vault_bytes || node.last_exported_bytes || 0);
+  }
+
+  function formatBytes(v) {
+    let n = Number(v || 0);
+    if (!Number.isFinite(n) || n <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0;
+    while (n >= 1024 && i < units.length - 1) {
+      n /= 1024;
+      i += 1;
+    }
+    return `${n.toFixed(n >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+  }
+
+  function topTypeLabels(typeCounts, limit = 5) {
+    const pairs = Object.entries(typeCounts || {})
+      .map(([k, v]) => [String(k), Number(v || 0)])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+      .slice(0, Math.max(1, limit));
+    return pairs.map(([k, v]) => `${k}:${v}`);
+  }
+
+  function colorForNode(node) {
+    const dominant = String(node.dominant_file_type || "other").toLowerCase();
+    const fallback = kindColor[node.kind] || kindColor.other;
+    const useTypeColor = dominant && dominant !== "other";
+    const base = useTypeColor ? (fileTypeColor[dominant] || fallback) : fallback;
+    const score = Number(node.importance_score || 0);
+    return shadeColor(base, importanceShadeFactor(score));
+  }
 
   function hashKey(s) {
     let h = 2166136261 >>> 0;
@@ -1643,31 +2111,42 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
   }
 
   const notesStoreKey = "liquefy-history-graph-notes:" + hashKey(String(graph.workspace || "workspace"));
+  const metaStoreKey = "liquefy-history-graph-meta:" + hashKey(String(graph.workspace || "workspace"));
   let notesMap = {};
+  let userMeta = { aliases: {}, tags: {}, merges: {} };
   try {
     const raw = localStorage.getItem(notesStoreKey);
     if (raw) {
       notesMap = JSON.parse(raw);
       if (!notesMap || typeof notesMap !== "object") notesMap = {};
     }
-  } catch (_) {
-    notesMap = {};
-  }
+  } catch (_) { notesMap = {}; }
+  try {
+    const raw = localStorage.getItem(metaStoreKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        userMeta.aliases = parsed.aliases || {};
+        userMeta.tags = parsed.tags || {};
+        userMeta.merges = parsed.merges || {};
+      }
+    }
+  } catch (_) {}
 
   function persistNotes() {
-    try {
-      localStorage.setItem(notesStoreKey, JSON.stringify(notesMap));
-    } catch (_) {}
+    try { localStorage.setItem(notesStoreKey, JSON.stringify(notesMap)); } catch (_) {}
+  }
+  function persistMeta() {
+    try { localStorage.setItem(metaStoreKey, JSON.stringify(userMeta)); } catch (_) {}
   }
 
   const width = () => canvas.clientWidth || 1200;
   const height = () => canvas.clientHeight || 720;
   const rand = (seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647)(42);
-
   const nodes = (graph.nodes || []).map((n, i) => {
     const ring = Math.max(1, Math.sqrt(graph.nodes.length || 1));
     const angle = (i / Math.max(1, graph.nodes.length)) * Math.PI * 2;
-    const radius = 120 + (i % Math.ceil(ring)) * 35;
+    const radius = 95 + (i % Math.ceil(ring)) * 24;
     return {
       ...n,
       x: Math.cos(angle) * radius + (rand() - 0.5) * 40,
@@ -1677,26 +2156,229 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
       vy: 0,
       vz: 0,
       fixed: false,
+      hidden: false,
     };
   });
-
   const byId = new Map(nodes.map(n => [n.id, n]));
   const edges = (graph.edges || [])
     .map(e => ({ ...e, a: byId.get(e.source), b: byId.get(e.target) }))
     .filter(e => e.a && e.b);
 
-  let camera = {
-    rotX: 0.52,
-    rotY: 0.58,
-    panX: 0,
-    panY: 0,
-    zoom: 1.0,
-    depth: 720,
-  };
+  function displayLabel(n) {
+    const alias = String((userMeta.aliases || {})[n.id] || "").trim();
+    if (alias) return alias;
+    return String(n.label || n.id);
+  }
+  function resolveMerge(id) {
+    let cur = id;
+    let guard = 0;
+    while ((userMeta.merges || {})[cur] && guard < 50) {
+      cur = userMeta.merges[cur];
+      guard += 1;
+    }
+    return cur;
+  }
+  function dedupeEdges() {
+    const seen = new Set();
+    const keep = [];
+    for (const e of edges) {
+      if (!e.a || !e.b) continue;
+      if (e.a.hidden || e.b.hidden) continue;
+      if (e.a.id === e.b.id) continue;
+      const key = `${e.a.id}|${e.b.id}|${e.rel || ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      keep.push(e);
+    }
+    edges.length = 0;
+    for (const e of keep) edges.push(e);
+  }
+  function collectChildNodes(parentId) {
+    const out = [];
+    for (const n of nodes) {
+      if (n.hidden) continue;
+      if (String(n.parent_id || "") === String(parentId)) out.push(n);
+    }
+    return out;
+  }
+  function collapseChildren(node, recursive = true) {
+    if (!node) return 0;
+    let count = 0;
+    const stack = [...collectChildNodes(node.id)];
+    while (stack.length > 0) {
+      const child = stack.pop();
+      if (!child || child.hidden) continue;
+      child.hidden = true;
+      child.fixed = false;
+      count += 1;
+      if (recursive) {
+        for (const g of collectChildNodes(child.id)) stack.push(g);
+      }
+    }
+    if (selectedNode && selectedNode.hidden) selectedNode = node;
+    return count;
+  }
+  function collapseAllPreviewNodes() {
+    let count = 0;
+    for (const n of nodes) {
+      if (!String(n.id || "").startsWith("path:")) continue;
+      if (n.hidden) continue;
+      n.hidden = true;
+      n.fixed = false;
+      count += 1;
+    }
+    return count;
+  }
+  function ensureEdge(parentNode, childNode) {
+    for (const e of edges) {
+      if (!e.a || !e.b) continue;
+      if (e.a.id === parentNode.id && e.b.id === childNode.id && String(e.rel || "") === "contains") {
+        return;
+      }
+    }
+    edges.push({
+      source: parentNode.id,
+      target: childNode.id,
+      rel: "contains",
+      weight: 0.7,
+      a: parentNode,
+      b: childNode,
+    });
+  }
+  function mergeNodes(sourceNode, targetNode, silent = false) {
+    if (!sourceNode || !targetNode) return;
+    if (sourceNode.id === targetNode.id) return;
+    if (sourceNode.hidden || targetNode.hidden) return;
+    sourceNode.hidden = true;
+    sourceNode.fixed = false;
+    userMeta.merges[sourceNode.id] = targetNode.id;
+    const srcAlias = String((userMeta.aliases || {})[sourceNode.id] || "").trim();
+    const tgtAlias = String((userMeta.aliases || {})[targetNode.id] || "").trim();
+    if (srcAlias && !tgtAlias) userMeta.aliases[targetNode.id] = srcAlias;
+    const srcTags = String((userMeta.tags || {})[sourceNode.id] || "").split(",").map(x => x.trim()).filter(Boolean);
+    const tgtTags = String((userMeta.tags || {})[targetNode.id] || "").split(",").map(x => x.trim()).filter(Boolean);
+    const mergedTags = Array.from(new Set([...tgtTags, ...srcTags]));
+    if (mergedTags.length) userMeta.tags[targetNode.id] = mergedTags.join(", ");
+    if (notesMap[sourceNode.id] && !notesMap[targetNode.id]) notesMap[targetNode.id] = notesMap[sourceNode.id];
+    for (const e of edges) {
+      if (e.a && e.a.id === sourceNode.id) e.a = targetNode;
+      if (e.b && e.b.id === sourceNode.id) e.b = targetNode;
+    }
+    dedupeEdges();
+    if (!silent) {
+      persistMeta();
+      persistNotes();
+    }
+  }
+  for (const [src, dst] of Object.entries(userMeta.merges || {})) {
+    const sourceNode = byId.get(src);
+    const targetNode = byId.get(resolveMerge(dst));
+    if (sourceNode && targetNode && sourceNode.id !== targetNode.id) mergeNodes(sourceNode, targetNode, true);
+  }
+  dedupeEdges();
+
+  let camera = { rotX: 0.52, rotY: 0.58, panX: 0, panY: 0, zoom: 1.0, depth: 720 };
   let physicsPaused = false;
   let selectedNode = null;
-  let dragMode = "none"; // none | node | rotate | pan
+  let focusedNodeIds = new Set();
+  let dragMode = "none";
   let lastMouse = { x: 0, y: 0 };
+  let draggedNode = null;
+  let pointerDownNode = null;
+  let pointerTravelPx = 0;
+  let pointerDownButton = 0;
+  let pointerWasBackground = false;
+  let frameTimeSec = 0;
+
+  function clearSelectionAndFocus() {
+    selectedNode = null;
+    clearContextFocus();
+    updateSelectedNodeUI();
+  }
+
+  function setSelectedNode(node, options = {}) {
+    if (!node || node.hidden) return;
+    selectedNode = node;
+    const autoExpand = options.autoExpand !== false;
+    if (autoExpand) {
+      const added = addPreviewChildren(node);
+      if (added > 0) expandContext(node.id);
+    }
+    updateSelectedNodeUI();
+  }
+
+  function addPreviewChildren(node) {
+    if (!node || node.hidden) return 0;
+    const preview = pathTreeMap[node.id];
+    if (!preview || !Array.isArray(preview.entries)) return 0;
+    let created = 0;
+    const nowEntries = preview.entries;
+    for (let i = 0; i < nowEntries.length; i++) {
+      const entry = nowEntries[i];
+      const childPath = String(entry.path || "").trim();
+      if (!childPath) continue;
+      const childId = `path:${node.id}:${hashKey(childPath)}`;
+      if (byId.has(childId)) {
+        const existing = byId.get(childId);
+        if (existing) {
+          if (existing.hidden) {
+            existing.hidden = false;
+            existing.parent_id = node.id;
+            existing.parent_path = String(node.path || "");
+            existing.x = node.x + Math.cos((i / Math.max(1, nowEntries.length)) * Math.PI * 2) * 90;
+            existing.y = node.y + Math.sin((i / Math.max(1, nowEntries.length)) * Math.PI * 2) * 90;
+            existing.z = node.z + ((i % 2 === 0) ? 35 : -35);
+            created += 1;
+          }
+          ensureEdge(node, existing);
+        }
+        continue;
+      }
+      const angle = (i / Math.max(1, nowEntries.length)) * Math.PI * 2;
+      const radius = 85 + (i % 3) * 20;
+      const child = {
+        id: childId,
+        kind: "other",
+        label: String(entry.name || childPath.split("/").slice(-1)[0] || childId),
+        path: childPath,
+        node_kind: String(entry.kind || "file"),
+        parent_id: node.id,
+        parent_path: String(node.path || ""),
+        total_size_bytes: Number(entry.total_size_bytes || entry.size_bytes || 0),
+        dominant_file_type: String(entry.dominant_file_type || "other"),
+        file_type_counts: (entry.file_type_counts && typeof entry.file_type_counts === "object")
+          ? entry.file_type_counts
+          : {},
+        x: node.x + Math.cos(angle) * radius,
+        y: node.y + Math.sin(angle) * radius,
+        z: node.z + ((i % 2 === 0) ? 40 : -40),
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        fixed: false,
+        hidden: false,
+      };
+      const childSize = Number(child.total_size_bytes || 0);
+      const childBase = String(child.node_kind || "file") === "dir" ? 32 : 22;
+      let childScore = childBase;
+      if (childSize > 0) {
+        const normalized = Math.min(1.0, Math.log1p(childSize) / Math.log1p(1024 * 1024 * 1024));
+        childScore += Math.round(normalized * 48);
+      }
+      child.importance_score = Math.max(10, Math.min(95, childScore));
+      child.importance_tier = nodeImportanceTier(child.importance_score);
+      child.importance_reason = "preview_child";
+      nodes.push(child);
+      byId.set(childId, child);
+      ensureEdge(node, child);
+      if (Array.isArray(entry.children) && entry.children.length > 0) {
+        pathTreeMap[childId] = { kind: "dir", entries: entry.children };
+      }
+      created += 1;
+    }
+    if (created > 0) dedupeEdges();
+    return created;
+  }
 
   function resize() {
     const dpr = window.devicePixelRatio || 1;
@@ -1719,31 +2401,156 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
     const r = Math.max(3.5, Math.min(14, 5.5 * p * camera.zoom));
     return { sx, sy, p, z: z2, r };
   }
-
   function pickNode(mx, my) {
     let best = null;
     let bestDist = Infinity;
     for (const n of nodes) {
+      if (n.hidden) continue;
       const pr = project(n);
       const dx = pr.sx - mx;
       const dy = pr.sy - my;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist <= pr.r + 5 && dist < bestDist) {
+      if (dist <= pr.r + 11 && dist < bestDist) {
         best = n;
         bestDist = dist;
       }
     }
     return best;
   }
+  function screenDeltaToWorld(dxScreen, dyScreen, node) {
+    const pr = project(node);
+    const scale = Math.max(0.12, pr.p * camera.zoom);
+    const sx = dxScreen / scale;
+    const sy = dyScreen / scale;
+    const cosY = Math.cos(camera.rotY), sinY = Math.sin(camera.rotY);
+    const cosX = Math.cos(camera.rotX), sinX = Math.sin(camera.rotX);
+    const wx = cosY * sx + (sinX * sinY) * sy;
+    const wy = cosX * sy;
+    const wz = sinY * sx - (sinX * cosY) * sy;
+    return { wx, wy, wz };
+  }
+  function parseTsMillis(ts) {
+    if (!ts) return 0;
+    const n = Date.parse(String(ts));
+    return Number.isFinite(n) ? n : 0;
+  }
+  function classifySignal(node) {
+    if (!node || node.hidden) return "none";
+    if (String(node.kind || "") === "action" && Boolean(node.risky)) return "risky";
+    if (String(node.kind || "") === "provider" && node.last_ok === false) return "suspicious";
+    if (String(node.dominant_file_type || "").toLowerCase() === "personal") return "sensitive";
+    return "none";
+  }
+  const signalColor = {
+    risky: "#ff5f56",
+    suspicious: "#f2cc60",
+    sensitive: "#c084fc",
+    active: "#40c9ff",
+  };
 
+  let latestActionId = null;
+  let latestActionTs = 0;
+  for (const n of nodes) {
+    if (String(n.kind || "") !== "action") continue;
+    const t = parseTsMillis(n.ts);
+    if (t >= latestActionTs) {
+      latestActionTs = t;
+      latestActionId = n.id;
+    }
+  }
+  function isActiveNode(node) {
+    if (!node || node.hidden) return false;
+    if (selectedNode && selectedNode.id === node.id) return true;
+    return Boolean(latestActionId && node.id === latestActionId);
+  }
+  function isActiveEdge(edge) {
+    if (!edge || !edge.a || !edge.b) return false;
+    if (selectedNode && (edge.a.id === selectedNode.id || edge.b.id === selectedNode.id)) return true;
+    if (!latestActionId) return false;
+    return edge.a.id === latestActionId || edge.b.id === latestActionId;
+  }
+  function nodeNeighbors(nodeId) {
+    const out = new Set();
+    for (const e of edges) {
+      if (!e.a || !e.b) continue;
+      if (e.a.hidden || e.b.hidden) continue;
+      if (e.a.id === nodeId) out.add(e.b.id);
+      if (e.b.id === nodeId) out.add(e.a.id);
+    }
+    return out;
+  }
+  function clearContextFocus() { focusedNodeIds = new Set(); }
+  function expandContext(nodeId) {
+    const neighbors = nodeNeighbors(nodeId);
+    focusedNodeIds = new Set([nodeId, ...neighbors]);
+  }
   function updateSelectedNodeUI() {
-    if (!selectedNode) {
+    if (!selectedNode || selectedNode.hidden) {
+      selectedNode = null;
       selectedNodeEl.textContent = "No node selected";
       noteTextEl.value = "";
+      inspectorBodyEl.textContent = "Click a node to inspect context";
+      aliasInput.value = "";
+      tagsInput.value = "";
       return;
     }
-    selectedNodeEl.textContent = `${selectedNode.label || selectedNode.id} (${selectedNode.kind || "other"})`;
+    const alias = String((userMeta.aliases || {})[selectedNode.id] || "").trim();
+    const tags = String((userMeta.tags || {})[selectedNode.id] || "").trim();
+    selectedNodeEl.textContent = `${displayLabel(selectedNode)} (${selectedNode.kind || "other"})`;
     noteTextEl.value = String(notesMap[selectedNode.id] || "");
+    aliasInput.value = alias;
+    tagsInput.value = tags;
+    const neighbors = Array.from(nodeNeighbors(selectedNode.id)).sort();
+    const pathStats = (selectedNode.path_stats && typeof selectedNode.path_stats === "object")
+      ? selectedNode.path_stats
+      : null;
+    const typeCounts = (pathStats && pathStats.file_type_counts && typeof pathStats.file_type_counts === "object")
+      ? pathStats.file_type_counts
+      : ((selectedNode.file_type_counts && typeof selectedNode.file_type_counts === "object")
+          ? selectedNode.file_type_counts
+          : {});
+    const totalSizeBytes = nodeSizeBytes(selectedNode);
+    const dominantType = String(
+      (pathStats && pathStats.dominant_file_type)
+      || selectedNode.dominant_file_type
+      || "other"
+    );
+    const topTypes = topTypeLabels(typeCounts, 6);
+    const importanceScore = Number(selectedNode.importance_score || 0);
+    const signal = classifySignal(selectedNode);
+    const payload = {
+      id: selectedNode.id,
+      label: selectedNode.label || selectedNode.id,
+      alias: alias || null,
+      kind: selectedNode.kind || "other",
+      node_kind: selectedNode.node_kind || null,
+      path: selectedNode.path || null,
+      parent_path: selectedNode.parent_path || null,
+      tags: tags ? tags.split(",").map(x => x.trim()).filter(Boolean) : [],
+      neighbors: neighbors,
+      dominant_file_type: dominantType,
+      total_size_bytes: totalSizeBytes,
+      total_size_human: formatBytes(totalSizeBytes),
+      top_file_types: topTypes,
+      importance_score: importanceScore,
+      importance_tier: String(selectedNode.importance_tier || nodeImportanceTier(importanceScore)),
+      importance_reason: String(selectedNode.importance_reason || ""),
+      signal: signal,
+      active: isActiveNode(selectedNode),
+      attrs: {
+        provider_type: selectedNode.provider_type || null,
+        enabled: selectedNode.enabled,
+        interval_seconds: selectedNode.interval_seconds,
+        last_ok: selectedNode.last_ok,
+        last_pull_utc: selectedNode.last_pull_utc,
+        vault_bytes: selectedNode.vault_bytes,
+        path_stats: pathStats,
+        ts: selectedNode.ts || null,
+        risky: selectedNode.risky,
+        approval_ok: selectedNode.approval_ok,
+      },
+    };
+    inspectorBodyEl.textContent = JSON.stringify(payload, null, 2);
   }
 
   btnSaveNote.addEventListener("click", () => {
@@ -1775,6 +2582,65 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
     a.click();
     URL.revokeObjectURL(url);
   });
+  btnExpandContext.addEventListener("click", () => {
+    if (!selectedNode) return;
+    addPreviewChildren(selectedNode);
+    expandContext(selectedNode.id);
+  });
+  btnClearContext.addEventListener("click", () => clearContextFocus());
+  btnCollapseChildren.addEventListener("click", () => {
+    if (!selectedNode) return;
+    const n = collapseChildren(selectedNode, true);
+    if (n > 0) {
+      focusedNodeIds = new Set([selectedNode.id]);
+      updateSelectedNodeUI();
+    }
+  });
+  btnCollapseAll.addEventListener("click", () => {
+    const n = collapseAllPreviewNodes();
+    if (n > 0) {
+      clearContextFocus();
+      updateSelectedNodeUI();
+    }
+  });
+  btnOpenPath.addEventListener("click", () => {
+    if (!selectedNode || !selectedNode.path) return;
+    let openPath = String(selectedNode.path);
+    if (String(selectedNode.node_kind || "").toLowerCase() === "file") {
+      const parent = String(selectedNode.parent_path || "");
+      if (parent) openPath = parent;
+      else {
+        const idx = openPath.lastIndexOf("/");
+        if (idx > 0) openPath = openPath.slice(0, idx);
+      }
+    }
+    window.open("file://" + encodeURI(openPath), "_blank");
+  });
+  btnCopyPath.addEventListener("click", async () => {
+    if (!selectedNode || !selectedNode.path) return;
+    const txt = String(selectedNode.path);
+    try { await navigator.clipboard.writeText(txt); } catch (_) {}
+  });
+  btnSaveAliasTags.addEventListener("click", () => {
+    if (!selectedNode) return;
+    const alias = String(aliasInput.value || "").trim();
+    const tags = String(tagsInput.value || "").trim();
+    if (alias) userMeta.aliases[selectedNode.id] = alias;
+    else delete userMeta.aliases[selectedNode.id];
+    if (tags) userMeta.tags[selectedNode.id] = tags;
+    else delete userMeta.tags[selectedNode.id];
+    persistMeta();
+    updateSelectedNodeUI();
+  });
+  btnClearAliasTags.addEventListener("click", () => {
+    if (!selectedNode) return;
+    delete userMeta.aliases[selectedNode.id];
+    delete userMeta.tags[selectedNode.id];
+    aliasInput.value = "";
+    tagsInput.value = "";
+    persistMeta();
+    updateSelectedNodeUI();
+  });
 
   btnResetView.addEventListener("click", () => {
     camera = { rotX: 0.52, rotY: 0.58, panX: 0, panY: 0, zoom: 1.0, depth: 720 };
@@ -1785,6 +2651,8 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
   });
   btnShuffle.addEventListener("click", () => {
     for (const n of nodes) {
+      if (n.hidden) continue;
+      n.fixed = false;
       n.x += (rand() - 0.5) * 140;
       n.y += (rand() - 0.5) * 140;
       n.z += (rand() - 0.5) * 140;
@@ -1806,24 +2674,67 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     lastMouse = { x: mx, y: my };
-
+    pointerTravelPx = 0;
+    pointerDownButton = e.button;
     const picked = pickNode(mx, my);
+    pointerDownNode = picked;
+    pointerWasBackground = !picked && e.button === 0 && !e.shiftKey;
     if (picked && e.button === 0 && !e.shiftKey) {
-      selectedNode = picked;
-      selectedNode.fixed = true;
-      dragMode = "node";
+      setSelectedNode(picked, { autoExpand: true });
+      dragMode = "maybe-node";
+      draggedNode = picked;
       updateSelectedNodeUI();
-      canvas.classList.add("dragging");
       return;
     }
-
-    if (e.button === 1 || e.button === 2 || e.shiftKey) dragMode = "pan";
-    else dragMode = "rotate";
-    canvas.classList.add("dragging");
+    if (pointerWasBackground) {
+      dragMode = "maybe-background";
+      return;
+    }
+    if (e.button === 1 || e.button === 2 || e.shiftKey) {
+      dragMode = "pan";
+      canvas.classList.add("dragging");
+    } else {
+      dragMode = "rotate";
+      canvas.classList.add("dragging");
+    }
   });
 
   window.addEventListener("mouseup", () => {
-    if (selectedNode) selectedNode.fixed = false;
+    if (dragMode === "maybe-background" && pointerTravelPx <= 4 && pointerWasBackground && pointerDownButton === 0) {
+      clearSelectionAndFocus();
+    }
+    if (dragMode === "maybe-node" && pointerDownNode && pointerTravelPx <= 4) {
+      setSelectedNode(pointerDownNode, { autoExpand: true });
+    }
+    if (dragMode === "node" && selectedNode && draggedNode) {
+      const selProj = project(selectedNode);
+      let nearest = null;
+      let nearestDist = Infinity;
+      for (const n of nodes) {
+        if (n.hidden || n.id === selectedNode.id) continue;
+        const p = project(n);
+        const dx = p.sx - selProj.sx;
+        const dy = p.sy - selProj.sy;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearest = n;
+        }
+      }
+      if (nearest && nearestDist <= 26) {
+        mergeNodes(draggedNode, nearest);
+        persistMeta();
+        persistNotes();
+        setSelectedNode(nearest);
+      }
+    }
+    if (dragMode === "node" && draggedNode && !draggedNode.hidden) {
+      draggedNode.fixed = true;
+    }
+    draggedNode = null;
+    pointerDownNode = null;
+    pointerWasBackground = false;
+    pointerDownButton = 0;
     dragMode = "none";
     canvas.classList.remove("dragging");
   });
@@ -1836,10 +2747,30 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
     const dx = mx - lastMouse.x;
     const dy = my - lastMouse.y;
     lastMouse = { x: mx, y: my };
+    pointerTravelPx += Math.sqrt(dx * dx + dy * dy);
+
+    if (dragMode === "maybe-background") {
+      if (pointerTravelPx > 4) {
+        dragMode = "rotate";
+        canvas.classList.add("dragging");
+      } else {
+        return;
+      }
+    }
+
+    if (dragMode === "maybe-node" && draggedNode) {
+      if (pointerTravelPx > 4) {
+        dragMode = "node";
+        draggedNode.fixed = true;
+        canvas.classList.add("dragging");
+      } else {
+        return;
+      }
+    }
 
     if (dragMode === "rotate") {
-      camera.rotY += dx * 0.008;
-      camera.rotX += dy * 0.008;
+      camera.rotY += dx * 0.0048;
+      camera.rotX += dy * 0.0048;
       camera.rotX = Math.max(-1.35, Math.min(1.35, camera.rotX));
       return;
     }
@@ -1848,35 +2779,49 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
       camera.panY += dy;
       return;
     }
-    if (dragMode === "node" && selectedNode) {
-      const pr = project(selectedNode);
-      const k = Math.max(0.15, pr.p * camera.zoom);
-      selectedNode.x += dx / k;
-      selectedNode.y += dy / k;
-      selectedNode.vx = 0;
-      selectedNode.vy = 0;
-      selectedNode.vz = 0;
+    if (dragMode === "node" && (draggedNode || selectedNode)) {
+      const moving = draggedNode || selectedNode;
+      const world = screenDeltaToWorld(dx, dy, moving);
+      moving.x += world.wx;
+      moving.y += world.wy;
+      moving.z += world.wz;
+      moving.vx = 0;
+      moving.vy = 0;
+      moving.vz = 0;
     }
+  });
+
+  canvas.addEventListener("dblclick", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const picked = pickNode(mx, my);
+    if (!picked) return;
+    setSelectedNode(picked, { autoExpand: true });
+    const added = addPreviewChildren(picked);
+    if (added > 0) expandContext(picked.id);
   });
 
   function tick() {
     if (physicsPaused) return;
     for (const n of nodes) {
+      if (n.hidden) continue;
       if (n.fixed) continue;
       n.vx *= 0.87;
       n.vy *= 0.87;
       n.vz *= 0.87;
     }
-
     for (let i = 0; i < nodes.length; i++) {
       const a = nodes[i];
+      if (a.hidden) continue;
       for (let j = i + 1; j < nodes.length; j++) {
         const b = nodes[j];
+        if (b.hidden) continue;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dz = b.z - a.z;
         const d2 = dx * dx + dy * dy + dz * dz + 0.01;
-        const rep = 2200 / d2;
+        const rep = 1500 / d2;
         const fx = rep * dx;
         const fy = rep * dy;
         const fz = rep * dz;
@@ -1884,22 +2829,23 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
         if (!b.fixed) { b.vx += fx; b.vy += fy; b.vz += fz; }
       }
     }
-
     for (const e of edges) {
+      if (!e.a || !e.b) continue;
+      if (e.a.hidden || e.b.hidden) continue;
       const dx = e.b.x - e.a.x;
       const dy = e.b.y - e.a.y;
       const dz = e.b.z - e.a.z;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-      const target = 130;
-      const force = (dist - target) * 0.012;
+      const target = 105;
+      const force = (dist - target) * 0.009;
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
       const fz = (dz / dist) * force;
       if (!e.a.fixed) { e.a.vx += fx; e.a.vy += fy; e.a.vz += fz; }
       if (!e.b.fixed) { e.b.vx -= fx; e.b.vy -= fy; e.b.vz -= fz; }
     }
-
     for (const n of nodes) {
+      if (n.hidden) continue;
       if (n.fixed) continue;
       n.x += n.vx;
       n.y += n.vy;
@@ -1915,31 +2861,75 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
     const h = height();
     ctx.clearRect(0, 0, w, h);
     const projected = new Map();
-    for (const n of nodes) projected.set(n.id, project(n));
-
+    for (const n of nodes) {
+      if (n.hidden) continue;
+      projected.set(n.id, project(n));
+    }
     const edgeDraw = edges.map(e => ({
       e,
       a: projected.get(e.a.id),
       b: projected.get(e.b.id),
     })).filter(x => x.a && x.b);
     edgeDraw.sort((x, y) => ((x.a.z + x.b.z) - (y.a.z + y.b.z)));
-
     for (const row of edgeDraw) {
       const depth = Math.max(0.12, Math.min(0.95, (row.a.p + row.b.p) / 2));
-      ctx.strokeStyle = "rgba(57,65,74," + depth.toFixed(3) + ")";
+      let alpha = depth;
+      if (focusedNodeIds.size > 0 && !(focusedNodeIds.has(row.e.a.id) && focusedNodeIds.has(row.e.b.id))) {
+        alpha *= 0.14;
+      }
+      ctx.strokeStyle = "rgba(57,65,74," + alpha.toFixed(3) + ")";
       ctx.lineWidth = 0.8 + 0.9 * depth;
       ctx.beginPath();
       ctx.moveTo(row.a.sx, row.a.sy);
       ctx.lineTo(row.b.sx, row.b.sy);
       ctx.stroke();
+      if (isActiveEdge(row.e)) {
+        const pulse = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(frameTimeSec * 3.4));
+        const travel = (frameTimeSec * 0.35 + (parseInt(hashKey(row.e.a.id + row.e.b.id), 16) % 1000) / 1000) % 1;
+        const px = row.a.sx + (row.b.sx - row.a.sx) * travel;
+        const py = row.a.sy + (row.b.sy - row.a.sy) * travel;
+        ctx.fillStyle = "rgba(64,201,255," + (0.35 + pulse * 0.5).toFixed(3) + ")";
+        ctx.beginPath();
+        ctx.arc(px, py, 2.2 + pulse * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
-
-    const nodeDraw = nodes.map(n => ({ n, p: projected.get(n.id) })).filter(x => x.p);
+    const nodeDraw = nodes
+      .filter(n => !n.hidden)
+      .map(n => ({ n, p: projected.get(n.id) }))
+      .filter(x => x.p);
     nodeDraw.sort((a, b) => a.p.z - b.p.z);
     for (const row of nodeDraw) {
       const n = row.n;
       const p = row.p;
-      const color = kindColor[n.kind] || kindColor.other;
+      const color = colorForNode(n);
+      const dimmed = focusedNodeIds.size > 0 && !focusedNodeIds.has(n.id);
+      ctx.globalAlpha = dimmed ? 0.22 : 1.0;
+      if (!dimmed) {
+        const signal = classifySignal(n);
+        if (signal !== "none") {
+          const pulse = 0.5 + 0.5 * Math.sin(frameTimeSec * 2.8 + (parseInt(hashKey(n.id), 16) % 13));
+          const auraR = p.r + 4 + pulse * 4;
+          const auraColor = signalColor[signal] || signalColor.suspicious;
+          ctx.strokeStyle = auraColor;
+          ctx.globalAlpha = 0.20 + pulse * 0.28;
+          ctx.lineWidth = 1.6 + pulse * 1.2;
+          ctx.beginPath();
+          ctx.arc(p.sx, p.sy, auraR, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = dimmed ? 0.22 : 1.0;
+        }
+        if (isActiveNode(n)) {
+          const pulse = 0.5 + 0.5 * Math.sin(frameTimeSec * 4.2);
+          ctx.strokeStyle = signalColor.active;
+          ctx.globalAlpha = 0.32 + pulse * 0.36;
+          ctx.lineWidth = 1.3 + pulse * 1.8;
+          ctx.beginPath();
+          ctx.arc(p.sx, p.sy, p.r + 6 + pulse * 3, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = dimmed ? 0.22 : 1.0;
+        }
+      }
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(p.sx, p.sy, p.r, 0, Math.PI * 2);
@@ -1951,19 +2941,34 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
         ctx.arc(p.sx, p.sy, p.r + 2.2, 0, Math.PI * 2);
         ctx.stroke();
       }
-      ctx.fillStyle = "rgba(214,221,230," + Math.max(0.45, Math.min(1, p.p)).toFixed(3) + ")";
+      const lblAlpha = Math.max(0.45, Math.min(1, p.p)) * (dimmed ? 0.45 : 1.0);
+      ctx.fillStyle = "rgba(214,221,230," + lblAlpha.toFixed(3) + ")";
       ctx.font = "11px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif";
-      ctx.fillText(String(n.label || n.id), p.sx + p.r + 4, p.sy + 3);
+      const tagStr = String((userMeta.tags || {})[n.id] || "").trim();
+      const label = displayLabel(n) + (tagStr ? ` [${tagStr}]` : "");
+      ctx.fillText(label, p.sx + p.r + 4, p.sy + 3);
+      ctx.globalAlpha = 1.0;
     }
   }
 
   function frame() {
+    frameTimeSec = performance.now() / 1000;
     tick();
     draw();
+    updateMetaLine();
     requestAnimationFrame(frame);
   }
 
-  meta.textContent = `nodes=${nodes.length} edges=${edges.length} generated=${graph.generated_at_utc || "n/a"} notes_key=${notesStoreKey}`;
+  function updateMetaLine() {
+    let visibleEdgeCount = 0;
+    for (const e of edges) {
+      if (!e.a || !e.b) continue;
+      if (e.a.hidden || e.b.hidden) continue;
+      visibleEdgeCount += 1;
+    }
+    meta.textContent = `nodes=${nodes.filter(n => !n.hidden).length} edges=${visibleEdgeCount} generated=${graph.generated_at_utc || "n/a"} notes_key=${notesStoreKey}`;
+  }
+  updateMetaLine();
   resize();
   updateSelectedNodeUI();
   requestAnimationFrame(frame);
