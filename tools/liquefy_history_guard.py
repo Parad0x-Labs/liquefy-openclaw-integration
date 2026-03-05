@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from getpass import getpass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from cli_runtime import resolve_repo_root
 
@@ -364,6 +364,74 @@ def _count_total_bytes(files: List[Path]) -> int:
             pass
     return total
 
+
+def _path_file_type(path: Path) -> str:
+    ext = path.suffix.lower().lstrip(".")
+    if ext:
+        return ext[:24]
+    return "unknown"
+
+
+def _workspace_path_metrics(workspace: Path) -> Tuple[Dict[str, Any], Dict[str, List[str]]]:
+    files = _collect_files(workspace)
+    total_size_bytes = _count_total_bytes(files)
+    type_counts: Dict[str, int] = {}
+    type_bytes: Dict[str, int] = {}
+    tree_sets: Dict[str, Set[str]] = {}
+    ws_key = str(workspace)
+    tree_sets.setdefault(ws_key, set())
+
+    for file_path in files:
+        ftype = _path_file_type(file_path)
+        type_counts[ftype] = type_counts.get(ftype, 0) + 1
+        try:
+            size = int(file_path.stat().st_size)
+        except OSError:
+            size = 0
+        type_bytes[ftype] = type_bytes.get(ftype, 0) + max(0, size)
+
+        try:
+            rel_parts = file_path.relative_to(workspace).parts
+        except Exception:
+            rel_parts = (file_path.name,)
+
+        parent = ws_key
+        for part in rel_parts:
+            child = f"{parent}/{part}"
+            tree_sets.setdefault(parent, set()).add(child)
+            tree_sets.setdefault(child, set())
+            parent = child
+
+    dominant_file_type = "unknown"
+    if type_counts:
+        dominant_file_type = max(type_counts.items(), key=lambda it: (it[1], it[0]))[0]
+
+    size_mb = total_size_bytes / (1024 * 1024) if total_size_bytes > 0 else 0.0
+    importance_score = int(min(100, 20 + min(50, size_mb * 0.8) + min(30, len(files) * 0.05)))
+    if importance_score >= 80:
+        importance_tier = "critical"
+    elif importance_score >= 60:
+        importance_tier = "high"
+    elif importance_score >= 35:
+        importance_tier = "medium"
+    else:
+        importance_tier = "low"
+
+    path_stats = {
+        "total_files": len(files),
+        "total_size_bytes": int(total_size_bytes),
+        "file_type_counts": dict(sorted(type_counts.items())),
+        "file_type_bytes": dict(sorted(type_bytes.items())),
+    }
+    path_tree_map = {k: sorted(v) for k, v in tree_sets.items()}
+    metrics = {
+        "dominant_file_type": dominant_file_type,
+        "total_size_bytes": int(total_size_bytes),
+        "importance_score": int(importance_score),
+        "importance_tier": importance_tier,
+        "path_stats": path_stats,
+    }
+    return metrics, path_tree_map
 
 
 def _selected_providers(cfg: Dict[str, Any], provider_filters: Optional[List[str]]) -> List[Dict[str, Any]]:
@@ -1194,6 +1262,7 @@ def _build_history_graph(
     def add_edge(source: str, target: str, rel: str, weight: float = 1.0) -> None:
         edges.append({"source": source, "target": target, "rel": rel, "weight": float(weight)})
 
+    workspace_metrics, path_tree_map = _workspace_path_metrics(workspace)
     workspace_node_id = f"workspace:{workspace}"
     add_node(
         {
@@ -1201,6 +1270,11 @@ def _build_history_graph(
             "kind": "workspace",
             "label": workspace.name or "workspace",
             "path": str(workspace),
+            "dominant_file_type": workspace_metrics["dominant_file_type"],
+            "total_size_bytes": workspace_metrics["total_size_bytes"],
+            "importance_score": workspace_metrics["importance_score"],
+            "importance_tier": workspace_metrics["importance_tier"],
+            "path_stats": workspace_metrics["path_stats"],
         }
     )
 
@@ -1327,6 +1401,7 @@ def _build_history_graph(
         "node_count": len(nodes_sorted),
         "edge_count": len(edges_sorted),
         "node_kinds": node_kinds,
+        "path_tree_map": path_tree_map,
         "nodes": nodes_sorted,
         "edges": edges_sorted,
     }
@@ -1594,22 +1669,31 @@ def _render_graph_html(graph: Dict[str, Any], title: str) -> str:
       <div class="lg"><span class="dot" style="background: var(--other)"></span>other</div>
     </div>
     <div id="notes" class="panel">
-      <h4>Node Notes</h4>
-      <div id="selectedNode">No node selected</div>
-      <textarea id="noteText" placeholder="Attach notes to the selected node..."></textarea>
-      <div id="noteActions">
-        <button id="saveNote">Save note</button>
-        <button id="clearNote">Clear note</button>
-        <button id="exportNotes">Export notes</button>
-      </div>
-      <div id="help">
-        Controls: Drag node = move. Drag empty = rotate. Shift+drag or middle/right drag = pan.
-        Scroll = zoom. Connections stay attached while rearranging.
+      <div id="inspector">
+        <h4>Node Notes</h4>
+        <div id="selectedNode">No node selected</div>
+        <input id="aliasInput" placeholder="Alias / tag" />
+        <textarea id="noteText" placeholder="Attach notes to the selected node..."></textarea>
+        <div id="noteActions">
+          <button id="saveNote">Save note</button>
+          <button id="clearNote">Clear note</button>
+          <button id="exportNotes">Export notes</button>
+          <button id="expandContext">Expand context</button>
+          <button id="collapseChildren">Collapse children</button>
+          <button id="collapseAll">Collapse all</button>
+          <button id="openPath">Open path</button>
+        </div>
+        <div id="help">
+          Controls: Drag node = move. Click = select. Drag empty = rotate. Shift+drag or middle/right drag = pan.
+          Scroll = zoom. Connections stay attached while rearranging.
+          <br /><strong>Merge:</strong> drag one node and drop it onto another node to merge.
+        </div>
       </div>
     </div>
   </div>
   <script>
   const graph = __GRAPH_JSON__;
+  const pathTreeMap = graph.path_tree_map || {};
   const canvas = document.getElementById("graph");
   const ctx = canvas.getContext("2d");
   const meta = document.getElementById("meta");
