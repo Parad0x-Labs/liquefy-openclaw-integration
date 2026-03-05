@@ -269,7 +269,7 @@ ERROR_FIXES = {
     },
     "CRYPTOGRAPHY_NOT_FOUND": {
         "message": "The cryptography package is required for encryption.",
-        "fix": "pip install cryptography==41.0.7\n# Or: make setup",
+        "fix": "pip install cryptography==46.0.5\n# Or: make setup",
         "auto_fix": "pip install cryptography",
     },
     "UNSAFE_OUTPUT_DIR": {
