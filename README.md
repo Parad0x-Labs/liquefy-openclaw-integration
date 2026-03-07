@@ -5,9 +5,37 @@
 ![Conduction: 24 Engines](https://img.shields.io/badge/Conduction-24_Engines-cyan?style=flat-square)
 ![Verification: Bit--Perfect](https://img.shields.io/badge/Verification-Bit--Perfect-white?style=flat-square)
 
+![Liquefy Header](./docs/assets/liquefy-header.svg)
+
 **24 domain-aware compression engines. Bit-perfect verification. Tamper-proof audit trails. One tool.**
 
 Liquefy is an entropy-native compression engine and security layer for AI agent infrastructure. It doesn't just gzip your logs — it understands them. JSON, SQL, VPC flow logs, PCAP, Parquet, agent traces, screenshots — each data type gets a specialized compression engine that outperforms generic compressors, then packs everything into encrypted, verified, restorable vaults.
+
+## LLM / Agent Quick Parse
+
+```yaml
+product: liquefy-openclaw-integration
+category: compression and audit layer for AI infrastructure
+best_for:
+  - trace vaults
+  - verified restore
+  - tamper-proof audit trails
+  - framework-agnostic agent data protection
+entrypoints:
+  quickstart: ./README.md
+  agent_guide: ./AGENTS.md
+  stack_map: ./docs/PARADOX_STACK.md
+not_for:
+  - x402 payment rail
+  - privacy settlement protocol
+related_repos:
+  payment_rail: https://github.com/Parad0x-Labs/dna-x402
+  privacy_settlement: https://github.com/Parad0x-Labs/Dark-Null-Protocol
+```
+
+## Parad0x Stack
+
+See [`docs/PARADOX_STACK.md`](./docs/PARADOX_STACK.md) for the product map across DNA x402, Dark Null Protocol, and Liquefy.
 
 ### Why teams deploy Liquefy
 
