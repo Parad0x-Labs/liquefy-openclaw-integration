@@ -24,21 +24,21 @@
     <path d="M1168 0V420"/>
   </g>
   <circle cx="950" cy="110" r="220" fill="url(#glow)"/>
-  <rect x="72" y="62" width="266" height="34" rx="17" fill="#112220" stroke="#71E7C8"/>
-  <text x="96" y="85" fill="#C9FFF0" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">COMPRESSION + SECURITY FOR AI INFRA</text>
-  <text x="72" y="162" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="800">Liquefy</text>
-  <text x="72" y="220" fill="#DDF9F1" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700">Compress. Verify. Audit. Recover.</text>
-  <text x="72" y="260" fill="#CBE6DD" font-family="Arial, Helvetica, sans-serif" font-size="24">24 domain-aware engines for agent traces, logs, assets, and vaults.</text>
-  <text x="72" y="320" fill="#BFD9D1" font-family="Arial, Helvetica, sans-serif" font-size="21">Bit-perfect verification, tamper-proof audit trails, and framework-agnostic protection for AI systems.</text>
+  <rect x="72" y="62" width="236" height="34" rx="17" fill="#112220" stroke="#71E7C8"/>
+  <text x="96" y="85" fill="#C9FFF0" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">COMPRESSION FOR AI INFRA</text>
+  <text x="72" y="162" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="800">Liquefy</text>
+  <text x="72" y="220" fill="#DDF9F1" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700">Compress. Verify. Recover.</text>
+  <text x="72" y="262" fill="#CBE6DD" font-family="Arial, Helvetica, sans-serif" font-size="25">24 engines for traces, logs, assets.</text>
+  <text x="72" y="316" fill="#BFD9D1" font-family="Arial, Helvetica, sans-serif" font-size="22">Audit trails and safe restore.</text>
   <g>
-    <rect x="786" y="84" width="390" height="84" rx="18" fill="#10201E" stroke="#2A6458"/>
-    <text x="818" y="120" fill="#B4FFF2" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">ENGINES</text>
-    <text x="818" y="149" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700">24 specialized compression paths</text>
-    <rect x="786" y="188" width="390" height="84" rx="18" fill="#10201E" stroke="#2A6458"/>
-    <text x="818" y="224" fill="#B4FFF2" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">VERIFICATION</text>
-    <text x="818" y="253" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700">bit-perfect restore and audit proof</text>
-    <rect x="786" y="292" width="390" height="84" rx="18" fill="#10201E" stroke="#2A6458"/>
-    <text x="818" y="328" fill="#B4FFF2" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">FIT</text>
-    <text x="818" y="357" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700">works across agent frameworks</text>
+    <rect x="820" y="84" width="350" height="84" rx="18" fill="#10201E" stroke="#2A6458"/>
+    <text x="848" y="120" fill="#B4FFF2" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">ENGINES</text>
+    <text x="848" y="152" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="800">24 specialized paths</text>
+    <rect x="820" y="188" width="350" height="84" rx="18" fill="#10201E" stroke="#2A6458"/>
+    <text x="848" y="224" fill="#B4FFF2" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">VERIFICATION</text>
+    <text x="848" y="256" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="800">bit-perfect restore</text>
+    <rect x="820" y="292" width="350" height="84" rx="18" fill="#10201E" stroke="#2A6458"/>
+    <text x="848" y="328" fill="#B4FFF2" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">FIT</text>
+    <text x="848" y="360" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="800">works with any stack</text>
   </g>
 </svg>
