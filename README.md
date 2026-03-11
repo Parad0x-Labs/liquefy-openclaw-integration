@@ -42,7 +42,7 @@ See [`docs/PARADOX_STACK.md`](./docs/PARADOX_STACK.md) for the product map acros
 - **24 compression engines** — domain-aware compressors for JSON, logs, SQL, network captures, images, and more. Not a wrapper around zstd — each engine exploits the structure of its data type for ratios generic tools can't touch.
 - **Bit-perfect verification (MRTV)** — every compress/decompress cycle is verified. Zero silent corruption. What goes in comes out identical, provably.
 - **Cryptographic Flight Recorder** — SHA-256 hash-chained audit trails with on-chain anchoring (Solana). Automatic secret redaction. One-click HTML forensic reports. When the auditor, regulator, or lawyer arrives, you have mathematically verifiable proof — not just logs.
-- **Active agent protection** — policy enforcement with kill switches, token budget caps, sentinel file monitoring, and automated rollback. If an agent goes rogue, Liquefy halts it before damage is done.
+- **Active agent protection** — policy enforcement with kill switches, context-gated runs, token budget caps, sentinel file monitoring, replay blocking, and automated rollback. If an agent goes rogue or keeps re-running the same expensive context bundle, Liquefy halts it before damage is done.
 - **One layer for all frameworks** — OpenClaw, NanoClaw, LangChain, CrewAI, Claude Agent SDK, or any agent that touches the filesystem.
 
 ---
@@ -558,6 +558,7 @@ liquefy pack       --workspace ~/.openclaw --out ./vault --apply
 liquefy restore    ./vault/run_001 --out ./restored
 liquefy policy     audit --dir ./agent-output --json
 liquefy safe-run   --workspace ~/.openclaw --cmd "openclaw run"
+liquefy context-gate compile --workspace ~/.openclaw --cmd "openclaw run" --block-replay
 liquefy cas        ingest --dir ./agent-output
 liquefy tokens     scan --dir ./agent-output
 liquefy telemetry  push --webhook https://my-siem/api
@@ -583,20 +584,52 @@ make event-stats SESSION_ID=s1       # tokens, cost, duplicate prompts
 - Error/retry/escalation markers
 - Duplicate prompt detection in stats
 
-### Safe Run (Automated Rollback + Cost Cap + Watchdog)
+### Context Gate (Bounded Prompt Compiler + Replay Barrier)
+
+Move context discipline into the hot path instead of pretending post-run reports are prevention.
+
+```bash
+# Compile the next run's runtime context under a hard token budget
+liquefy context-gate compile \
+  --workspace ~/.openclaw \
+  --cmd "openclaw run" \
+  --token-budget 2400 \
+  --block-replay
+
+# Inspect replay history for the workspace
+liquefy context-gate history --workspace ~/.openclaw --json
+
+# Guarded OpenClaw run: capsule -> context gate -> snapshot -> execute
+python tools/liquefy_openclaw.py run \
+  --workspace ~/.openclaw \
+  --cmd "openclaw run" \
+  --context-budget-tokens 2400 \
+  --json
+```
+
+- **Hard token budget** - ranks optional context blocks and refuses runs when the required identity/bootstrap set cannot fit (`required_context_exceeds_budget`)
+- **Exact replay barrier** - blocks the same command + compiled-context bundle for 24 hours by default on `liquefy_openclaw.py run`; use `--allow-replay` only when you mean it
+- **Explainable artifacts** - writes `.liquefy/context/current/context_gate_prompt.md`, `.liquefy/context/current/context_gate.json`, and `.liquefy/context/history/context_gate_history.json`
+- **Secret-aware summaries** - includes redacted provider profile summaries instead of blindly stuffing raw config into the prompt
+
+### Safe Run (Context Gate + Automated Rollback + Cost Cap + Watchdog)
 
 Wrap agent execution with snapshot + auto-restore on violations:
 
 ```bash
 make safe-run WORKSPACE=~/.openclaw CMD="openclaw run" SENTINELS=SOUL.md,HEARTBEAT.md
 
-# With cost cap and heartbeat watchdog
+# With bounded context, replay blocking, cost cap, and heartbeat watchdog
 python tools/liquefy_safe_run.py \
     --workspace ~/.openclaw --cmd "python agent.py" \
+    --context-budget-tokens 2400 \
+    --block-replay \
     --max-cost 5.00 --heartbeat --sentinels SOUL.md --json
 ```
 
+- **Context gate first** - compiles the primed workspace context under budget before the agent gets a chance to run
 - **Snapshot** workspace before run, **restore** if policy violation or crash
+- **Replay guard** - rejects unchanged command + context replays inside the configured replay window
 - **Token cost cap** (`--max-cost`) — auto-rollback if agent burns more than your USD limit (prevents economic DoS)
 - **Dead Man's Switch** (`--heartbeat`) — writes `.liquefy-heartbeat` every 5s; agent or watcher self-halts if monitoring dies
 - **Sentinel monitoring** — detect tampering of SOUL.md, HEARTBEAT.md, auth-profiles.json
