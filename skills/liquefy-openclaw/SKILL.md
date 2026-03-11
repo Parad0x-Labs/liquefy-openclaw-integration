@@ -35,6 +35,25 @@ Optional packaged plugin path:
 - if the user already has the OpenClaw plugin installed, `liquefy_scan` and `liquefy_pack_apply` are available
 - do not assume those plugin tools exist in a standalone skill install
 
+## Preflight
+
+Before using repo-relative tools or plugin commands:
+- verify `liquefy` is installed and callable
+- verify repo-relative `tools/` paths exist before using `python tools/...`
+- verify optional plugin tools exist before using them
+- verify `LIQUEFY_SECRET` is set before any secure pack/apply flow
+- prefer `--json` for commands that support it when machine-readable results matter
+
+If a required command, repo path, or dependency is missing:
+- stop and explain the missing dependency
+- do not guess alternate commands
+- do not pretend plugin or repo-only surfaces are available
+
+Compatibility note:
+- this standalone skill is aligned to the Liquefy OpenClaw command surface currently shipped in this repo
+- check `liquefy version --json` and `liquefy openclaw --version --json` before relying on newer flags
+- if the optional OpenClaw plugin is used, it expects Liquefy OpenClaw CLI `>= 1.1.0`
+
 ## Hard Rules
 
 1. Prefer read-only scan before any write/apply action.
@@ -43,6 +62,7 @@ Optional packaged plugin path:
 4. If `context-gate` reports `blocked=true`, stop and explain `block_reason` instead of trying to route around it.
 5. If secure pack/apply is requested, ensure `LIQUEFY_SECRET` exists before enabling `--secure`.
 6. Do not pretend the standalone skill install also installed the plugin package. Treat plugin tools as optional.
+7. Do not run pack, apply, restore, hook install/uninstall, or other write-affecting operations unless the user explicitly requested that action after review.
 
 ## References
 

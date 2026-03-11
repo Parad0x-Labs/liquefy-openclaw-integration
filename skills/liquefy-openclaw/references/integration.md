@@ -29,6 +29,14 @@ That path exposes:
 - `liquefy-safe-run`
 - `liquefy-context-gate`
 
+Minimum compatibility note:
+- the optional plugin compatibility probe is currently aligned to Liquefy OpenClaw CLI `>= 1.1.0`
+- check `liquefy version --json` and `liquefy openclaw --version --json` if behavior looks newer or older than expected
+
+Repo-relative helper note:
+- commands like `python tools/openclaw_tracevault.py` and `python tools/liquefy_openclaw_plugin.py ...` require a real Liquefy repo checkout with the `tools/` directory present
+- if the user only installed the standalone skill and not the repo, those helper commands are not available
+
 ## Optional plugin path
 
 Separate package:

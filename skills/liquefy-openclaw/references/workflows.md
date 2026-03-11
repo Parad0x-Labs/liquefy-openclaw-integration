@@ -2,6 +2,18 @@
 
 Use this file when the task is operational: pick the smallest real workflow that matches the user request.
 
+## Preflight checks
+
+Before running any workflow:
+- verify `liquefy` is callable, ideally with `liquefy version --json`
+- if using `python tools/...`, verify the current working directory or checkout actually contains those `tools/` paths
+- if using plugin tools, verify the OpenClaw plugin is already installed and enabled
+- if secure mode is requested, verify `LIQUEFY_SECRET` exists first
+
+If a required command or path is missing:
+- stop and explain the missing dependency
+- do not silently swap to a different surface unless the user explicitly wants that fallback
+
 ## 1. Scan an OpenClaw workspace first
 
 Use this when the user wants a safe audit or wants to know what would be packed.
@@ -86,6 +98,8 @@ Context gate writes:
 
 Use this when the user wants Liquefy to archive sessions automatically inside OpenClaw.
 
+This is write-affecting. Do not install or uninstall hooks unless the user explicitly asked for that action.
+
 - Install:
   - `python tools/liquefy_openclaw_plugin.py hook install --create`
 - Status:
@@ -124,6 +138,8 @@ Use this after a pack already exists.
   - `liquefy search <vault_dir> --query "<expr>"`
 - Restore:
   - `liquefy restore <vault_dir> --out <dir>`
+
+`restore` writes files to disk. Do not run it unless the user explicitly wants recovered files on disk.
 
 Good defaults:
 - search before restore when the user needs only a small fact
