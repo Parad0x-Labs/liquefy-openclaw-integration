@@ -6,6 +6,7 @@ Bridges [DNA x402](https://github.com/Parad0x-Labs/dna-x402) micropayment audit 
 
 - Exports DNA payment audit events as Liquefy telemetry (NDJSON)
 - Converts signed payment receipts into proof artifacts
+- Carries DNA Guard events for spend blocks, replay alerts, validation failures, disputes, and receipt verification state
 - Packs everything into `.null` vaults with bit-perfect verification
 
 ## Quick Start
@@ -13,12 +14,21 @@ Bridges [DNA x402](https://github.com/Parad0x-Labs/dna-x402) micropayment audit 
 ### Export DNA Payments to Vault
 
 ```bash
+# Quick health / audit summary
+python plugins/dna-payment/dna_bridge.py status --server http://localhost:8080
+
 # From the DNA x402 project:
 curl -s http://localhost:8080/admin/audit/export | \
   npx tsx src/bridge/liquefy/cli.ts --stdin --out ./vault-staging/payments
 
 # Pack with Liquefy:
 python tools/tracevault_pack.py ./vault-staging/payments --org dna --out ./vault/dna-payments --json
+
+# Or use the Python bridge directly from this repo:
+python plugins/dna-payment/dna_bridge.py archive \
+  --server http://localhost:8080 \
+  --out ./vault-staging/dna-export \
+  --vault-out ./vault/dna-payments
 ```
 
 ### Python Integration
@@ -121,6 +131,13 @@ vault-staging/dna-export/
   "fields": { "amount_atomic": "1000", "mint": "USDC" }
 }
 ```
+
+DNA Guard examples:
+- `GUARD_SPEND_BLOCKED` -> `payment` domain, `warn` severity
+- `GUARD_REPLAY_ALERT` -> `receipt` domain, `warn` severity
+- `GUARD_VALIDATION_FAILED` / `GUARD_DISPUTE_TAGGED` -> `receipt` domain
+- `GUARD_RECEIPT_VERIFIED` / `GUARD_RECEIPT_INVALID` -> receipt verification trail
+- `GUARD_FAIL_OPEN` / `GUARD_RUNTIME_ERROR` -> `system` domain
 
 ### Proof Artifact (`liquefy.dna.proof.v1`)
 

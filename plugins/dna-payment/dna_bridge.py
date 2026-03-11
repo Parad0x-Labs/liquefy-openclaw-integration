@@ -41,6 +41,14 @@ SEVERITY_MAP = {
     "RATE_LIMITED": "warn",
     "SHOP_REGISTERED": "info",
     "SERVER_STARTED": "info",
+    "GUARD_SPEND_BLOCKED": "warn",
+    "GUARD_REPLAY_ALERT": "warn",
+    "GUARD_VALIDATION_FAILED": "warn",
+    "GUARD_DISPUTE_TAGGED": "warn",
+    "GUARD_RECEIPT_VERIFIED": "info",
+    "GUARD_RECEIPT_INVALID": "error",
+    "GUARD_FAIL_OPEN": "warn",
+    "GUARD_RUNTIME_ERROR": "error",
 }
 
 DOMAIN_MAP = {
@@ -52,6 +60,14 @@ DOMAIN_MAP = {
     "RECEIPT_ANCHORED": "receipt",
     "NETTING_FLUSH": "payment",
     "SHOP_REGISTERED": "market",
+    "GUARD_SPEND_BLOCKED": "payment",
+    "GUARD_REPLAY_ALERT": "receipt",
+    "GUARD_VALIDATION_FAILED": "receipt",
+    "GUARD_DISPUTE_TAGGED": "receipt",
+    "GUARD_RECEIPT_VERIFIED": "receipt",
+    "GUARD_RECEIPT_INVALID": "receipt",
+    "GUARD_FAIL_OPEN": "system",
+    "GUARD_RUNTIME_ERROR": "system",
 }
 
 
@@ -80,6 +96,10 @@ def audit_to_telemetry(entry: dict) -> dict:
         tags.append(f"settlement:{entry['settlement']}")
     if entry.get("shopId"):
         tags.append(f"shop:{entry['shopId']}")
+    if entry.get("mint"):
+        tags.append(f"mint:{entry['mint']}")
+    if entry.get("errorCode"):
+        tags.append(f"error:{entry['errorCode']}")
 
     return {
         "_schema": "liquefy.dna.telemetry.v1",

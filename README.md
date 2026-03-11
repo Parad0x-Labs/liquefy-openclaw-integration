@@ -352,6 +352,7 @@ Publish/install trust notes (pinned plugin versions, checksums, safe defaults):
 **What it does:**
 - Exports DNA payment audit events as Liquefy telemetry (NDJSON)
 - Converts signed payment receipts into verifiable proof artifacts
+- Preserves DNA Guard events for spend caps, replay alerts, quality disputes, and receipt verification trails
 - Packs everything into `.null` vaults with bit-perfect verification
 
 **Quick usage:**
@@ -361,6 +362,10 @@ Publish/install trust notes (pinned plugin versions, checksums, safe defaults):
 python plugins/dna-payment/dna_bridge.py export \
   --server http://localhost:8080 \
   --out ./vault-staging/dna-payments
+
+# Status / audit summary from the running DNA node
+python plugins/dna-payment/dna_bridge.py status \
+  --server http://localhost:8080
 
 # Pack into a .null vault
 python tools/tracevault_pack.py ./vault-staging/dna-payments \
