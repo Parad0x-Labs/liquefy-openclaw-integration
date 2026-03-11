@@ -79,3 +79,21 @@ Use these facts when the user asks if the integration is safe to deploy:
 ## Packaging fact
 
 The plugin npm package includes the `skills/` directory, so anything placed under this skill folder ships with the plugin package.
+
+## Update truth
+
+Skill users do not live-track `main`.
+
+What they actually get:
+- the skill text and references bundled into the published plugin version
+- the runtime behavior of whatever Liquefy CLI is installed on the host machine
+
+So there are two separate update channels:
+- plugin/package update:
+  changes the shipped OpenClaw wrapper code and the bundled skill files
+- Liquefy CLI update:
+  changes the actual Python runtime behavior used by the wrapper and local commands
+
+If a user installs from a git checkout and runs `./install.sh`, they get the version from that checkout at that moment. It does not auto-update unless they pull/reinstall.
+
+If a user installs the npm plugin with `--pin`, they get that exact plugin version until they explicitly upgrade it.

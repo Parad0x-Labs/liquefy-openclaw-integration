@@ -47,9 +47,10 @@ Use these when the caller needs runtime-control details:
 - `exact_replay_detected`
 - `required_context_exceeds_budget`
 
-## Schema files
+## Source-of-truth files
 
-- `../../../../../schemas/liquefy.openclaw.cli.v1.json`
-- `../../../../../schemas/liquefy.context-gate.v1.json`
-- `../../../../../schemas/liquefy.safe-run.v2.json`
-- `../../../../../docs/sdk.md`
+Full schema files and the longer SDK contract doc live in the Liquefy repo under:
+- `schemas/`
+- `docs/sdk.md`
+
+Those repo-wide files are not bundled into the npm plugin package. The packaged skill must rely on the contract summary in this file unless the host also has a full Liquefy repo checkout.

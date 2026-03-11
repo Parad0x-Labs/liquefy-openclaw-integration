@@ -83,5 +83,5 @@ npm pack
 ## Notes
 
 - This is a wrapper package. Compression/search/restore logic remains in the Liquefy CLI + Python engines.
-- For a stable integration contract, see `../../docs/sdk.md` and `../../schemas/`.
+- The npm package does not bundle the full Liquefy repo. Stable contract source-of-truth lives in the Liquefy repo under `docs/sdk.md` and `schemas/`.
 - ClawHub/OpenClaw skill pack scaffold lives in `./skills/liquefy-openclaw/`.
