@@ -75,6 +75,7 @@ HOOK_BLOCK = {
         "verify_mode": "full",
         "encrypt": False,
         "leak_scan": True,
+        "build_context_capsule": True,
         "auto_prune_days": 0,
         "notify": [],
         "hooks": {
@@ -181,6 +182,8 @@ def cmd_hook_install(args: argparse.Namespace) -> int:
         hook["vault_dir"] = user_cfg["vault_dir"]
     if user_cfg.get("encrypt"):
         hook["encrypt"] = True
+    if "build_context_capsule" in user_cfg:
+        hook["build_context_capsule"] = bool(user_cfg["build_context_capsule"])
 
     config["liquefy"] = hook
     _save_openclaw_config(config_path, config)
@@ -284,6 +287,33 @@ def cmd_on_session_close(args: argparse.Namespace) -> int:
         raw = 0
         comp = 0
 
+    capsule_ok = False
+    capsule_reduction = None
+    capsule_json_path = None
+    if cfg.get("build_context_capsule", True):
+        capsule_cmd = [
+            sys.executable, str(REPO_ROOT / "tools" / "liquefy_context_capsule.py"),
+            "build",
+            "--dir", session_dir,
+            "--out", str(out_dir),
+            "--json",
+        ]
+        try:
+            capsule_proc = subprocess.run(
+                capsule_cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                env={**os.environ, "PYTHONPATH": f"{TOOLS_DIR}:{API_DIR}"},
+            )
+            capsule_payload = json.loads(capsule_proc.stdout) if capsule_proc.stdout.strip() else {}
+            capsule_result = capsule_payload.get("result", {}) if isinstance(capsule_payload, dict) else {}
+            capsule_ok = bool(capsule_payload.get("ok", False))
+            capsule_reduction = capsule_result.get("reduction_pct")
+            capsule_json_path = capsule_result.get("json_path")
+        except Exception:
+            capsule_ok = False
+
     state["sessions_processed"] = state.get("sessions_processed", 0) + 1
     state["bytes_saved"] = state.get("bytes_saved", 0) + max(0, raw - comp)
     state["leaks_blocked"] = state.get("leaks_blocked", 0) + leak_findings
@@ -298,6 +328,9 @@ def cmd_on_session_close(args: argparse.Namespace) -> int:
         "compressed_bytes": comp,
         "ratio": round(raw / max(1, comp), 2),
         "leaks_found": leak_findings,
+        "context_capsule_ok": capsule_ok,
+        "context_capsule_reduction_pct": capsule_reduction,
+        "context_capsule_json": capsule_json_path,
         "ok": pack_ok,
     })
 

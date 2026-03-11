@@ -2,10 +2,13 @@
 """
 liquefy_openclaw.py
 ===================
-One-command OpenClaw workspace packer.
+OpenClaw workspace tooling:
+- pack/scan a workspace into a Liquefy vault
+- run an agent through the guarded Liquefy wrapper
 
 Usage:
     python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./openclaw-vault
+    python tools/liquefy_openclaw.py run --workspace ~/.openclaw --cmd "openclaw run task.md"
 """
 
 import argparse
@@ -49,6 +52,15 @@ SKIP_DIRS = {
 }
 
 CLI_SCHEMA_VERSION = "liquefy.openclaw.cli.v1"
+DEFAULT_SENTINELS = "SOUL.md,HEARTBEAT.md,auth-profiles.json"
+DEFAULT_TRACE_DIR_CANDIDATES = (
+    "history",
+    "sessions",
+    "traces",
+    "logs",
+    "tool_trace",
+    "telemetry",
+)
 
 
 def _group_or_world_writable(path: Path) -> bool:
@@ -362,7 +374,7 @@ def _emit_runtime_payload(
             )
 
 
-def _try_runtime_command() -> bool:
+def _try_runtime_command(argv: Optional[List[str]] = None) -> bool:
     pre = argparse.ArgumentParser(add_help=False)
     pre.set_defaults(dry_run=True)
     pre.add_argument("--workspace", default="~/.openclaw")
@@ -380,7 +392,7 @@ def _try_runtime_command() -> bool:
     pre.add_argument("--unsafe-perms-ok", action="store_true")
     pre.add_argument("--max-bytes-per-run", type=int, default=0)
     add_policy_cli_args(pre)
-    args, _unknown = pre.parse_known_args()
+    args, _unknown = pre.parse_known_args(argv)
 
     if not (args.version or args.self_test or args.doctor):
         return False
@@ -465,6 +477,146 @@ def _try_runtime_command() -> bool:
     if not ok:
         raise SystemExit(1)
     return True
+
+
+def _build_safe_run_cmd(args: argparse.Namespace, workspace: Path) -> List[str]:
+    capsule_trace_dir = (
+        Path(args.capsule_trace_dir).expanduser().resolve()
+        if getattr(args, "capsule_trace_dir", None)
+        else _default_capsule_trace_dir(workspace)
+    )
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_safe_run.py"),
+        "--workspace",
+        str(workspace),
+        "--cmd",
+        args.cmd,
+        "--timeout",
+        str(args.timeout),
+        "--sentinels",
+        args.sentinels,
+        "--context-budget-tokens",
+        str(args.context_budget_tokens),
+        "--replay-window-hours",
+        str(args.replay_window_hours),
+    ]
+    if args.policy:
+        cmd.extend(["--policy", args.policy])
+    if args.trace_id:
+        cmd.extend(["--trace-id", args.trace_id])
+    if args.max_cost is not None:
+        cmd.extend(["--max-cost", str(args.max_cost)])
+    if args.json:
+        cmd.append("--json")
+    if args.no_restore:
+        cmd.append("--no-restore")
+    if args.no_capsule:
+        cmd.append("--no-capsule")
+    else:
+        cmd.extend(["--capsule-trace-dir", str(capsule_trace_dir)])
+    if args.no_context_gate:
+        cmd.append("--no-context-gate")
+    else:
+        cmd.extend(["--context-gate-trace-dir", str(capsule_trace_dir)])
+        if not args.allow_replay:
+            cmd.append("--block-replay")
+    if not args.no_heartbeat:
+        cmd.append("--heartbeat")
+    return cmd
+
+
+def _default_capsule_trace_dir(workspace: Path) -> Path:
+    for name in DEFAULT_TRACE_DIR_CANDIDATES:
+        candidate = workspace / name
+        if candidate.exists() and candidate.is_dir():
+            return candidate.resolve()
+    return workspace.resolve()
+
+
+def _run_command(argv: List[str]) -> int:
+    ap = argparse.ArgumentParser(
+        prog="liquefy-openclaw run",
+        description="Run OpenClaw through the guarded Liquefy wrapper (capsule + rollback + sentinels).",
+    )
+    ap.add_argument("--workspace", default="~/.openclaw", help="OpenClaw workspace path")
+    ap.add_argument("--cmd", required=True, help="Agent command to execute inside the workspace")
+    ap.add_argument("--policy", help="Optional policy file for post-run enforcement")
+    ap.add_argument("--trace-id", default=None, help="Correlation ID for multi-agent tracing")
+    ap.add_argument("--sentinels", default=DEFAULT_SENTINELS, help="Comma-separated critical files to monitor")
+    ap.add_argument("--timeout", type=int, default=300, help="Wrapped command timeout in seconds")
+    ap.add_argument("--max-cost", type=float, help="Rollback if traced token cost exceeds this USD value")
+    ap.add_argument("--capsule-trace-dir", help="Optional trace/log directory to scan for the primed capsule")
+    ap.add_argument("--no-restore", action="store_true", help="Report violations but skip auto-restore")
+    ap.add_argument("--no-capsule", action="store_true", help="Skip context capsule priming before the run")
+    ap.add_argument("--no-context-gate", action="store_true", help="Skip bounded context compilation before the run")
+    ap.add_argument("--context-budget-tokens", type=int, default=2400, help="Approximate token budget for compiled runtime context")
+    ap.add_argument("--allow-replay", action="store_true", help="Allow exact replay of the same command+context bundle")
+    ap.add_argument("--replay-window-hours", type=float, default=24.0, help="Replay detection window in hours (<=0 means any historical replay)")
+    ap.add_argument("--no-heartbeat", action="store_true", help="Disable heartbeat guard file emission")
+    ap.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    args = ap.parse_args(argv)
+
+    workspace = Path(args.workspace).expanduser().resolve()
+    if not workspace.exists() or not workspace.is_dir():
+        payload = {
+            "schema_version": CLI_SCHEMA_VERSION,
+            "tool": "liquefy_openclaw",
+            "command": "run",
+            "ok": False,
+            "workspace": str(workspace),
+            "wrapper": "liquefy_safe_run",
+            "error": f"Workspace not found: {workspace}",
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"ERROR: {payload['error']}", file=sys.stderr)
+        return 1
+
+    cmd = _build_safe_run_cmd(args, workspace)
+    if not args.json:
+        proc = subprocess.run(cmd, check=False)
+        return proc.returncode
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.stdout.strip():
+        try:
+            wrapped = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            wrapped = {
+                "ok": False,
+                "error": f"safe-run returned non-JSON output",
+                "stdout": proc.stdout[-2000:],
+                "stderr": proc.stderr[-2000:],
+            }
+    else:
+        wrapped = {
+            "ok": False,
+            "error": "safe-run returned no JSON output",
+            "stderr": proc.stderr[-2000:],
+        }
+    payload = {
+        "schema_version": CLI_SCHEMA_VERSION,
+        "tool": "liquefy_openclaw",
+        "command": "run",
+        "ok": proc.returncode == 0 and bool(wrapped.get("ok", False)),
+        "workspace": str(workspace),
+        "wrapper": "liquefy_safe_run",
+        "defaults": {
+            "capsule_enabled": not args.no_capsule,
+            "context_gate_enabled": not args.no_context_gate,
+            "heartbeat_enabled": not args.no_heartbeat,
+            "replay_blocking_enabled": not args.allow_replay and not args.no_context_gate,
+            "context_budget_tokens": args.context_budget_tokens,
+            "sentinels": [s.strip() for s in args.sentinels.split(",") if s.strip()],
+        },
+        "result": wrapped,
+    }
+    if proc.returncode != 0 and proc.stderr.strip():
+        payload["stderr"] = proc.stderr[-2000:]
+    print(json.dumps(payload, indent=2))
+    return proc.returncode
 
 
 def _rel_for_explain(path_text: str, root: Path) -> str:
@@ -568,8 +720,13 @@ def write_report(
     write_text_private(report_path, "\n".join(lines) + "\n")
 
 
-def main():
-    if _try_runtime_command():
+def main(argv: Optional[List[str]] = None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+
+    if argv and argv[0] == "run":
+        return _run_command(argv[1:])
+
+    if _try_runtime_command(argv):
         return
     ap = argparse.ArgumentParser(description="One-command OpenClaw workspace packer.")
     ap.set_defaults(dry_run=True)
@@ -638,7 +795,7 @@ def main():
         help="Allow group/world-writable output directory (disabled by default).",
     )
     add_policy_cli_args(ap)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     workspace = Path(args.workspace).expanduser().resolve()
     out_dir = Path(args.out).resolve()
@@ -906,4 +1063,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

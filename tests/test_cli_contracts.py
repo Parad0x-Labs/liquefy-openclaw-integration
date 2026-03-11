@@ -2,6 +2,7 @@
 """CLI JSON contract tests for plugin-facing scan/dry-run commands."""
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -415,6 +416,59 @@ def test_liquefy_openclaw_include_secrets_with_phrase_reports_risky_files():
     assert result["policy"]["include_secrets_phrase_ok"] is True
     assert result["risk_summary"]["risky_files_included"] >= 2
     assert isinstance(result.get("risky_files"), list)
+
+
+def test_liquefy_openclaw_run_json_contract(tmp_path):
+    workspace = tmp_path / "openclaw_run_contract"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text("You are helpful.\n", encoding="utf-8")
+    (workspace / "HEARTBEAT.md").write_text("interval: 30s\n", encoding="utf-8")
+    (workspace / "auth-profiles.json").write_text('{"provider":"openai"}\n', encoding="utf-8")
+    (workspace / "trace.jsonl").write_text(
+        json.dumps(
+            {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": "repeat me"}],
+                "usage": {"prompt_tokens": 600, "completion_tokens": 60, "total_tokens": 660},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload_file = workspace / "seen_env.json"
+    code = (
+        "import json, os, pathlib; "
+        "keys=['LIQUEFY_CONTEXT_BOOTSTRAP_FILE','LIQUEFY_CONTEXT_CAPSULE_JSON','LIQUEFY_CONTEXT_REDUCTION_PCT','LIQUEFY_CONTEXT_GATE_FILE','LIQUEFY_CONTEXT_GATE_JSON']; "
+        f"pathlib.Path({str(payload_file)!r}).write_text(json.dumps({{k: os.environ.get(k) for k in keys}}))"
+    )
+    wrapped_cmd = f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_openclaw.py"),
+        "run",
+        "--workspace", str(workspace),
+        "--cmd", wrapped_cmd,
+        "--json",
+    ])
+    assert payload["schema_version"] == "liquefy.openclaw.cli.v1"
+    assert payload["tool"] == "liquefy_openclaw"
+    assert payload["command"] == "run"
+    assert payload["ok"] is True
+    assert payload["wrapper"] == "liquefy_safe_run"
+    assert payload["defaults"]["capsule_enabled"] is True
+    assert payload["defaults"]["context_gate_enabled"] is True
+    assert payload["defaults"]["replay_blocking_enabled"] is True
+    assert payload["result"]["ok"] is True
+    assert payload["result"]["phases"]["prime_context"]["ok"] is True
+    assert payload["result"]["phases"]["capsule_state"]["status"] == "fresh"
+    assert payload["result"]["phases"]["context_gate"]["ok"] is True
+    assert payload["result"]["phases"]["context_gate"]["blocked"] is False
+    assert payload["result"]["heartbeat_active"] is True
+    seen_env = json.loads(payload_file.read_text(encoding="utf-8"))
+    assert Path(seen_env["LIQUEFY_CONTEXT_BOOTSTRAP_FILE"]).exists()
+    assert Path(seen_env["LIQUEFY_CONTEXT_GATE_FILE"]).exists()
 
 
 def test_unified_liquefy_cli_version_json_contract():

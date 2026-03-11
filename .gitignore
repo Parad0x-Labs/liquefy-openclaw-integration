@@ -81,3 +81,14 @@ benchmarks/latest_ci_subset.csv
 
 # Keep test fixtures and docs images tracked (do not blanket-ignore *.log/*.jsonl/*.png)
 tests/redteam/tmp/
+
+# Local Parad0x/Galaxy command-center experiments (do not publish)
+/.codex_backups/
+/.liquefy/
+/tools/liquefy_desktop_viz.py
+/tests/test_desktop_viz.py
+/install_galaxy_desktop.sh
+/install_parad0x_command.sh
+/install_parad0x_command.ps1
+/restore_parad0x_command_*.sh
+/docs/parad0x-command-*.md
