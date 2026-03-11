@@ -1,0 +1,4 @@
+interface:
+  display_name: "Liquefy for OpenClaw"
+  short_description: "Vault and guard OpenClaw workspaces"
+  default_prompt: "Use $liquefy-openclaw to scan, vault, restore, or guard an OpenClaw workspace with Liquefy."

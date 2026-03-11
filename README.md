@@ -346,9 +346,14 @@ It also includes a ClawHub/OpenClaw skill pack scaffold under:
 
 - `./plugins/openclaw-plugin/skills/liquefy-openclaw/SKILL.md`
 
+A standalone ClawHub-ready skill bundle also lives under:
+
+- `./skills/liquefy-openclaw`
+
 Publish/install trust notes (pinned plugin versions, checksums, safe defaults):
 
 - `./docs/openclaw-plugin-publish.md`
+- `./docs/clawhub-skill-publish.md`
 
 ### DNA x402 Payment Bridge Plugin
 
