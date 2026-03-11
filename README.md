@@ -135,12 +135,17 @@ These tiny fixtures are routing/correctness smoke examples only. Do not use them
 # Activate the local environment
 source .venv/bin/activate
 
+# Sanity-check the installed CLI surface
+liquefy self-test --json
+
 # Pack a run folder
 python tools/tracevault_pack.py ./runs/latest --org dev --out ./vault/latest
 
 # Restore
 python tools/tracevault_restore.py ./vault/latest --out ./restored/latest
 ```
+
+The activated venv exposes `liquefy`, `liquefy-safe-run`, and `liquefy-context-gate`.
 
 ### Runtime checks (binary-friendly)
 
@@ -189,6 +194,8 @@ git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git && \
 # Whole-workspace pack with built-in credential denylist + report
 ./liquefy openclaw --workspace ~/.openclaw --out ./openclaw-vault --verify-mode full --workers 8
 ```
+
+The repo wrapper prefers `./.venv/bin/python` automatically when it exists, so `./liquefy ...` works immediately after source bootstrap.
 
 This command writes `OPENCLAW_LIQUEFY_REPORT.md` inside the vault output folder and keeps compressed search available via:
 

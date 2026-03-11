@@ -4,6 +4,11 @@
 set -euo pipefail
 
 IMAGE="nullaai/liquefy-decoder-public@sha256:b7a0499f38d192e7333c760fcf8e429abcff83e58610259841f2ffb525c02935"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="${PYTHON:-python3}"
+fi
 
 usage() {
   cat <<EOF
@@ -21,6 +26,8 @@ Usage:
   ./liquefy denoise <filter|stats|extract> <path> [--out DIR] [--trace-id ID] [--json]
   ./liquefy capsule build --dir <trace_dir> [--out DIR|FILE] [--json]
   ./liquefy capsule prime --workspace <workspace> [--trace-dir <trace_dir>] [--json]
+  ./liquefy safe-run --workspace <workspace> --cmd "<command>" [--json]
+  ./liquefy context-gate <compile|history> [options]
   ./liquefy sign <sign|verify-signature> <vault_dir> [--json]
 
 Notes:
@@ -74,39 +81,47 @@ case "$cmd" in
     vault_dir="${2:-}"
     [[ -n "$vault_dir" ]] || { usage; exit 2; }
     shift 2
-    exec python3 "$(dirname "$0")/tools/tracevault_search.py" "$vault_dir" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/tracevault_search.py" "$vault_dir" "$@"
     ;;
   openclaw)
     shift
-    exec python3 "$(dirname "$0")/tools/liquefy_openclaw.py" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_openclaw.py" "$@"
     ;;
   agents)
     shift
-    exec python3 "$(dirname "$0")/tools/liquefy_agents.py" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_agents.py" "$@"
     ;;
   state-guard)
     shift
-    exec python3 "$(dirname "$0")/tools/liquefy_state_guard.py" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_state_guard.py" "$@"
     ;;
   history-guard)
     shift
-    exec python3 "$(dirname "$0")/tools/liquefy_history_guard.py" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_history_guard.py" "$@"
     ;;
   redact)
     shift
-    exec python3 "$(dirname "$0")/tools/liquefy_redact.py" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_redact.py" "$@"
     ;;
   denoise)
     shift
-    exec python3 "$(dirname "$0")/tools/liquefy_denoise.py" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_denoise.py" "$@"
     ;;
   capsule)
     shift
-    exec python3 "$(dirname "$0")/tools/liquefy_context_capsule.py" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_context_capsule.py" "$@"
+    ;;
+  safe-run)
+    shift
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_safe_run.py" "$@"
+    ;;
+  context-gate)
+    shift
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_context_gate.py" "$@"
     ;;
   sign)
     shift
-    exec python3 "$(dirname "$0")/tools/liquefy_sign.py" "$@"
+    exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_sign.py" "$@"
     ;;
   *)
     usage; exit 2

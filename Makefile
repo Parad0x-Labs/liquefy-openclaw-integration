@@ -18,7 +18,8 @@ PYTHONPATH_EXPORT := PYTHONPATH=tools:api
         fleet-merge fleet-gc fleet-heartbeat \
         compliance compliance-verify compliance-timeline \
         vision-scan vision-pack vision-restore vision-stats \
-        cloud-push cloud-pull cloud-status cloud-verify
+        cloud-push cloud-pull cloud-status cloud-verify \
+        context-gate context-gate-history
 
 # ─── Default target ───
 
@@ -112,7 +113,9 @@ help: ## Show this help
 	@echo "    make event-stats SESSION_ID=s1        Session statistics"
 	@echo ""
 	@echo "  SAFE RUN (Automated Rollback)"
-	@echo "    make safe-run WORKSPACE=~/.openclaw CMD='openclaw run' SENTINELS=SOUL.md,HEARTBEAT.md MAX_COST=5.00 HEARTBEAT=1"
+	@echo "    make safe-run WORKSPACE=~/.openclaw CMD='openclaw run' SENTINELS=SOUL.md,HEARTBEAT.md MAX_COST=5.00 HEARTBEAT=1 BLOCK_REPLAY=1"
+	@echo "    make context-gate WORKSPACE=~/.openclaw CMD='openclaw run' TOKEN_BUDGET=2400 BLOCK_REPLAY=1"
+	@echo "    make context-gate-history WORKSPACE=~/.openclaw"
 	@echo ""
 	@echo "  POLICY ENFORCER (Kill Switch)"
 	@echo "    make policy-audit DIR=./agent-output    Scan for violations (safe)"
@@ -158,11 +161,7 @@ help: ## Show this help
 # ─── Setup ───
 
 setup: ## One-line install: venv + deps + smoke test
-	@echo ">>> Creating virtualenv..."
-	@$(PYTHON) -m venv $(VENV) 2>/dev/null || { echo "ERROR: python3 -m venv failed. Install python3-venv."; exit 1; }
-	@echo ">>> Installing dependencies..."
-	@$(PIP) install --quiet --upgrade pip
-	@$(PIP) install --quiet -r api/requirements.txt
+	@LIQUEFY_VENV_DIR="$(VENV)" PYTHON="$(PYTHON)" bash ./install.sh
 	@echo ">>> Running smoke test..."
 	@$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_cli.py self-test --json | $(PY) -c "import sys,json; d=json.load(sys.stdin); print('SELF-TEST:', 'PASS' if d.get('ok') else 'FAIL'); sys.exit(0 if d.get('ok') else 1)" 2>/dev/null || echo "SELF-TEST: could not verify (non-blocking)"
 	@echo ""
@@ -171,9 +170,7 @@ setup: ## One-line install: venv + deps + smoke test
 	@echo ""
 
 $(VENV):
-	@$(PYTHON) -m venv $(VENV)
-	@$(PIP) install --quiet --upgrade pip
-	@$(PIP) install --quiet -r api/requirements.txt
+	@LIQUEFY_VENV_DIR="$(VENV)" PYTHON="$(PYTHON)" bash ./install.sh
 
 # ─── Preset Resolution ───
 
@@ -460,7 +457,23 @@ safe-run: $(VENV) ## Snapshot -> run agent -> enforce -> auto-restore on violati
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_safe_run.py --workspace "$(WORKSPACE)" --cmd "$(CMD)" \
 		$(if $(POLICY),--policy "$(POLICY)",) $(if $(SENTINELS),--sentinels "$(SENTINELS)",) \
 		$(if $(TRACE_ID),--trace-id "$(TRACE_ID)",) $(if $(MAX_COST),--max-cost "$(MAX_COST)",) \
+		$(if $(NO_CAPSULE),--no-capsule,) $(if $(CAPSULE_TRACE_DIR),--capsule-trace-dir "$(CAPSULE_TRACE_DIR)",) \
+		$(if $(NO_CONTEXT_GATE),--no-context-gate,) $(if $(CONTEXT_BUDGET_TOKENS),--context-budget-tokens "$(CONTEXT_BUDGET_TOKENS)",) \
+		$(if $(BLOCK_REPLAY),--block-replay,) $(if $(REPLAY_WINDOW_HOURS),--replay-window-hours "$(REPLAY_WINDOW_HOURS)",) \
+		$(if $(CONTEXT_GATE_TRACE_DIR),--context-gate-trace-dir "$(CONTEXT_GATE_TRACE_DIR)",) \
 		$(if $(HEARTBEAT),--heartbeat,) --json
+
+context-gate: $(VENV) ## Compile bounded runtime context before execution
+	@test -n "$(WORKSPACE)" || { echo "Usage: make context-gate WORKSPACE=~/.openclaw CMD='openclaw run'"; exit 1; }
+	@test -n "$(CMD)" || { echo "Usage: make context-gate WORKSPACE=~/.openclaw CMD='openclaw run'"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_context_gate.py compile --workspace "$(WORKSPACE)" --cmd "$(CMD)" \
+		$(if $(TRACE_DIR),--trace-dir "$(TRACE_DIR)",) $(if $(TOKEN_BUDGET),--token-budget "$(TOKEN_BUDGET)",) \
+		$(if $(BLOCK_REPLAY),--block-replay,) $(if $(REPLAY_WINDOW_HOURS),--replay-window-hours "$(REPLAY_WINDOW_HOURS)",) \
+		--json
+
+context-gate-history: $(VENV) ## Show context gate replay history for a workspace
+	@test -n "$(WORKSPACE)" || { echo "Usage: make context-gate-history WORKSPACE=~/.openclaw"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_context_gate.py history --workspace "$(WORKSPACE)" --json
 
 # ─── Policy Enforcer (Kill Switch) ───
 

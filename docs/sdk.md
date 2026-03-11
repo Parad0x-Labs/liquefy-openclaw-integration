@@ -41,9 +41,27 @@ Liquefy integrations (OpenClaw plugin, CI wrappers, internal tooling) should cal
   - `scan`
   - `pack`
   - `policy`
+  - `run`
   - `version`
   - `self_test`
   - `doctor`
+
+### `liquefy_context_gate.py`
+
+- Command: `python tools/liquefy_context_gate.py compile --workspace ~/.openclaw --cmd "openclaw run" --json`
+- Schema version: `liquefy.context-gate.v1`
+- Commands emitted:
+  - `compile`
+  - `history`
+
+### `liquefy_safe_run.py`
+
+- Command: `python tools/liquefy_safe_run.py --workspace ~/.openclaw --cmd "openclaw run" --json`
+- Schema version: `liquefy.safe-run.v2`
+- Contract note:
+  - this tool currently emits top-level `schema` instead of `schema_version`
+  - stable top-level fields for automation are `schema`, `ok`, `phases`, `heartbeat_active`, `needs_rollback`, `rolled_back`
+  - replay-blocked runs additionally set `blocked == true` and `block_reason`
 
 ## Error codes (common)
 
@@ -68,6 +86,8 @@ These appear under `error.code` for restore, and as strings/messages for some pa
 - `schemas/liquefy.tracevault.cli.v1.json`
 - `schemas/liquefy.tracevault.restore.cli.v1.json`
 - `schemas/liquefy.openclaw.cli.v1.json`
+- `schemas/liquefy.context-gate.v1.json`
+- `schemas/liquefy.safe-run.v2.json`
 - `schemas/liquefy.cli.v1.json` (unified dispatcher runtime commands)
 
 ## Recommended integration flow (OpenClaw plugin)
@@ -77,3 +97,10 @@ These appear under `error.code` for restore, and as strings/messages for some pa
 3. Inspect `result.policy`, `result.risk_summary`
 4. Only then run `--apply` (and `--secure` if `LIQUEFY_SECRET` is configured)
 5. On failures, branch on `error.code` when present, else use `error` text
+
+## Recommended guarded-run flow
+
+1. Prime or inspect workspace context sources (`history/`, `sessions/`, `traces/`)
+2. Run `liquefy_context_gate.py compile --json` and validate `ok == true`
+3. For hot-path execution, call `liquefy_openclaw.py run --json` or `liquefy_safe_run.py --json`
+4. If `blocked == true`, branch on `block_reason` (`exact_replay_detected`, `required_context_exceeds_budget`)

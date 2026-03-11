@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "liquefy-openclaw"
@@ -91,8 +91,16 @@ liquefy-telemetry = "tools.liquefy_telemetry_forward:main"
 liquefy-context-gate = "tools.liquefy_context_gate:main"
 liquefy = "tools.liquefy_cli:main"
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
-include = ["api*", "tools*"]
+where = ["."]
+include = ["api", "api.*", "tools", "tools.*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+api = ["engines/**/*.json", "engines/**/*.gitkeep"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

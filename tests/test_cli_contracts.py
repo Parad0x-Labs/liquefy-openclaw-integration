@@ -30,6 +30,15 @@ def _run_json_no_check(cmd, env=None):
     return proc, payload
 
 
+def _make_guarded_workspace(tmp_path: Path) -> Path:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text("You are helpful.\n", encoding="utf-8")
+    (workspace / "HEARTBEAT.md").write_text("interval: 30s\n", encoding="utf-8")
+    (workspace / "auth-profiles.json").write_text('{"provider":"openai"}\n', encoding="utf-8")
+    return workspace
+
+
 def test_tracevault_pack_scan_json_contract():
     payload = _run_json([
         sys.executable,
@@ -223,6 +232,11 @@ def test_liquefy_openclaw_runtime_doctor_json_contract():
     assert payload["result"]["version"] == "liquefy-cli-doctor-v1"
 
 
+def test_liquefy_openclaw_run_command_is_declared_in_schema():
+    schema = json.loads((REPO_ROOT / "schemas" / "liquefy.openclaw.cli.v1.json").read_text(encoding="utf-8"))
+    assert "run" in schema["properties"]["command"]["enum"]
+
+
 def test_liquefy_openclaw_print_effective_policy_json_contract():
     payload = _run_json([
         sys.executable,
@@ -256,6 +270,72 @@ def test_liquefy_openclaw_explain_allow_category_json_contract():
     assert explain["decision"] == "ALLOW"
     assert explain["category"] == "ENV_FILE"
     assert explain["reason_code"] in {"allow_category", "allow_rule", "not_denied_by_mode"}
+
+
+def test_liquefy_context_gate_compile_json_contract(tmp_path):
+    workspace = _make_guarded_workspace(tmp_path)
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_context_gate.py"),
+        "compile",
+        "--workspace", str(workspace),
+        "--cmd", "openclaw run",
+        "--json",
+    ])
+
+    assert payload["schema_version"] == "liquefy.context-gate.v1"
+    assert payload["tool"] == "liquefy_context_gate"
+    assert payload["command"] == "compile"
+    assert payload["ok"] is True
+    result = payload["result"]
+    assert result["blocked"] is False
+    assert Path(result["prompt_file"]).exists()
+    assert Path(result["json_file"]).exists()
+
+
+def test_liquefy_context_gate_history_json_contract(tmp_path):
+    workspace = _make_guarded_workspace(tmp_path)
+    _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_context_gate.py"),
+        "compile",
+        "--workspace", str(workspace),
+        "--cmd", "openclaw run",
+        "--json",
+    ])
+
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_context_gate.py"),
+        "history",
+        "--workspace", str(workspace),
+        "--json",
+    ])
+
+    assert payload["schema_version"] == "liquefy.context-gate.v1"
+    assert payload["tool"] == "liquefy_context_gate"
+    assert payload["command"] == "history"
+    assert payload["ok"] is True
+    assert len(payload["result"]["entries"]) == 1
+
+
+def test_liquefy_safe_run_json_contract(tmp_path):
+    workspace = _make_guarded_workspace(tmp_path)
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_safe_run.py"),
+        "--workspace", str(workspace),
+        "--cmd", f"{shlex.quote(sys.executable)} -c {shlex.quote('print(123)')}",
+        "--no-capsule",
+        "--json",
+    ])
+
+    assert payload["schema"] == "liquefy.safe-run.v2"
+    assert payload["ok"] is True
+    assert payload["heartbeat_active"] is False
+    assert payload["needs_rollback"] is False
+    assert payload["phases"]["context_gate"]["ok"] is True
+    assert payload["phases"]["context_gate"]["blocked"] is False
 
 
 def test_tracevault_pack_json_pack_requires_secret():
@@ -483,3 +563,31 @@ def test_unified_liquefy_cli_version_json_contract():
     assert payload["command"] == "version"
     assert payload["ok"] is True
     assert payload["result"]["version"] == "liquefy-cli-version-v1"
+
+
+def test_unified_liquefy_cli_self_test_json_contract():
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_cli.py"),
+        "self-test",
+        "--json",
+    ])
+    assert payload["schema_version"] == "liquefy.cli.v1"
+    assert payload["tool"] == "liquefy"
+    assert payload["command"] == "self_test"
+    assert payload["ok"] is True
+    assert payload["result"]["version"] == "liquefy-cli-self-test-v1"
+
+
+def test_unified_liquefy_cli_doctor_json_contract():
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_cli.py"),
+        "doctor",
+        "--json",
+    ])
+    assert payload["schema_version"] == "liquefy.cli.v1"
+    assert payload["tool"] == "liquefy"
+    assert payload["command"] == "doctor"
+    assert payload["ok"] is True
+    assert payload["result"]["version"] == "liquefy-cli-doctor-v1"

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquefy.dev/schemas/liquefy.context-gate.v1.json",
+  "title": "Liquefy Context Gate JSON",
+  "type": "object",
+  "required": ["schema_version", "tool", "command", "ok", "result"],
+  "properties": {
+    "schema_version": { "const": "liquefy.context-gate.v1" },
+    "tool": { "const": "liquefy_context_gate" },
+    "command": { "type": "string", "enum": ["compile", "history"] },
+    "ok": { "type": "boolean" },
+    "generated_at_utc": { "type": "string" },
+    "result": { "type": "object" }
+  },
+  "additionalProperties": true
+}

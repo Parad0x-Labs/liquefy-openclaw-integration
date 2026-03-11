@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": { "const": "liquefy.openclaw.cli.v1" },
     "tool": { "const": "liquefy_openclaw" },
-    "command": { "type": "string", "enum": ["scan", "pack", "policy", "version", "self_test", "doctor"] },
+    "command": { "type": "string", "enum": ["scan", "pack", "policy", "run", "version", "self_test", "doctor"] },
     "ok": { "type": "boolean" },
     "profile": { "type": ["string", "null"], "enum": ["default", "ratio", "speed", null] },
     "workspace": { "type": ["string", "null"] },

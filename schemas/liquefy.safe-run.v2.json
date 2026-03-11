@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liquefy.dev/schemas/liquefy.safe-run.v2.json",
+  "title": "Liquefy Safe Run JSON",
+  "type": "object",
+  "required": ["schema", "ok", "phases", "heartbeat_active", "needs_rollback", "rolled_back"],
+  "properties": {
+    "schema": { "const": "liquefy.safe-run.v2" },
+    "ok": { "type": "boolean" },
+    "trace_id": { "type": "string" },
+    "phases": { "type": "object" },
+    "heartbeat_active": { "type": "boolean" },
+    "needs_rollback": { "type": "boolean" },
+    "rolled_back": { "type": "boolean" },
+    "blocked": { "type": "boolean" },
+    "block_reason": { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}

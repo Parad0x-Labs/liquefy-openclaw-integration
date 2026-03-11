@@ -30,7 +30,7 @@ import os
 import sys
 from pathlib import Path
 
-from cli_runtime import resolve_repo_root
+from cli_runtime import doctor_checks_common, resolve_repo_root, self_test_core, version_result
 
 REPO_ROOT = resolve_repo_root(__file__)
 TOOLS_DIR = REPO_ROOT / "tools"
@@ -101,19 +101,28 @@ def main():
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
-    elif len(sys.argv) >= 2 and sys.argv[1] in ("version", "--version"):
+    elif len(sys.argv) >= 2 and sys.argv[1] in ("version", "--version", "self-test", "doctor"):
         import json as _json
-        ver = _version()
+        raw_cmd = sys.argv[1]
+        cmd = "version" if raw_cmd == "--version" else raw_cmd
+        if cmd == "version":
+            result = version_result(tool="liquefy", repo_root=REPO_ROOT)
+        elif cmd == "self-test":
+            result = self_test_core(tool="liquefy", repo_root=REPO_ROOT)
+        else:
+            result = doctor_checks_common(tool="liquefy", repo_root=REPO_ROOT, api_dir=REPO_ROOT / "api")
         if "--json" in sys.argv:
             print(_json.dumps({
                 "schema_version": "liquefy.cli.v1",
                 "tool": "liquefy",
-                "command": "version",
+                "command": cmd.replace("-", "_"),
                 "ok": True,
-                "result": {"version": "liquefy-cli-version-v1", "semver": ver},
+                "result": result,
             }, indent=2))
+        elif cmd == "version":
+            print(f"liquefy {_version()}")
         else:
-            print(f"liquefy {ver}")
+            print(_json.dumps(result, indent=2))
         return
 
     else:
