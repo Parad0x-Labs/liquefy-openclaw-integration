@@ -62,6 +62,7 @@ auditable and lets operators pin/verify their Liquefy install separately.
 - Safe default is scan-first (`liquefy_scan`)
 - Destructive/apply tool is optional and intended for allowlisting
 - Liquefy policy denylist is enforced by default (secrets/configs blocked)
+- The wrapper probes `liquefy openclaw --version --json` and warns when the local Liquefy CLI is older than the plugin-tested minimum
 - Use pinned plugin versions (`--pin`) and verify Liquefy release checksums (`SHA256SUMS.txt`)
 - Signed releases are recommended for production rollout (when available)
 

@@ -7,12 +7,17 @@ import hashlib
 import json
 import os
 import platform
+import re
 import stat
 import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Iterable, List, Optional
+
+
+_VERSION_RE = re.compile(r'^\s*version\s*=\s*["\']([^"\']+)["\']\s*$')
+_REPO_VERSION_CACHE: Dict[str, str] = {}
 
 
 def resolve_repo_root(script_file: str) -> Path:
@@ -25,6 +30,27 @@ def resolve_repo_root(script_file: str) -> Path:
         if (root / "_internal" / "api").exists():
             return root / "_internal"
     return Path(script_file).resolve().parent.parent
+
+
+def _read_repo_version(repo_root: Path) -> str:
+    cache_key = str(repo_root)
+    cached = _REPO_VERSION_CACHE.get(cache_key)
+    if cached:
+        return cached
+
+    version = "dev"
+    pyproject = repo_root / "pyproject.toml"
+    try:
+        for line in pyproject.read_text(encoding="utf-8").splitlines():
+            match = _VERSION_RE.match(line)
+            if match:
+                version = match.group(1).strip() or "dev"
+                break
+    except Exception:
+        version = "dev"
+
+    _REPO_VERSION_CACHE[cache_key] = version
+    return version
 
 
 def get_build_info(tool: str, repo_root: Path) -> Dict[str, Any]:
@@ -41,7 +67,7 @@ def get_build_info(tool: str, repo_root: Path) -> Dict[str, Any]:
 
     return {
         "tool": tool,
-        "liquefy_version": os.environ.get("LIQUEFY_BUILD_VERSION", "dev"),
+        "liquefy_version": os.environ.get("LIQUEFY_BUILD_VERSION") or _read_repo_version(repo_root),
         "build_commit": os.environ.get("GITHUB_SHA") or os.environ.get("LIQUEFY_BUILD_COMMIT") or "",
         "platform": platform.platform(),
         "system": platform.system(),

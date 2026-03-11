@@ -39,6 +39,13 @@ def _make_guarded_workspace(tmp_path: Path) -> Path:
     return workspace
 
 
+def _repo_version() -> str:
+    for line in (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("version"):
+            return line.split("=", 1)[1].strip().strip('"').strip("'")
+    raise AssertionError("repo version not found in pyproject.toml")
+
+
 def test_tracevault_pack_scan_json_contract():
     payload = _run_json([
         sys.executable,
@@ -230,6 +237,50 @@ def test_liquefy_openclaw_runtime_doctor_json_contract():
     assert payload["command"] == "doctor"
     assert payload["ok"] is True
     assert payload["result"]["version"] == "liquefy-cli-doctor-v1"
+
+
+def test_liquefy_openclaw_runtime_version_reports_repo_version():
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_openclaw.py"),
+        "--version",
+        "--json",
+    ])
+    assert payload["schema_version"] == "liquefy.openclaw.cli.v1"
+    assert payload["tool"] == "liquefy_openclaw"
+    assert payload["command"] == "version"
+    assert payload["ok"] is True
+    assert payload["result"]["build"]["liquefy_version"] == _repo_version()
+
+
+def test_liquefy_cli_dispatches_openclaw_scan_json_contract():
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_cli.py"),
+        "openclaw",
+        "--workspace", str(REPO_ROOT / "tests" / "fixtures" / "openclaw_state"),
+        "--out", "/tmp/liquefy_cli_openclaw_scan",
+        "--dry-run",
+        "--json",
+    ])
+    assert payload["schema_version"] == "liquefy.openclaw.cli.v1"
+    assert payload["tool"] == "liquefy_openclaw"
+    assert payload["command"] == "scan"
+    assert payload["ok"] is True
+
+
+def test_liquefy_cli_runtime_version_reports_repo_version():
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "liquefy_cli.py"),
+        "version",
+        "--json",
+    ])
+    assert payload["schema_version"] == "liquefy.cli.v1"
+    assert payload["tool"] == "liquefy"
+    assert payload["command"] == "version"
+    assert payload["ok"] is True
+    assert payload["result"]["build"]["liquefy_version"] == _repo_version()
 
 
 def test_liquefy_openclaw_run_command_is_declared_in_schema():

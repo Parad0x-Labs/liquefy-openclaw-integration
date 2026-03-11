@@ -73,6 +73,7 @@ Use these facts when the user asks if the integration is safe to deploy:
 - plugin default posture is scan-first
 - apply is explicit and should be allowlisted
 - policy denylist blocks secrets and risky config paths by default
+- the plugin probes `liquefy openclaw --version --json` and warns when the detected local CLI is older than the plugin-tested minimum
 - pinned plugin versions are preferred
 - Liquefy CLI should be pinned and verified separately from the wrapper
 

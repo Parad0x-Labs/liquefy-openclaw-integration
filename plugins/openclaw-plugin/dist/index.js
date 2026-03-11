@@ -1,4 +1,9 @@
-import { runLiquefyOpenclaw } from "./lib.js";
+import {
+  MIN_LIQUEFY_OPENCLAW_VERSION,
+  PLUGIN_VERSION,
+  getLiquefyCompatibility,
+  runLiquefyOpenclaw,
+} from "./lib.js";
 
 function schemaBase(description) {
   return {
@@ -70,6 +75,7 @@ export default async function register(api) {
     (typeof api?.getConfig === "function" ? api.getConfig("liquefy") : null) ||
     api?.config?.liquefy ||
     {};
+  const compatibility = await getLiquefyCompatibility(cfg);
 
   registerToolCompat(
     api,
@@ -103,18 +109,20 @@ export default async function register(api) {
     return {
       ok: true,
       plugin: "liquefy",
-      version: "0.1.0-alpha",
+      version: PLUGIN_VERSION,
       tools: ["liquefy_scan", "liquefy_pack_apply"],
+      compatibility,
       defaults: {
         profile: cfg.profile || "default",
         workspace: cfg.workspace || "~/.openclaw",
         secure: !!cfg.requireSecureByDefault,
+        minimumCliVersion: MIN_LIQUEFY_OPENCLAW_VERSION,
       },
       notes: [
         "liquefy_scan is read-only and safe by default",
-        "liquefy_pack_apply is optional/allowlisted and shells out to Liquefy CLI JSON mode"
+        "liquefy_pack_apply is optional/allowlisted and shells out to Liquefy CLI JSON mode",
+        `plugin expects Liquefy OpenClaw CLI >= ${MIN_LIQUEFY_OPENCLAW_VERSION}`,
       ],
     };
   });
 }
-

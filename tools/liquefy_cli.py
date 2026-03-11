@@ -5,6 +5,7 @@ liquefy_cli.py
 Unified Python-first CLI for all Liquefy operations.
 
     liquefy pack       — Pack OpenClaw workspace into vault
+    liquefy openclaw   — OpenClaw workspace scan/pack/guarded run
     liquefy restore    — Restore files from vault
     liquefy search     — Search across vaults
     liquefy policy     — Policy enforcement (audit/enforce/kill)
@@ -44,6 +45,7 @@ for _p in (TOOLS_DIR, API_DIR):
 
 SUBCOMMAND_MAP = {
     "pack":      ("liquefy_openclaw",         "main",     "Pack OpenClaw workspace into vault"),
+    "openclaw":  ("liquefy_openclaw",         "main",     "OpenClaw workspace scan/pack/guarded run"),
     "restore":   ("tracevault_restore",        "main",     "Restore files from vault"),
     "search":    ("liquefy_search",            "main",     "Search across vaults"),
     "agents":    ("liquefy_agents",            "main",     "Agent templates, interaction maps, scaffolding"),
