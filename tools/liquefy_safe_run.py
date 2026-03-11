@@ -44,6 +44,7 @@ HEARTBEAT_FILE = ".liquefy-heartbeat"
 HEARTBEAT_INTERVAL = 5  # seconds
 
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", ".venv", "venv"}
+COST_SCAN_SKIP_DIRS = SKIP_DIRS | {".liquefy", ".liquefy-guard", ".liquefy-tokens", SNAPSHOT_DIR_NAME}
 
 
 def _file_sha256(fpath: Path) -> str:
@@ -223,8 +224,10 @@ def _check_token_cost(workspace: Path, max_cost: float) -> Optional[Dict]:
 
     total_cost = 0.0
     total_tokens = 0
+    exact_entries = 0
+    estimated_entries = 0
     for root, dirs, fnames in os.walk(workspace):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and d != SNAPSHOT_DIR_NAME]
+        dirs[:] = [d for d in dirs if d not in COST_SCAN_SKIP_DIRS]
         for fname in fnames:
             fpath = Path(root) / fname
             if fpath.suffix in (".json", ".jsonl", ".log", ".txt"):
@@ -232,12 +235,18 @@ def _check_token_cost(workspace: Path, max_cost: float) -> Optional[Dict]:
                     entries = _scan_file(fpath)
                     for e in entries:
                         total_tokens += e.get("total_tokens", 0)
-                        model = e.get("model", "unknown") or "unknown"
-                        cost = _estimate_cost(
-                            model,
-                            e.get("input_tokens", 0),
-                            e.get("output_tokens", 0),
-                        )
+                        billed_cost = e.get("billed_cost_usd")
+                        if billed_cost is not None:
+                            cost = float(billed_cost)
+                            exact_entries += 1
+                        else:
+                            model = e.get("model", "unknown") or "unknown"
+                            cost = _estimate_cost(
+                                model,
+                                e.get("input_tokens", 0),
+                                e.get("output_tokens", 0),
+                            )
+                            estimated_entries += 1
                         total_cost += cost
                 except Exception:
                     continue
@@ -248,13 +257,83 @@ def _check_token_cost(workspace: Path, max_cost: float) -> Optional[Dict]:
             "total_cost_usd": round(total_cost, 6),
             "max_cost_usd": max_cost,
             "total_tokens": total_tokens,
+            "cost_mode": (
+                "unavailable" if exact_entries == 0 and estimated_entries == 0
+                else
+                "exact" if exact_entries and estimated_entries == 0
+                else "mixed" if exact_entries
+                else "estimated"
+            ),
+            "exact_entries": exact_entries,
+            "estimated_entries": estimated_entries,
         }
     return {
         "exceeded": False,
         "total_cost_usd": round(total_cost, 6),
         "max_cost_usd": max_cost,
         "total_tokens": total_tokens,
+        "cost_mode": (
+            "unavailable" if exact_entries == 0 and estimated_entries == 0
+            else
+            "exact" if exact_entries and estimated_entries == 0
+            else "mixed" if exact_entries
+            else "estimated"
+        ),
+        "exact_entries": exact_entries,
+        "estimated_entries": estimated_entries,
     }
+
+
+def _prime_context_for_run(workspace: Path, trace_dir: Optional[Path] = None) -> Dict[str, Any]:
+    try:
+        from liquefy_context_capsule import prime_workspace
+    except ImportError as exc:
+        return {"ok": False, "error": f"context capsule unavailable: {exc}"}
+
+    try:
+        result = prime_workspace(workspace, trace_dir)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, **result}
+
+
+def _inspect_context_state(workspace: Path, trace_dir: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    try:
+        from liquefy_context_capsule import inspect_workspace_capsule
+    except ImportError:
+        return None
+    try:
+        return inspect_workspace_capsule(workspace, trace_dir)
+    except Exception as exc:
+        return {"ok": False, "status": "error", "detail": str(exc), "workspace": str(workspace)}
+
+
+def _compile_context_gate_for_run(
+    workspace: Path,
+    command: str,
+    *,
+    token_budget: int,
+    block_replay: bool,
+    replay_window_hours: float,
+    trace_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    try:
+        from liquefy_context_gate import compile_context_gate
+    except ImportError as exc:
+        return {"ok": False, "blocked": False, "error": f"context gate unavailable: {exc}"}
+
+    try:
+        result = compile_context_gate(
+            workspace,
+            command,
+            token_budget=token_budget,
+            block_replay=block_replay,
+            replay_window_hours=replay_window_hours,
+            trace_dir=trace_dir,
+        )
+    except Exception as exc:
+        return {"ok": False, "blocked": False, "error": str(exc)}
+    return {"ok": True, **result}
 
 
 def _audit_log(event: str, **details):
@@ -281,6 +360,20 @@ def main():
                     help="Kill and rollback if agent run exceeds this USD cost (requires token metadata in logs)")
     ap.add_argument("--heartbeat", action="store_true",
                     help="Write a heartbeat file so agents can verify monitoring is alive")
+    ap.add_argument("--no-capsule", action="store_true",
+                    help="Skip context capsule priming before the wrapped run")
+    ap.add_argument("--capsule-trace-dir",
+                    help="Optional trace/log directory to scan for the primed context capsule")
+    ap.add_argument("--no-context-gate", action="store_true",
+                    help="Skip bounded context compilation before the wrapped run")
+    ap.add_argument("--context-budget-tokens", type=int, default=2400,
+                    help="Approximate token budget for compiled runtime context")
+    ap.add_argument("--block-replay", action="store_true",
+                    help="Block exact replay of the same command+context inside the replay window")
+    ap.add_argument("--replay-window-hours", type=float, default=24.0,
+                    help="Replay detection window in hours (<=0 means any historical replay)")
+    ap.add_argument("--context-gate-trace-dir",
+                    help="Optional trace/log directory used when compiling the runtime context gate")
     ap.add_argument("--no-restore", action="store_true", help="Report violations but skip auto-restore")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
@@ -294,6 +387,73 @@ def main():
     trace_id = args.trace_id or os.environ.get("LIQUEFY_TRACE_ID")
     sentinels = [s.strip() for s in args.sentinels.split(",") if s.strip()]
     snapshot_dir = workspace / SNAPSHOT_DIR_NAME
+
+    prime_result = None
+    trace_dir = Path(args.capsule_trace_dir).expanduser().resolve() if args.capsule_trace_dir else None
+    if not args.no_capsule:
+        prime_result = _prime_context_for_run(workspace, trace_dir)
+        if not args.json:
+            if prime_result.get("ok"):
+                print(f"  Safe Run — Context Prime")
+                print(f"    Bootstrap: {prime_result['bootstrap_file']}")
+                print(f"    Reduction: {prime_result['reduction_pct']}%")
+                print()
+            else:
+                print(f"  Safe Run — Context Prime skipped ({prime_result.get('error', 'unknown error')})")
+                print()
+    capsule_state = _inspect_context_state(workspace, trace_dir)
+    context_gate_trace_dir = (
+        Path(args.context_gate_trace_dir).expanduser().resolve()
+        if args.context_gate_trace_dir
+        else trace_dir
+    )
+    context_gate_result = None
+    if not args.no_context_gate:
+        context_gate_result = _compile_context_gate_for_run(
+            workspace,
+            args.cmd,
+            token_budget=args.context_budget_tokens,
+            block_replay=bool(args.block_replay),
+            replay_window_hours=float(args.replay_window_hours),
+            trace_dir=context_gate_trace_dir,
+        )
+        if not args.json:
+            if context_gate_result.get("ok"):
+                gate_state = "BLOCKED" if context_gate_result.get("blocked") else "READY"
+                print(f"  Safe Run — Context Gate [{gate_state}]")
+                print(f"    Included tokens: {context_gate_result.get('included_tokens', 0)} / {context_gate_result.get('token_budget', 0)}")
+                print(f"    Replay detected: {context_gate_result.get('replay_detected')}")
+                if context_gate_result.get("blocked"):
+                    print(f"    Block reason:    {context_gate_result.get('block_reason')}")
+                print()
+            else:
+                print(f"  Safe Run — Context Gate unavailable ({context_gate_result.get('error', 'unknown error')})")
+                print()
+
+    if context_gate_result and context_gate_result.get("blocked"):
+        result = {
+            "schema": SCHEMA,
+            "ok": False,
+            **({"trace_id": trace_id} if trace_id else {}),
+            "phases": {
+                "prime_context": prime_result,
+                "capsule_state": capsule_state,
+                "context_gate": context_gate_result,
+                "snapshot": None,
+                "execute": None,
+                "enforce": None,
+                "sentinels": {"monitored": sentinels, "tampered": []},
+                "rollback": None,
+            },
+            "heartbeat_active": False,
+            "needs_rollback": False,
+            "rolled_back": False,
+            "blocked": True,
+            "block_reason": context_gate_result.get("block_reason"),
+        }
+        if args.json:
+            print(json.dumps(result, indent=2))
+        return 1
 
     # ── Phase 1: Pre-flight snapshot ──
     snapshot_meta = _snapshot_workspace(workspace, snapshot_dir)
@@ -323,9 +483,14 @@ def main():
     # ── Phase 2: Execute agent command ──
     start = time.time()
     try:
+        child_env = os.environ.copy()
+        if prime_result and prime_result.get("ok"):
+            child_env.update(prime_result.get("env", {}))
+        if context_gate_result and context_gate_result.get("ok"):
+            child_env.update(context_gate_result.get("env", {}))
         proc = subprocess.run(
             args.cmd, shell=True, timeout=args.timeout,
-            capture_output=True, text=True, cwd=str(workspace),
+            capture_output=True, text=True, cwd=str(workspace), env=child_env,
         )
         exit_code = proc.returncode
         agent_stdout = proc.stdout[-2000:] if proc.stdout else ""
@@ -426,6 +591,9 @@ def main():
         "ok": not needs_rollback,
         **({"trace_id": trace_id} if trace_id else {}),
         "phases": {
+            "prime_context": prime_result,
+            "capsule_state": capsule_state,
+            "context_gate": context_gate_result,
             "snapshot": {"files": snapshot_meta["file_count"], "bytes": snapshot_meta["total_bytes"]},
             "execute": {"exit_code": exit_code, "duration_s": elapsed, "crashed": agent_crashed},
             "enforce": enforce_result,

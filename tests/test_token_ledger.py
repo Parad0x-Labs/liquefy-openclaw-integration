@@ -19,6 +19,7 @@ from liquefy_token_ledger import (
     _estimate_cost,
     _normalize_model,
     _load_model_costs,
+    _summarize_truth,
     BUILTIN_MODEL_COSTS_PER_1K,
     cmd_scan,
     cmd_budget,
@@ -64,6 +65,13 @@ def _anthropic_entry(input_tokens=200, output_tokens=80, model="claude-3.5-sonne
     }
 
 
+def _billed_entry(prompt_tokens=100, completion_tokens=50, model="gpt-4o", cost_usd=0.1234):
+    payload = _openai_entry(prompt_tokens, completion_tokens, model)
+    payload["cost_usd"] = cost_usd
+    payload["provider"] = "openai"
+    return payload
+
+
 class TestExtractUsage:
     def test_openai_format(self):
         data = _openai_entry(100, 50, "gpt-4o")
@@ -86,6 +94,43 @@ class TestExtractUsage:
         result = _extract_usage_from_line(data)
         assert result is not None
         assert result["total_tokens"] == 75
+
+    def test_top_level_direct_token_fields(self):
+        data = {
+            "model": "gpt-4o-mini",
+            "input_tokens": 111,
+            "output_tokens": 22,
+            "total_tokens": 133,
+            "prompt": "hello",
+        }
+        result = _extract_usage_from_line(data)
+        assert result is not None
+        assert result["input_tokens"] == 111
+        assert result["output_tokens"] == 22
+        assert result["total_tokens"] == 133
+
+    def test_usage_metadata_format(self):
+        data = {
+            "model_name": "claude-3.5-sonnet",
+            "usage_metadata": {
+                "input_token_count": 333,
+                "output_token_count": 44,
+                "total_token_count": 377,
+            },
+            "input": "summarize this",
+        }
+        result = _extract_usage_from_line(data)
+        assert result is not None
+        assert result["input_tokens"] == 333
+        assert result["output_tokens"] == 44
+        assert result["total_tokens"] == 377
+
+    def test_extracts_billed_cost_and_provider(self):
+        data = _billed_entry(100, 50, "gpt-4o", cost_usd=0.125)
+        result = _extract_usage_from_line(data)
+        assert result is not None
+        assert result["provider"] == "openai"
+        assert result["billed_cost_usd"] == 0.125
 
     def test_no_usage_returns_none(self):
         data = {"message": "hello", "role": "user"}
@@ -184,6 +229,16 @@ class TestScanFile:
         entries = _scan_file(f)
         assert len(entries) == 0
 
+    def test_scan_assigns_stable_entry_fingerprint(self, tmp_path):
+        f = tmp_path / "trace.jsonl"
+        f.write_text(json.dumps(_openai_entry(100, 50)) + "\n")
+        first = _scan_file(f, base_dir=tmp_path)
+        second = _scan_file(f, base_dir=tmp_path)
+        assert len(first) == 1
+        assert first[0]["source_path"] == "trace.jsonl"
+        assert first[0]["source_index"] == 1
+        assert first[0]["entry_fingerprint"] == second[0]["entry_fingerprint"]
+
 
 class TestScanDirectory:
     def test_finds_nested_logs(self, tmp_path):
@@ -229,6 +284,48 @@ class TestCmdScan:
         output = json.loads(capsys.readouterr().out.strip())
         assert output["entries"] == 0
 
+    def test_scan_marks_exact_cost_truth_when_trace_has_billed_cost(self, tmp_path, capsys):
+        (tmp_path / "trace.jsonl").write_text(json.dumps(_billed_entry(1000, 500, "gpt-4o", cost_usd=1.25)) + "\n")
+        args = _Args(dir=str(tmp_path))
+        ret = cmd_scan(args)
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        assert output["truth"]["cost"]["mode"] == "exact"
+        assert output["truth"]["cost"]["usd"] == 1.25
+
+    def test_scan_truth_includes_provider_adapter_evidence(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        (tmp_path / "auth-profiles.json").write_text('{"provider":"openai"}\n', encoding="utf-8")
+        (tmp_path / "trace.jsonl").write_text(json.dumps(_billed_entry(1000, 500, "gpt-4o", cost_usd=1.25)) + "\n")
+        args = _Args(dir=str(tmp_path))
+        ret = cmd_scan(args)
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        adapters = output["truth"]["provider_adapters"]
+        assert adapters
+        assert adapters[0]["provider"] == "openai"
+        assert adapters[0]["auth_mode"] == "api_key_present+workspace_profile"
+        assert adapters[0]["cost_mode"] == "exact"
+
+    def test_scan_is_idempotent_for_reporting(self, tmp_path, capsys):
+        (tmp_path / "trace.jsonl").write_text(json.dumps(_openai_entry(100, 50, "gpt-4o-mini")) + "\n")
+        first = _Args(dir=str(tmp_path))
+        second = _Args(dir=str(tmp_path))
+        report_args = _Args(org="default", dir=str(tmp_path), period="all")
+        assert cmd_scan(first) == 0
+        first_output = json.loads(capsys.readouterr().out.strip())
+        assert cmd_scan(second) == 0
+        second_output = json.loads(capsys.readouterr().out.strip())
+        assert first_output["new_ledger_entries"] == 1
+        assert first_output["duplicate_entries_skipped"] == 0
+        assert second_output["new_ledger_entries"] == 0
+        assert second_output["duplicate_entries_skipped"] == 1
+        assert cmd_report(report_args) == 0
+        report_output = json.loads(capsys.readouterr().out.strip())
+        assert report_output["entries"] == 1
+        assert report_output["total_tokens"] == 150
+        assert report_output["duplicate_ledger_entries_ignored"] == 0
+
     def test_scan_nonexistent(self, tmp_path, capsys):
         args = _Args(dir=str(tmp_path / "nope"))
         ret = cmd_scan(args)
@@ -253,6 +350,30 @@ class TestCmdBudget:
         assert budget_path.exists()
         data = json.loads(budget_path.read_text())
         assert "test" in data
+
+
+class TestCmdReport:
+    def test_report_marks_manual_quota_truth_when_budget_exists(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        cmd_budget(_Args(org="acme", daily=1000, monthly=5000))
+        (tmp_path / "trace.jsonl").write_text(json.dumps(_openai_entry(100, 50, "gpt-4o-mini")) + "\n")
+        cmd_scan(_Args(dir=str(tmp_path)))
+        capsys.readouterr()
+
+        ret = cmd_report(_Args(org="acme", dir=str(tmp_path), period="all"))
+        assert ret == 0
+        output = json.loads(capsys.readouterr().out.strip())
+        assert output["truth"]["quota"]["mode"] == "manual"
+        assert output["truth"]["quota"]["source"] == "local_budget_file"
+
+    def test_summarize_truth_marks_trace_only_provider_when_no_local_auth(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        entries = [_extract_usage_from_line(_openai_entry(100, 50, "gpt-4o"))]
+        truth = _summarize_truth(entries, base_dir=tmp_path)
+        adapters = truth["provider_adapters"]
+        assert adapters
+        assert adapters[0]["provider"] == "openai"
+        assert adapters[0]["auth_mode"] == "trace_only"
 
 
 class TestCmdAudit:

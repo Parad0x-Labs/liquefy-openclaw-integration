@@ -1,0 +1,119 @@
+{
+  "name": "Liquefy Token Guard",
+  "version": "1.0.0",
+  "description": "One-click token usage scan, waste audit, and budget guard for OpenClaw and other agent workspaces. Detects duplicate prompts, oversized context, and expensive-model overkill, then recommends concrete fixes.",
+  "author": "Parad0x Labs",
+  "license": "BUSL-1.1",
+  "homepage": "https://github.com/Parad0x-Labs/liquefy-openclaw-integration",
+  "tags": ["tokens", "budget", "audit", "cost", "openclaw"],
+  "category": "Operations",
+  "icon": "shield",
+  "min_openclaw_version": "0.8.0",
+  "capabilities": [
+    "filesystem_read",
+    "filesystem_write"
+  ],
+  "entry": "trigger.py",
+  "config_schema": {
+    "trace_dir": {
+      "type": "string",
+      "default": "~/.openclaw",
+      "description": "Directory containing agent traces or logs with token usage metadata"
+    },
+    "org": {
+      "type": "string",
+      "default": "default",
+      "description": "Budget/report organization key"
+    },
+    "period": {
+      "type": "string",
+      "enum": ["today", "week", "month", "all"],
+      "default": "today",
+      "description": "Default report period"
+    },
+    "capsule_out_dir": {
+      "type": "string",
+      "default": null,
+      "description": "Optional output directory or .json path for generated context capsules"
+    },
+    "workspace_dir": {
+      "type": "string",
+      "default": "~/.openclaw",
+      "description": "Workspace that should receive the primed next-run bootstrap files"
+    },
+    "daily_tokens": {
+      "type": "integer",
+      "default": 500000,
+      "description": "Daily token budget"
+    },
+    "monthly_tokens": {
+      "type": "integer",
+      "default": 10000000,
+      "description": "Monthly token budget"
+    },
+    "daily_cost_usd": {
+      "type": "number",
+      "default": null,
+      "description": "Optional daily estimated cost budget"
+    },
+    "monthly_cost_usd": {
+      "type": "number",
+      "default": null,
+      "description": "Optional monthly estimated cost budget"
+    },
+    "warn_at_percent": {
+      "type": "integer",
+      "default": 80,
+      "description": "Budget warning threshold percentage"
+    },
+    "auto_scan_on_status": {
+      "type": "boolean",
+      "default": true,
+      "description": "Refresh token ledger from the trace directory before status/report commands"
+    },
+    "apply_budget_on_status": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, status/recommend/daily_guard will persist the configured budget before reporting"
+    }
+  },
+  "commands": {
+    "scan_now": {
+      "description": "Scan the configured trace directory and update the token ledger"
+    },
+    "audit_now": {
+      "description": "Audit the configured trace directory for token waste"
+    },
+    "set_budget": {
+      "description": "Write/update token and cost budgets for the configured org"
+    },
+    "build_capsule": {
+      "description": "Build a compact context capsule from raw traces and emit a hard reduction number"
+    },
+    "prime_next_run": {
+      "description": "Build a context capsule and install the bootstrap into the target workspace for the next agent run"
+    },
+    "verify_capsule": {
+      "description": "Check whether the current workspace capsule is still fresh for the present trace set"
+    },
+    "scoreboard": {
+      "description": "Show replay-aware capsule savings history for the configured workspace"
+    },
+    "status": {
+      "description": "Combined scan, report, and audit summary"
+    },
+    "recommend": {
+      "description": "Generate concrete recommendations from current token waste findings"
+    },
+    "daily_guard": {
+      "description": "Run the full token guard cycle and emit a compact operator summary"
+    }
+  },
+  "schedules": {
+    "daily_guard": {
+      "cron": "0 9 * * *",
+      "command": "daily_guard",
+      "description": "Morning token waste and budget recap"
+    }
+  }
+}

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from liquefy_safe_run import (
     _start_heartbeat,
     _stop_heartbeat,
     _check_token_cost,
+    _prime_context_for_run,
     SNAPSHOT_DIR_NAME,
     HEARTBEAT_FILE,
 )
@@ -160,6 +163,7 @@ class TestCostCheck:
         assert result is not None
         assert result["exceeded"] is False
         assert result["total_cost_usd"] < 10.0
+        assert result["cost_mode"] == "estimated"
 
     def test_overspend_detected(self, workspace):
         lines = []
@@ -173,6 +177,7 @@ class TestCostCheck:
         assert result is not None
         assert result["exceeded"] is True
         assert result["total_cost_usd"] > 0.01
+        assert result["cost_mode"] == "estimated"
 
     def test_no_logs_returns_under_budget(self, tmp_path):
         ws = tmp_path / "empty"
@@ -181,6 +186,122 @@ class TestCostCheck:
         if result is not None:
             assert result["exceeded"] is False
             assert result["total_cost_usd"] == 0.0
+            assert result["cost_mode"] == "unavailable"
+
+    def test_prefers_exact_billed_cost_when_present(self, workspace):
+        (workspace / "trace.jsonl").write_text(json.dumps({
+            "model": "gpt-4o",
+            "provider": "openai",
+            "cost_usd": 2.5,
+            "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+        }) + "\n")
+        result = _check_token_cost(workspace, max_cost=1.0)
+        assert result is not None
+        assert result["exceeded"] is True
+        assert result["total_cost_usd"] == 2.5
+        assert result["cost_mode"] == "exact"
+        assert result["exact_entries"] == 1
+        assert result["estimated_entries"] == 0
+
+    def test_ignores_internal_liquefy_ledgers(self, workspace):
+        ledger_dir = workspace / ".liquefy-tokens"
+        ledger_dir.mkdir()
+        (ledger_dir / "ledger.jsonl").write_text(json.dumps({
+            "model": "gpt-4",
+            "input_tokens": 500000,
+            "output_tokens": 500000,
+            "total_tokens": 1000000,
+            "entry_fingerprint": "legacy-ledger-entry",
+        }) + "\n", encoding="utf-8")
+        result = _check_token_cost(workspace, max_cost=0.01)
+        assert result is not None
+        assert result["total_cost_usd"] == 0.0
+        assert result["total_tokens"] == 0
+        assert result["cost_mode"] == "unavailable"
+
+
+class TestContextPrime:
+    def test_prime_context_installs_bootstrap(self, workspace):
+        (workspace / "trace.jsonl").write_text(json.dumps({
+            "model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 300, "completion_tokens": 60, "total_tokens": 360},
+            "messages": [{"role": "user", "content": "compress this"}],
+        }) + "\n", encoding="utf-8")
+
+        result = _prime_context_for_run(workspace)
+        assert result["ok"] is True
+        assert Path(result["bootstrap_file"]).exists()
+        assert Path(result["capsule_json"]).exists()
+        assert result["scoreboard"]["summary"]["unique_runs"] == 1
+
+    def test_safe_run_exports_capsule_env(self, workspace):
+        (workspace / "trace.jsonl").write_text(json.dumps({
+            "model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 300, "completion_tokens": 60, "total_tokens": 360},
+            "messages": [{"role": "user", "content": "compress this"}],
+        }) + "\n", encoding="utf-8")
+
+        payload_file = workspace / "seen_env.json"
+        code = (
+            "import json, os, pathlib; "
+            "keys=['LIQUEFY_CONTEXT_BOOTSTRAP_FILE','LIQUEFY_CONTEXT_CAPSULE_JSON','LIQUEFY_CONTEXT_REDUCTION_PCT','LIQUEFY_CONTEXT_GATE_FILE','LIQUEFY_CONTEXT_GATE_JSON']; "
+            f"pathlib.Path({str(payload_file)!r}).write_text(json.dumps({{k: os.environ.get(k) for k in keys}}))"
+        )
+        wrapped_cmd = f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / 'tools' / 'liquefy_safe_run.py'),
+                "--workspace",
+                str(workspace),
+                "--cmd",
+                wrapped_cmd,
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stderr
+        result = json.loads(proc.stdout)
+        assert result["ok"] is True
+        assert result["phases"]["prime_context"]["ok"] is True
+        assert result["phases"]["capsule_state"]["status"] == "fresh"
+        assert result["phases"]["context_gate"]["ok"] is True
+        assert result["phases"]["context_gate"]["blocked"] is False
+        payload = json.loads(payload_file.read_text(encoding="utf-8"))
+        assert payload["LIQUEFY_CONTEXT_BOOTSTRAP_FILE"]
+        assert Path(payload["LIQUEFY_CONTEXT_BOOTSTRAP_FILE"]).exists()
+        assert Path(payload["LIQUEFY_CONTEXT_GATE_FILE"]).exists()
+
+    def test_safe_run_blocks_exact_replay_before_execute(self, workspace):
+        (workspace / "trace.jsonl").write_text(json.dumps({
+            "model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 300, "completion_tokens": 60, "total_tokens": 360},
+            "messages": [{"role": "user", "content": "compress this"}],
+        }) + "\n", encoding="utf-8")
+
+        cmd = [
+            sys.executable,
+            str(REPO_ROOT / 'tools' / 'liquefy_safe_run.py'),
+            "--workspace",
+            str(workspace),
+            "--cmd",
+            f"{shlex.quote(sys.executable)} -c {shlex.quote('print(123)')}",
+            "--block-replay",
+            "--json",
+        ]
+        first = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        second = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        first_payload = json.loads(first.stdout)
+        second_payload = json.loads(second.stdout)
+
+        assert first.returncode == 0, first.stderr
+        assert first_payload["phases"]["context_gate"]["blocked"] is False
+        assert second.returncode == 1
+        assert second_payload["blocked"] is True
+        assert second_payload["block_reason"] == "exact_replay_detected"
+        assert second_payload["phases"]["execute"] is None
 
 
 class TestFileSha256:

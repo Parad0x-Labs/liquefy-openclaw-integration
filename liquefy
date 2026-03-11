@@ -13,11 +13,14 @@ Usage:
   ./liquefy decompress <archive> <output>
   ./liquefy search <vault_dir> --query "<expr>" [--limit N] [--ignore-case] [--regex] [--json]
   ./liquefy openclaw --workspace ~/.openclaw --out ./openclaw-vault [--verify-mode full|fast|off] [--workers N] [--secure]
+  ./liquefy openclaw run --workspace ~/.openclaw --cmd "openclaw run task.md" [--json]
   ./liquefy agents <list|show|map|scaffold> [options]
   ./liquefy state-guard <init|check|checkpoint|status|recover> <workspace> [options]
   ./liquefy history-guard <init|set-approval-token|pull-once|watch|gate-action|status> [options]
   ./liquefy redact <scan|apply|profile> <path> [--out DIR] [--json]
   ./liquefy denoise <filter|stats|extract> <path> [--out DIR] [--trace-id ID] [--json]
+  ./liquefy capsule build --dir <trace_dir> [--out DIR|FILE] [--json]
+  ./liquefy capsule prime --workspace <workspace> [--trace-dir <trace_dir>] [--json]
   ./liquefy sign <sign|verify-signature> <vault_dir> [--json]
 
 Notes:
@@ -96,6 +99,10 @@ case "$cmd" in
   denoise)
     shift
     exec python3 "$(dirname "$0")/tools/liquefy_denoise.py" "$@"
+    ;;
+  capsule)
+    shift
+    exec python3 "$(dirname "$0")/tools/liquefy_context_capsule.py" "$@"
     ;;
   sign)
     shift

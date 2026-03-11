@@ -13,6 +13,8 @@ Unified Python-first CLI for all Liquefy operations.
     liquefy tokens     — Token ledger (scan/budget/report/audit)
     liquefy telemetry  — Forward audit events to SIEM
     liquefy guard      — Config Guard (save/restore/diff)
+    liquefy capsule    — Build compact context capsules from raw traces
+    liquefy context-gate — Compile bounded runtime context and replay guard
     liquefy anchor     — On-chain vault integrity proofs
     liquefy events     — Agent event trace operations
     liquefy status     — Overall system status
@@ -55,6 +57,8 @@ SUBCOMMAND_MAP = {
     "history-guard": ("liquefy_history_guard", "main",     "Continuous pull + anti-nuke action gating"),
     "redact":    ("liquefy_redact",            "main",     "PII/secret redaction before LLM ingestion"),
     "denoise":   ("liquefy_denoise",           "main",     "Log de-noising for context window optimization"),
+    "capsule":   ("liquefy_context_capsule",   "main",     "Build compact context capsules from raw traces"),
+    "context-gate": ("liquefy_context_gate",   "main",     "Compile bounded runtime context and replay guard"),
     "anchor":    ("liquefy_vault_anchor",      "main",     "On-chain vault integrity proofs"),
     "events":    ("liquefy_events",            "main",     "Agent event trace operations"),
     "vision":    ("liquefy_vision",            "main",     "Vision dedup engine"),

@@ -88,6 +88,7 @@ liquefy-safe-run = "tools.liquefy_safe_run:main"
 liquefy-cas = "tools.liquefy_cas:main"
 liquefy-events = "tools.liquefy_events:main"
 liquefy-telemetry = "tools.liquefy_telemetry_forward:main"
+liquefy-context-gate = "tools.liquefy_context_gate:main"
 liquefy = "tools.liquefy_cli:main"
 
 [tool.setuptools.packages.find]
