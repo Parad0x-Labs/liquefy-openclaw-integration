@@ -54,6 +54,7 @@ ENGINE_MAP = {
 }
 
 # Total: 23 engines
+_ENGINE_CLASS_CACHE = {}
 _ENGINE_INSTANCE_CACHE = {}
 
 
@@ -139,11 +140,10 @@ def _engine_ctor_overrides(engine_id: str):
     return overrides
 
 
-def get_engine_instance(engine_id: str):
-    """
-    Lazily imports and instantiates the engine class for the given ID.
-    Returns None if the engine is not found.
-    """
+def _load_engine_class(engine_id: str):
+    if engine_id in _ENGINE_CLASS_CACHE:
+        return _ENGINE_CLASS_CACHE[engine_id]
+
     if engine_id not in ENGINE_MAP:
         return None
 
@@ -151,16 +151,13 @@ def get_engine_instance(engine_id: str):
     try:
         import importlib
         import importlib.util
-        import inspect
         import os
 
-        # Resolve the file path relative to the api/ directory
         api_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         parts = module_path.split(".")
         py_file = os.path.join(api_dir, *parts[:-1], parts[-1] + ".py")
 
         if os.path.exists(py_file):
-            # Direct file-based load avoids name collisions (e.g. json vs builtins)
             spec = importlib.util.spec_from_file_location(module_path, py_file)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
@@ -168,6 +165,27 @@ def get_engine_instance(engine_id: str):
             mod = importlib.import_module(module_path)
 
         cls = getattr(mod, class_name)
+        _ENGINE_CLASS_CACHE[engine_id] = cls
+        return cls
+    except Exception as e:
+        print(f"[WARN] Failed to load engine '{engine_id}': {e}")
+        return None
+
+
+def get_engine_instance(engine_id: str, fresh: bool = False):
+    """
+    Lazily imports and instantiates the engine class for the given ID.
+    Returns None if the engine is not found.
+    """
+    if engine_id not in ENGINE_MAP:
+        return None
+
+    try:
+        import inspect
+
+        cls = _load_engine_class(engine_id)
+        if cls is None:
+            return None
         kwargs = _engine_ctor_overrides(engine_id)
         filtered = {}
         if kwargs:
@@ -178,14 +196,15 @@ def get_engine_instance(engine_id: str):
                 filtered = {}
 
         cache_key = (engine_id, tuple(sorted(filtered.items())))
-        if cache_key in _ENGINE_INSTANCE_CACHE:
+        if not fresh and cache_key in _ENGINE_INSTANCE_CACHE:
             return _ENGINE_INSTANCE_CACHE[cache_key]
 
         if filtered:
             instance = cls(**filtered)
         else:
             instance = cls()
-        _ENGINE_INSTANCE_CACHE[cache_key] = instance
+        if not fresh:
+            _ENGINE_INSTANCE_CACHE[cache_key] = instance
         return instance
     except Exception as e:
         print(f"[WARN] Failed to load engine '{engine_id}': {e}")

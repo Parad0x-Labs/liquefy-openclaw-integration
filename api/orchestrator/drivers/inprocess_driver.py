@@ -21,7 +21,7 @@ async def execute_inprocess(engine: EngineManifest, filepath: str) -> Dict[str, 
     Loads the engine class, reads the file, and runs compress().
     Returns a result dict with compression stats.
     """
-    instance = get_engine_instance(engine.id)
+    instance = get_engine_instance(engine.id, fresh=True)
     if instance is None:
         raise InProcessDriverError(f"Engine '{engine.id}' could not be loaded.")
 

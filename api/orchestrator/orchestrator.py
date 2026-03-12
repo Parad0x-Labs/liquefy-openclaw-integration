@@ -73,7 +73,6 @@ class Orchestrator:
         self.security = LiquefySecurity(master_secret=master_secret) if master_secret is not None else None
         self.safety = Valve
         self.vision = Vision
-        self._engine_cache: Dict[str, Any] = {}
 
     async def _probe_json_family_candidates(
         self,
@@ -119,7 +118,7 @@ class Orchestrator:
 
         for cid in candidate_ids[1:]:
             try:
-                cand_instance = get_engine_instance(cid)
+                cand_instance = get_engine_instance(cid, fresh=True)
                 if cand_instance is None:
                     continue
                 cand_comp = await asyncio.to_thread(cand_instance.compress, raw_data)
@@ -191,10 +190,7 @@ class Orchestrator:
         try:
             if engine and engine.type == "inprocess":
                 # Load the engine instance for MRTV wrapping
-                cache_key = engine.id
-                if cache_key not in self._engine_cache:
-                    self._engine_cache[cache_key] = get_engine_instance(engine.id)
-                instance = self._engine_cache[cache_key]
+                instance = get_engine_instance(engine.id, fresh=True)
                 if instance is None:
                     raise InProcessDriverError(f"Could not load engine '{engine.id}'")
 

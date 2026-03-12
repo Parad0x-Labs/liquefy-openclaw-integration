@@ -5,10 +5,46 @@ set -euo pipefail
 
 IMAGE="nullaai/liquefy-decoder-public@sha256:b7a0499f38d192e7333c760fcf8e429abcff83e58610259841f2ffb525c02935"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
-if [[ ! -x "$PYTHON_BIN" ]]; then
-  PYTHON_BIN="${PYTHON:-python3}"
-fi
+
+resolve_python() {
+  local -a candidates=()
+
+  if [[ -n "${PYTHON:-}" ]]; then
+    candidates+=("${PYTHON}")
+  fi
+
+  candidates+=(
+    "$ROOT_DIR/.venv/bin/python"
+    "$ROOT_DIR/.venv/bin/python3"
+    "/opt/homebrew/bin/python3"
+    "/usr/local/bin/python3"
+    "/usr/bin/python3"
+    "/bin/python3"
+  )
+
+  local resolved=""
+  resolved="$(command -v python3 2>/dev/null || true)"
+  if [[ -n "$resolved" ]]; then
+    candidates+=("$resolved")
+  fi
+
+  resolved="$(command -v python 2>/dev/null || true)"
+  if [[ -n "$resolved" ]]; then
+    candidates+=("$resolved")
+  fi
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+PYTHON_BIN="$(resolve_python || true)"
 
 usage() {
   cat <<EOF
@@ -35,6 +71,14 @@ Notes:
   - All other commands run local Python tools from this repo.
   - Appliance execution runs offline: --network=none, read-only rootfs, dropped caps.
 EOF
+}
+
+require_python() {
+  if [[ -z "$PYTHON_BIN" ]]; then
+    echo "ERROR: Could not locate a usable Python interpreter." >&2
+    echo "Tried repo .venv, \$PYTHON, and common system paths." >&2
+    exit 2
+  fi
 }
 
 cmd="${1:-}"
@@ -78,48 +122,59 @@ case "$cmd" in
       "$IMAGE" decompress "/data/$archive" -o "/data/$output"
     ;;
   search)
+    require_python
     vault_dir="${2:-}"
     [[ -n "$vault_dir" ]] || { usage; exit 2; }
     shift 2
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/tracevault_search.py" "$vault_dir" "$@"
     ;;
   openclaw)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_openclaw.py" "$@"
     ;;
   agents)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_agents.py" "$@"
     ;;
   state-guard)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_state_guard.py" "$@"
     ;;
   history-guard)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_history_guard.py" "$@"
     ;;
   redact)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_redact.py" "$@"
     ;;
   denoise)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_denoise.py" "$@"
     ;;
   capsule)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_context_capsule.py" "$@"
     ;;
   safe-run)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_safe_run.py" "$@"
     ;;
   context-gate)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_context_gate.py" "$@"
     ;;
   sign)
+    require_python
     shift
     exec "$PYTHON_BIN" "$ROOT_DIR/tools/liquefy_sign.py" "$@"
     ;;

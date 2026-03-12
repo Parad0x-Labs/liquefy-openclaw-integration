@@ -61,3 +61,14 @@ class TestEngineExecution:
         else:
             # At minimum: non-empty output, no crash
             assert len(restored) > 0, f"{engine_id} decompress returned empty"
+
+
+def test_engine_instance_fresh_bypasses_shared_cache():
+    shared_a = get_engine_instance("liquefy-json-hypernebula-v1")
+    shared_b = get_engine_instance("liquefy-json-hypernebula-v1")
+    fresh_a = get_engine_instance("liquefy-json-hypernebula-v1", fresh=True)
+    fresh_b = get_engine_instance("liquefy-json-hypernebula-v1", fresh=True)
+
+    assert shared_a is shared_b
+    assert fresh_a is not fresh_b
+    assert fresh_a is not shared_a
