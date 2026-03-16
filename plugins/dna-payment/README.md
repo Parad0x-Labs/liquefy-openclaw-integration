@@ -2,12 +2,26 @@
 
 Bridges [DNA x402](https://github.com/Parad0x-Labs/dna-x402) micropayment audit logs and signed receipts into Liquefy vaults as verifiable proof artifacts.
 
+This plugin is not the DNA x402 payment rail itself. It consumes exported audit
+events and signed receipts from a running DNA server and archives them into
+Liquefy. Protocol concerns like off-chain balance signatures, dispute/slashing
+logic, challenge periods, and Solana RPC transaction sequencing belong in the
+upstream `dna-x402` codebase, not in this bridge plugin.
+
 ## What This Does
 
 - Exports DNA payment audit events as Liquefy telemetry (NDJSON)
 - Converts signed payment receipts into proof artifacts
 - Carries DNA Guard events for spend blocks, replay alerts, validation failures, disputes, and receipt verification state
 - Packs everything into `.null` vaults with bit-perfect verification
+
+## What This Does Not Do
+
+- Does not settle or net payments itself
+- Does not maintain off-chain state channels
+- Does not implement challenge/slashing logic
+- Does not broadcast or bundle Solana transactions
+- Does not validate that the upstream DNA service's protocol model is sound
 
 ## Quick Start
 

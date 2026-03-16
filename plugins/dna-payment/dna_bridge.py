@@ -5,6 +5,12 @@ DNA x402 Payment Bridge for Liquefy
 Exports DNA payment audit logs and receipts into a Liquefy-ready directory
 structure that can be packed into a .null vault.
 
+This bridge is archival/observability glue only. It does not implement the
+DNA x402 settlement protocol itself: no off-chain balance signing, no dispute
+resolution contract logic, and no RPC bundling/sequencing live here. Those
+belong in the upstream dna-x402 service / on-chain programs that emit the
+audit events and signed receipts consumed by this bridge.
+
 Usage:
     python dna_bridge.py export --server http://localhost:8080 --out ./vault-staging/dna
     python dna_bridge.py status --server http://localhost:8080
