@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "liquefy.tracevault.search.cli.v1",
+  "title": "Liquefy TraceVault Search CLI Result v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool",
+    "command",
+    "ok"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "liquefy.tracevault.search.cli.v1"
+    },
+    "tool": {
+      "const": "tracevault_search"
+    },
+    "command": {
+      "const": "search"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "query": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "files_scanned": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "match_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "matches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "text"],
+        "properties": {
+          "file": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1},
+          "text": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "error": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

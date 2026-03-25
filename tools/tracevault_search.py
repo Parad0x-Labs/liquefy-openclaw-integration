@@ -18,6 +18,8 @@ from typing import Dict, Iterable, List, Optional, Tuple
 # Reuse robust local decode logic from restore tool.
 from tracevault_restore import local_decode_receipt
 
+CLI_SCHEMA_VERSION = "liquefy.tracevault.search.cli.v1"
+
 
 def _iter_searchable_units(index: Dict) -> Iterable[Tuple[str, List[Dict], bool]]:
     # Normal files: one receipt per logical file.
@@ -72,13 +74,41 @@ def search_vault(
 ) -> int:
     index_path = vault_dir / "tracevault_index.json"
     if not index_path.exists():
-        print(f"Missing index: {index_path}", file=sys.stderr)
+        if json_mode:
+            print(
+                json.dumps(
+                    {
+                        "schema_version": CLI_SCHEMA_VERSION,
+                        "tool": "tracevault_search",
+                        "command": "search",
+                        "ok": False,
+                        "error": f"Missing index: {index_path}",
+                    },
+                    ensure_ascii=True,
+                )
+            )
+        else:
+            print(f"Missing index: {index_path}", file=sys.stderr)
         return 2
 
     try:
         index = json.loads(index_path.read_text(encoding="utf-8"))
     except Exception as exc:
-        print(f"Failed to parse index: {exc}", file=sys.stderr)
+        if json_mode:
+            print(
+                json.dumps(
+                    {
+                        "schema_version": CLI_SCHEMA_VERSION,
+                        "tool": "tracevault_search",
+                        "command": "search",
+                        "ok": False,
+                        "error": f"Failed to parse index: {exc}",
+                    },
+                    ensure_ascii=True,
+                )
+            )
+        else:
+            print(f"Failed to parse index: {exc}", file=sys.stderr)
         return 2
 
     regex = None
@@ -87,7 +117,21 @@ def search_vault(
         try:
             regex = re.compile(query, flags)
         except re.error as exc:
-            print(f"Invalid regex: {exc}", file=sys.stderr)
+            if json_mode:
+                print(
+                    json.dumps(
+                        {
+                            "schema_version": CLI_SCHEMA_VERSION,
+                            "tool": "tracevault_search",
+                            "command": "search",
+                            "ok": False,
+                            "error": f"Invalid regex: {exc}",
+                        },
+                        ensure_ascii=True,
+                    )
+                )
+            else:
+                print(f"Invalid regex: {exc}", file=sys.stderr)
             return 2
 
     matches: List[Dict] = []
@@ -126,6 +170,9 @@ def search_vault(
             print(f"[MATCH] {rel}: {matched_in_file} hit(s)")
 
     result = {
+        "schema_version": CLI_SCHEMA_VERSION,
+        "tool": "tracevault_search",
+        "command": "search",
         "ok": True,
         "query": query,
         "limit": limit,
