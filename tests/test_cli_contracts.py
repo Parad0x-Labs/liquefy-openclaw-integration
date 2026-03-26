@@ -194,6 +194,101 @@ def test_tracevault_restore_runtime_self_test_json_contract():
     assert payload["result"]["version"] == "liquefy-cli-self-test-v1"
 
 
+def test_tracevault_search_json_contract(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "sample.txt").write_text("alpha\nbeta token\ngamma\n", encoding="utf-8")
+    vault_dir = tmp_path / "vault"
+
+    pack_payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "tracevault_pack.py"),
+        str(run_dir),
+        "--out", str(vault_dir),
+        "--no-encrypt",
+        "--no-verify",
+        "--json",
+    ])
+    assert pack_payload["ok"] is True
+
+    payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "tracevault_search.py"),
+        str(vault_dir),
+        "--query", "token",
+        "--json",
+    ])
+
+    assert payload["schema_version"] == "liquefy.tracevault.search.cli.v1"
+    assert payload["tool"] == "tracevault_search"
+    assert payload["command"] == "search"
+    assert payload["ok"] is True
+    assert payload["query"] == "token"
+    assert payload["limit"] == 20
+    assert payload["files_scanned"] == 1
+    assert payload["match_count"] == 1
+    assert payload["matches"] == [
+        {
+            "file": "sample.txt",
+            "line": 2,
+            "text": "beta token",
+        }
+    ]
+
+
+def test_tracevault_search_json_reports_missing_index(tmp_path):
+    proc, payload = _run_json_no_check([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "tracevault_search.py"),
+        str(tmp_path / "missing-vault"),
+        "--query", "token",
+        "--json",
+    ])
+
+    assert proc.returncode == 2
+    assert payload is not None
+    assert payload["schema_version"] == "liquefy.tracevault.search.cli.v1"
+    assert payload["tool"] == "tracevault_search"
+    assert payload["command"] == "search"
+    assert payload["ok"] is False
+    assert "Missing index:" in payload["error"]
+
+
+def test_tracevault_search_json_reports_invalid_regex(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "sample.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+    vault_dir = tmp_path / "vault"
+
+    pack_payload = _run_json([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "tracevault_pack.py"),
+        str(run_dir),
+        "--out", str(vault_dir),
+        "--no-encrypt",
+        "--no-verify",
+        "--json",
+    ])
+    assert pack_payload["ok"] is True
+
+    proc, payload = _run_json_no_check([
+        sys.executable,
+        str(REPO_ROOT / "tools" / "tracevault_search.py"),
+        str(vault_dir),
+        "--query", "(",
+        "--regex",
+        "--json",
+    ])
+
+    assert proc.returncode == 2
+    assert payload is not None
+    assert payload["schema_version"] == "liquefy.tracevault.search.cli.v1"
+    assert payload["tool"] == "tracevault_search"
+    assert payload["command"] == "search"
+    assert payload["ok"] is False
+    assert payload["error"].startswith("Invalid regex:")
+
+
 def test_liquefy_openclaw_dry_run_json_contract():
     payload = _run_json([
         sys.executable,

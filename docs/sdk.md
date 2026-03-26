@@ -33,6 +33,13 @@ Liquefy integrations (OpenClaw plugin, CI wrappers, internal tooling) should cal
   - `self_test`
   - `doctor`
 
+### `tracevault_search.py`
+
+- Command: `python tools/tracevault_search.py <vault_dir> --query <term> --json`
+- Schema version: `liquefy.tracevault.search.cli.v1`
+- Commands emitted:
+  - `search`
+
 ### `liquefy_openclaw.py`
 
 - Command: `python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./vault --json`
@@ -85,6 +92,7 @@ These appear under `error.code` for restore, and as strings/messages for some pa
 
 - `schemas/liquefy.tracevault.cli.v1.json`
 - `schemas/liquefy.tracevault.restore.cli.v1.json`
+- `schemas/liquefy.tracevault.search.cli.v1.json`
 - `schemas/liquefy.openclaw.cli.v1.json`
 - `schemas/liquefy.context-gate.v1.json`
 - `schemas/liquefy.safe-run.v2.json`
