@@ -1,11 +1,13 @@
-# Liquefy: 24-Engine Compression + Security Layer for AI Agents
+<p align="center">
+  <img src="./docs/assets/github-header-liquefy-openclaw.png" alt="Liquefy OpenClaw - Compression and audit trails for AI agents" width="100%" />
+</p>
 
 ![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)
 ![License: Commercial](https://img.shields.io/badge/License-Commercial-orange.svg)
 ![Conduction: 24 Engines](https://img.shields.io/badge/Conduction-24_Engines-cyan?style=flat-square)
 ![Verification: Bit--Perfect](https://img.shields.io/badge/Verification-Bit--Perfect-white?style=flat-square)
 
-![Liquefy Header](./docs/assets/liquefy-header.svg)
+# Liquefy: 24-Engine Compression + Security Layer for AI Agents
 
 **24 domain-aware compression engines. Bit-perfect verification. Tamper-proof audit trails. One tool.**
 
