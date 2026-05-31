@@ -11,6 +11,21 @@
 
 Liquefy is an entropy-native compression engine and security layer for AI agent infrastructure. It doesn't just gzip your logs — it understands them. JSON, SQL, VPC flow logs, PCAP, Parquet, agent traces, screenshots — each data type gets a specialized compression engine that outperforms generic compressors, then packs everything into encrypted, verified, restorable vaults.
 
+### How this fits the Parad0x stack
+
+Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. **You are here: 🛡️ Audit (the forensics sibling of Liquefy).**
+
+| Layer | Repo | Does |
+|---|---|---|
+| 💸 Payments | [dna-x402](https://github.com/Parad0x-Labs/dna-x402) | x402 rail: quote → pay → verify → receipt → anchor |
+| 🛠️ Build | [dna-x402-builders](https://github.com/Parad0x-Labs/dna-x402-builders) | Hosted kit: turn any API/bot into a paid agent |
+| 🕶️ Privacy | [Dark-Null-Protocol](https://github.com/Parad0x-Labs/Dark-Null-Protocol) | Groth16 privacy settlement, published proofs |
+| 🗜️ Data | [liquefy](https://github.com/Parad0x-Labs/liquefy) | Columnar compression that beats Zstd |
+| 🛡️ Audit | **liquefy-openclaw-integration** (this repo) | Flight recorder: 24 engines + Solana-anchored audit trails |
+| 🧠 Local AI | [nulla-local](https://github.com/Parad0x-Labs/nulla-local) | Local-first agent runtime — your machine, your memory |
+
+**See it live** (a consumer app running on these rails): **[parad0xlabs.com](https://parad0xlabs.com)**
+
 ## LLM / Agent Quick Parse
 
 ```yaml
