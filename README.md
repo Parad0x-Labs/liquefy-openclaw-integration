@@ -5,7 +5,9 @@
 ![Conduction: 24 Engines](https://img.shields.io/badge/Conduction-24_Engines-cyan?style=flat-square)
 ![Verification: Bit--Perfect](https://img.shields.io/badge/Verification-Bit--Perfect-white?style=flat-square)
 
-![Liquefy Header](./docs/assets/liquefy-header.svg)
+<p align="center">
+  <img src="./docs/assets/github-header-liquefy-openclaw.png" alt="Parad0x Labs" width="100%" />
+</p>
 
 **24 domain-aware compression engines. Bit-perfect verification. Tamper-proof audit trails. One tool.**
 
@@ -290,6 +292,10 @@ python tools/openclaw_tracevault.py list
 python tools/openclaw_tracevault.py pack --agent <agentId> --out ./vault/openclaw/<agentId>
 python tools/openclaw_tracevault.py pack --agent <agentId> --since-days 7 --out ./vault/openclaw/<agentId>
 ```
+
+<p align="center">
+  <img src="./docs/assets/github-footer-parad0xlabs.png" alt="NULL — Parad0x Labs open source systems" width="100%" />
+</p>
 
 ## ⚖️ License
 Liquefy is licensed under the **Business Source License 1.1 (BUSL-1.1)**:
