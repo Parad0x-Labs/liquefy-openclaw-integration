@@ -18,7 +18,6 @@ import base64
 import hashlib
 import json
 import os
-import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -56,20 +55,7 @@ class DarkNullEvent:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _liquefy_paths() -> None:
-    """Ensure the sibling liquefy clone is on sys.path."""
-    plugin_root = Path(__file__).resolve().parents[2]           # …/liquefy-openclaw-integration
-    clone_root = plugin_root.parent                              # …/.clone
-    liquefy_src = clone_root / "liquefy" / "src"
-    liquefy_engines = clone_root / "liquefy" / "engines"
-    for _p in (
-        liquefy_src,
-        liquefy_engines,
-        liquefy_engines / "json_codec",
-        liquefy_engines / "security_compliance",
-    ):
-        if _p.exists() and str(_p) not in sys.path:
-            sys.path.insert(0, str(_p))
+# pip install liquefy>=0.2.2
 
 
 def _derive_aes_key(secret: bytes | None = None) -> bytes:
@@ -95,8 +81,7 @@ def tracevault_pack(records: list[dict], vault_path: Path, aes_key: bytes) -> No
     Delegates to ``liquefy.compress_encrypted`` so the vault is both columnar-
     compressed and authenticated-encrypted in a single pass.
     """
-    _liquefy_paths()
-    from liquefy import compress_encrypted  # type: ignore  # sibling clone
+    from liquefy import compress_encrypted  # type: ignore
 
     jsonl = "\n".join(json.dumps(r, separators=(",", ":")) for r in records)
     blob = compress_encrypted(jsonl.encode("utf-8"), aes_key)
