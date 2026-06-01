@@ -313,6 +313,161 @@ def cmd_archive(
 
 
 # ---------------------------------------------------------------------------
+# Telemetry / audit helpers
+# ---------------------------------------------------------------------------
+
+# Event kinds that indicate an error condition.
+_ERROR_KINDS: frozenset[str] = frozenset({
+    "GUARD_RECEIPT_INVALID",
+    "GUARD_VALIDATION_FAILED",
+    "PAYMENT_FAILED",
+    "RECEIPT_REJECTED",
+    "SIG_MISMATCH",
+    "AUTH_FAILED",
+})
+
+# Event kinds that are receipt-domain events.
+_RECEIPT_KINDS: frozenset[str] = frozenset({
+    "GUARD_RECEIPT_INVALID",
+    "GUARD_VALIDATION_FAILED",
+    "PAYMENT_VERIFIED",
+    "PAYMENT_FAILED",
+    "RECEIPT_REJECTED",
+})
+
+
+def audit_to_telemetry(audit: dict) -> dict:
+    """
+    Map a raw audit-log record to a normalised telemetry record.
+
+    Input fields (all optional except ``kind``):
+        kind       — event kind string (e.g. "GUARD_RECEIPT_INVALID")
+        ts         — ISO-8601 timestamp string
+        traceId    — trace identifier
+        shopId     — seller/shop identifier
+        receiptId  — receipt identifier
+        mint       — token mint symbol (e.g. "USDC")
+        errorCode  — error code string
+
+    Returns a dict with:
+        event_type — same as ``kind``
+        severity   — "error" for error-class events, "info" otherwise
+        domain     — "receipt" for receipt-related events, "payment" otherwise
+        tags       — list of "key:value" strings
+        ts         — forwarded timestamp (if present)
+        trace_id   — forwarded traceId (if present)
+    """
+    kind = audit.get("kind", "")
+
+    severity = "error" if kind in _ERROR_KINDS else "info"
+    domain = "receipt" if kind in _RECEIPT_KINDS else "payment"
+
+    tags: list[str] = []
+    if audit.get("shopId"):
+        tags.append(f"shop:{audit['shopId']}")
+    if audit.get("mint"):
+        tags.append(f"mint:{audit['mint']}")
+    if audit.get("errorCode"):
+        tags.append(f"error:{audit['errorCode']}")
+    if audit.get("receiptId"):
+        tags.append(f"receipt:{audit['receiptId']}")
+
+    record: dict = {
+        "event_type": kind,
+        "severity":   severity,
+        "domain":     domain,
+        "tags":       tags,
+    }
+    if audit.get("ts"):
+        record["ts"] = audit["ts"]
+    if audit.get("traceId"):
+        record["trace_id"] = audit["traceId"]
+
+    return record
+
+
+# ---------------------------------------------------------------------------
+# HTTP helpers (thin wrappers — easily monkeypatched in tests)
+# ---------------------------------------------------------------------------
+
+def fetch_text(url: str) -> str:
+    """Fetch a URL and return the response body as a string."""
+    import urllib.request  # lazy import — not needed for archiving
+    with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
+        return resp.read().decode("utf-8")
+
+
+def fetch_json(url: str) -> Any:
+    """Fetch a URL and return the JSON-parsed response body."""
+    return json.loads(fetch_text(url))
+
+
+# ---------------------------------------------------------------------------
+# Export command
+# ---------------------------------------------------------------------------
+
+def cmd_export(args: Any) -> bool:
+    """
+    Export audit events and the latest receipt from a DNA server.
+
+    Reads from:
+        {args.server}/audit/log    — newline-delimited JSON audit records
+        {args.server}/receipt/latest — single JSON receipt object
+
+    Writes to args.out/:
+        telemetry.jsonl      — one normalised telemetry record per audit line
+        receipts.jsonl       — one line per receipt fetched
+        manifest.json        — summary with proof_artifact_count
+
+    Returns True on success.
+    """
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+
+    server = args.server.rstrip("/")
+
+    # ── Fetch audit log ──────────────────────────────────────────────────────
+    raw_audit = fetch_text(f"{server}/audit/log")
+    audit_records: list[dict] = []
+    for line in raw_audit.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            audit_records.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+
+    # ── Fetch latest receipt ─────────────────────────────────────────────────
+    receipt = fetch_json(f"{server}/receipt/latest")
+
+    # ── Write telemetry.jsonl ────────────────────────────────────────────────
+    telemetry_path = out / "telemetry.jsonl"
+    with open(telemetry_path, "w", encoding="utf-8") as fh:
+        for rec in audit_records:
+            tel = audit_to_telemetry(rec)
+            fh.write(json.dumps(tel, separators=(",", ":")) + "\n")
+
+    # ── Write receipts.jsonl ─────────────────────────────────────────────────
+    receipts_path = out / "receipts.jsonl"
+    with open(receipts_path, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(receipt, separators=(",", ":")) + "\n")
+
+    # ── Write manifest.json ──────────────────────────────────────────────────
+    manifest = {
+        "server":               server,
+        "telemetry_count":      len(audit_records),
+        "proof_artifact_count": 1,  # one receipt fetched
+        "exported_at":          time.time(),
+    }
+    manifest_path = out / "manifest.json"
+    with open(manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2)
+
+    return True
+
+
+# ---------------------------------------------------------------------------
 # CLI entry-point (optional convenience)
 # ---------------------------------------------------------------------------
 
