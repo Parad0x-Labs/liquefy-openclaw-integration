@@ -11,6 +11,17 @@
 
 Liquefy is an entropy-native compression engine and security layer for AI agent infrastructure. It doesn't just gzip your logs — it understands them. JSON, SQL, VPC flow logs, PCAP, Parquet, agent traces, screenshots — each data type gets a specialized compression engine that outperforms generic compressors, then packs everything into encrypted, verified, restorable vaults.
 
+## 🛡️ Why it matters to you
+
+If an AI agent acts on your behalf, you need to prove what it actually did. This is the black-box flight recorder:
+
+- 🧾 **Tamper-proof trail** — every agent action hash-chained and anchored on Solana.
+- ✅ **Pass audits** — bit-perfect records for compliance reviews (EU AI Act, ISO-42001).
+- 🛑 **Kill-switch + replay protection** — stop a misbehaving agent and prove you did.
+- 🆓 **The decoder is always free.**
+
+For teams running agents who need receipts, not faith.
+
 ### How this fits the Parad0x stack
 
 Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. **You are here: 🛡️ Audit (the forensics sibling of Liquefy).**
