@@ -774,3 +774,7 @@ For production use of the Licensed Work, Parad0x Labs provides a **Commercial Li
 *   **X (Twitter):** [@Parad0x_Labs](https://x.com/Parad0x_Labs)
 
 © 2026 Parad0x Labs. 🚀
+
+<p align="center">
+  <img src="./docs/assets/github-footer-parad0xlabs.png" alt="NULL - Parad0xLabs open source systems" width="100%" />
+</p>
