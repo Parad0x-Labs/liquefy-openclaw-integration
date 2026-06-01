@@ -1,290 +1,346 @@
 #!/usr/bin/env python3
 """
-DNA x402 Payment Bridge for Liquefy
+dna_bridge.py — DNA x402 payment receipt archiver + per-receipt Solana anchor.
 
-Exports DNA payment audit logs and receipts into a Liquefy-ready directory
-structure that can be packed into a .null vault.
+Responsibilities:
+  1. cmd_archive(): compress receipts via Liquefy, write receipts.jsonl, call
+     liquefy_vault_anchor.py for vault-level anchoring, then (if SOLANA_KEYPAIR
+     is present) call cmd_anchor_receipts() for per-receipt SPL-Memo anchoring.
+  2. cmd_anchor_receipts(): SHA-256 each JSONL line, send each hash as an
+     on-chain SPL-Memo transaction, return structured results.
 
-This bridge is archival/observability glue only. It does not implement the
-DNA x402 settlement protocol itself: no off-chain balance signing, no dispute
-resolution contract logic, and no RPC bundling/sequencing live here. Those
-belong in the upstream dna-x402 service / on-chain programs that emit the
-audit events and signed receipts consumed by this bridge.
-
-Usage:
-    python dna_bridge.py export --server http://localhost:8080 --out ./vault-staging/dna
-    python dna_bridge.py status --server http://localhost:8080
-    python dna_bridge.py archive --server http://localhost:8080 --out ./vault/dna-payments
-
-Environment:
-    DNA_SERVER      DNA x402 server URL (default: http://localhost:8080)
-    DNA_ADMIN_TOKEN Admin token for authenticated endpoints
-    LIQUEFY_ROOT    Path to Liquefy repo root (for auto-pack)
+Environment variables:
+  SOLANA_KEYPAIR   JSON array of 64 bytes (base-10 ints).  Required for
+                   per-receipt anchoring; if absent anchoring is skipped.
+  SOLANA_RPC_URL   Optional override; defaults to mainnet-beta.
 """
-import argparse
+
+from __future__ import annotations
+
+import hashlib
 import json
 import os
 import subprocess
 import sys
-import urllib.request
-from datetime import datetime, timezone
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
-DNA_SERVER = os.getenv("DNA_SERVER", "http://localhost:8080")
-ADMIN_TOKEN = os.getenv("DNA_ADMIN_TOKEN", "")
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
-SEVERITY_MAP = {
-    "QUOTE_ISSUED": "info",
-    "COMMIT_CREATED": "info",
-    "PAYMENT_VERIFIED": "info",
-    "PAYMENT_REJECTED": "error",
-    "RECEIPT_ISSUED": "info",
-    "RECEIPT_ANCHORED": "info",
-    "NETTING_FLUSH": "info",
-    "WEBHOOK_SENT": "info",
-    "WEBHOOK_FAILED": "warn",
-    "RATE_LIMITED": "warn",
-    "SHOP_REGISTERED": "info",
-    "SERVER_STARTED": "info",
-    "GUARD_SPEND_BLOCKED": "warn",
-    "GUARD_REPLAY_ALERT": "warn",
-    "GUARD_VALIDATION_FAILED": "warn",
-    "GUARD_DISPUTE_TAGGED": "warn",
-    "GUARD_RECEIPT_VERIFIED": "info",
-    "GUARD_RECEIPT_INVALID": "error",
-    "GUARD_FAIL_OPEN": "warn",
-    "GUARD_RUNTIME_ERROR": "error",
-}
+DEFAULT_RPC_URL = "https://api.mainnet-beta.solana.com"
+EXPLORER_BASE   = "https://explorer.solana.com/tx"
 
-DOMAIN_MAP = {
-    "QUOTE_ISSUED": "payment",
-    "COMMIT_CREATED": "payment",
-    "PAYMENT_VERIFIED": "payment",
-    "PAYMENT_REJECTED": "payment",
-    "RECEIPT_ISSUED": "receipt",
-    "RECEIPT_ANCHORED": "receipt",
-    "NETTING_FLUSH": "payment",
-    "SHOP_REGISTERED": "market",
-    "GUARD_SPEND_BLOCKED": "payment",
-    "GUARD_REPLAY_ALERT": "receipt",
-    "GUARD_VALIDATION_FAILED": "receipt",
-    "GUARD_DISPUTE_TAGGED": "receipt",
-    "GUARD_RECEIPT_VERIFIED": "receipt",
-    "GUARD_RECEIPT_INVALID": "receipt",
-    "GUARD_FAIL_OPEN": "system",
-    "GUARD_RUNTIME_ERROR": "system",
-}
+# Path to the vault-level anchor helper that lives next to this plugin.
+_PLUGIN_DIR          = Path(__file__).parent
+VAULT_ANCHOR_SCRIPT  = _PLUGIN_DIR / "liquefy_vault_anchor.py"
 
 
-def fetch_json(url: str) -> Any:
-    headers = {}
-    if ADMIN_TOKEN:
-        headers["x-admin-token"] = ADMIN_TOKEN
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _receipt_sha256(line: str) -> str:
+    """Return hex SHA-256 of the UTF-8 bytes of a JSONL receipt line."""
+    return hashlib.sha256(line.encode("utf-8")).hexdigest()
 
 
-def fetch_text(url: str) -> str:
-    headers = {}
-    if ADMIN_TOKEN:
-        headers["x-admin-token"] = ADMIN_TOKEN
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return resp.read().decode()
-
-
-def audit_to_telemetry(entry: dict) -> dict:
-    kind = entry.get("kind", "unknown")
-    tags = [f"kind:{kind}"]
-    if entry.get("settlement"):
-        tags.append(f"settlement:{entry['settlement']}")
-    if entry.get("shopId"):
-        tags.append(f"shop:{entry['shopId']}")
-    if entry.get("mint"):
-        tags.append(f"mint:{entry['mint']}")
-    if entry.get("errorCode"):
-        tags.append(f"error:{entry['errorCode']}")
-
-    return {
-        "_schema": "liquefy.dna.telemetry.v1",
-        "_source": "dna-x402",
-        "ts": entry.get("ts", ""),
-        "event_type": kind,
-        "trace_id": entry.get("traceId"),
-        "severity": SEVERITY_MAP.get(kind, "info"),
-        "domain": DOMAIN_MAP.get(kind, "system"),
-        "tags": tags,
-        "fields": {k: v for k, v in entry.items() if k not in ("ts", "kind")},
-    }
-
-
-def cmd_status(args):
-    server = args.server or DNA_SERVER
+def _keypair_from_env() -> list[int] | None:
+    """Parse SOLANA_KEYPAIR env var.  Returns None if not set."""
+    raw = os.environ.get("SOLANA_KEYPAIR", "").strip()
+    if not raw:
+        return None
     try:
-        health = fetch_json(f"{server}/health")
-        summary = fetch_json(f"{server}/admin/audit/summary")
-        result = {
-            "schema_version": "liquefy.dna.bridge.v1",
-            "command": "status",
-            "ok": True,
-            "server": server,
-            "health": health,
-            "audit_summary": summary,
-        }
-    except Exception as e:
-        result = {
-            "schema_version": "liquefy.dna.bridge.v1",
-            "command": "status",
-            "ok": False,
-            "server": server,
-            "error": str(e),
-        }
-    print(json.dumps(result, indent=2))
-    return result["ok"]
+        kp = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"SOLANA_KEYPAIR is not valid JSON: {exc}") from exc
+    if not isinstance(kp, list) or len(kp) != 64:
+        raise ValueError(
+            f"SOLANA_KEYPAIR must be a JSON array of exactly 64 ints, got {len(kp) if isinstance(kp, list) else type(kp).__name__}"
+        )
+    return kp
 
 
-def cmd_export(args):
-    server = args.server or DNA_SERVER
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    proofs_dir = out_dir / "proofs"
-    proofs_dir.mkdir(exist_ok=True)
-
-    # Fetch audit logs
-    raw = fetch_text(f"{server}/admin/audit/export")
-    lines = [l for l in raw.strip().split("\n") if l.strip()]
-
-    event_count = 0
-    receipt_ids = set()
-
-    with open(out_dir / "telemetry.jsonl", "w") as f:
-        for line in lines:
-            try:
-                entry = json.loads(line)
-                if entry.get("ts") and entry.get("kind"):
-                    record = audit_to_telemetry(entry)
-                    f.write(json.dumps(record) + "\n")
-                    event_count += 1
-                    if entry.get("receiptId"):
-                        receipt_ids.add(entry["receiptId"])
-            except json.JSONDecodeError:
-                continue
-
-    # Fetch full receipts
-    receipt_count = 0
-    with open(out_dir / "receipts.jsonl", "w") as f:
-        for rid in receipt_ids:
-            try:
-                receipt = fetch_json(f"{server}/receipt/{rid}")
-                if receipt.get("payload", {}).get("receiptId"):
-                    f.write(json.dumps(receipt) + "\n")
-                    with open(proofs_dir / f"{rid}.json", "w") as pf:
-                        json.dump(receipt, pf, indent=2)
-                    receipt_count += 1
-            except Exception:
-                continue
-
-    # Write manifest
-    manifest = {
-        "_schema": "liquefy.dna.run.v1",
-        "_source": "dna-x402",
-        "run_id": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"),
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "ended_at": datetime.now(timezone.utc).isoformat(),
-        "total_payments": receipt_count,
-        "total_receipts": receipt_count,
-        "proof_artifact_count": receipt_count,
-    }
-    with open(out_dir / "manifest.json", "w") as f:
-        json.dump(manifest, f, indent=2)
-
-    result = {
-        "schema_version": "liquefy.dna.bridge.v1",
-        "command": "export",
-        "ok": True,
-        "out_dir": str(out_dir),
-        "audit_events": event_count,
-        "receipts": receipt_count,
-        "proof_artifacts": receipt_count,
-        "next_step": f"python tools/tracevault_pack.py {out_dir} --org dna --out ./vault/dna-payments --json",
-    }
-    print(json.dumps(result, indent=2))
-    return True
+def _write_keypair_file(keypair: list[int]) -> Path:
+    """Write keypair JSON to a temp file; caller is responsible for cleanup."""
+    fd, path = tempfile.mkstemp(suffix=".json", prefix="sol_kp_")
+    with os.fdopen(fd, "w") as fh:
+        json.dump(keypair, fh)
+    return Path(path)
 
 
-def cmd_archive(args):
-    if not cmd_export(args):
-        return False
+def _send_spl_memo(memo_hex: str, keypair_path: Path, rpc_url: str) -> dict:
+    """
+    Submit a single SPL-Memo transaction containing memo_hex via the Solana CLI.
 
-    liquefy_root = os.getenv("LIQUEFY_ROOT", str(Path(__file__).parent.parent.parent))
-    pack_script = Path(liquefy_root) / "tools" / "tracevault_pack.py"
-
-    if not pack_script.exists():
-        print(json.dumps({
-            "schema_version": "liquefy.dna.bridge.v1",
-            "command": "archive",
-            "ok": False,
-            "error": f"Liquefy pack script not found at {pack_script}. Set LIQUEFY_ROOT.",
-        }, indent=2))
-        return False
-
-    vault_out = args.vault_out or "./vault/dna-payments"
+    Returns dict with keys: solana_tx, slot, explorer_url.
+    Raises RuntimeError on CLI failure.
+    """
     cmd = [
-        sys.executable, str(pack_script),
-        args.out,
-        "--org", "dna",
-        "--out", vault_out,
-        "--json",
+        "solana", "transfer",
+        "--from", str(keypair_path),
+        "--url", rpc_url,
+        "--with-memo", memo_hex,
+        # zero-lamport self-transfer to carry the memo
+        str(_pubkey_from_keypair_file(keypair_path)),
+        "0",
+        "--allow-unfunded-recipient",
+        "--output", "json",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "solana CLI not found on PATH — install Solana tools to use per-receipt anchoring"
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("solana CLI timed out after 60 s")
 
-    if result.returncode == 0:
-        print(json.dumps({
-            "schema_version": "liquefy.dna.bridge.v1",
-            "command": "archive",
-            "ok": True,
-            "vault": vault_out,
-            "pack_output": json.loads(result.stdout) if result.stdout.strip() else {},
-        }, indent=2))
-        return True
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"solana CLI exited {result.returncode}: {result.stderr.strip()}"
+        )
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        # Fallback: the CLI may print raw signature on stdout in older versions.
+        sig = result.stdout.strip()
+        return {
+            "solana_tx":    sig,
+            "slot":         None,
+            "explorer_url": f"{EXPLORER_BASE}/{sig}",
+        }
+
+    sig  = data.get("signature") or data.get("result") or ""
+    slot = data.get("slot")
+    return {
+        "solana_tx":    sig,
+        "slot":         slot,
+        "explorer_url": f"{EXPLORER_BASE}/{sig}",
+    }
+
+
+def _pubkey_from_keypair_file(keypair_path: Path) -> str:
+    """Return the base-58 pubkey string for a keypair file via solana-keygen."""
+    result = subprocess.run(
+        ["solana-keygen", "pubkey", str(keypair_path)],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"solana-keygen pubkey failed: {result.stderr.strip()}"
+        )
+    return result.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def cmd_anchor_receipts(
+    receipts_jsonl_path: str,
+    rpc_url: str | None = None,
+) -> list[dict]:
+    """
+    Anchor each receipt hash individually on Solana via SPL Memo.
+
+    For every non-empty line in receipts_jsonl_path:
+      - Compute SHA-256 of the line's UTF-8 bytes.
+      - Submit an SPL-Memo transaction carrying that hex digest.
+      - Record the result regardless of per-receipt success/failure.
+
+    Returns a list of dicts, one per receipt line:
+      {
+          "receipt_id":   str | int,   # from the receipt JSON, or line index
+          "receipt_hash": str,         # hex SHA-256
+          "solana_tx":    str | None,
+          "slot":         int | None,
+          "explorer_url": str | None,
+          "error":        str | None,  # set only on failure
+      }
+
+    Fails gracefully per-receipt — a single anchor failure does not abort
+    the batch.
+
+    Requires: SOLANA_KEYPAIR env var (JSON array of 64 bytes).
+    """
+    rpc = rpc_url or os.environ.get("SOLANA_RPC_URL", DEFAULT_RPC_URL)
+    keypair = _keypair_from_env()
+    if keypair is None:
+        raise EnvironmentError(
+            "SOLANA_KEYPAIR env var not set — cannot anchor receipts"
+        )
+
+    kp_file = _write_keypair_file(keypair)
+    results: list[dict] = []
+    try:
+        with open(receipts_jsonl_path, "r", encoding="utf-8") as fh:
+            for idx, raw_line in enumerate(fh):
+                line = raw_line.rstrip("\n")
+                if not line:
+                    continue
+
+                # Parse for receipt_id; fall back to line index.
+                receipt_id: Any = idx
+                try:
+                    obj = json.loads(line)
+                    receipt_id = obj.get("receiptId", obj.get("receipt_id", idx))
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+
+                receipt_hash = _receipt_sha256(line)
+                entry: dict = {
+                    "receipt_id":   receipt_id,
+                    "receipt_hash": receipt_hash,
+                    "solana_tx":    None,
+                    "slot":         None,
+                    "explorer_url": None,
+                    "error":        None,
+                }
+
+                try:
+                    tx_info = _send_spl_memo(
+                        memo_hex=receipt_hash,
+                        keypair_path=kp_file,
+                        rpc_url=rpc,
+                    )
+                    entry["solana_tx"]    = tx_info["solana_tx"]
+                    entry["slot"]         = tx_info["slot"]
+                    entry["explorer_url"] = tx_info["explorer_url"]
+                except Exception as exc:  # noqa: BLE001
+                    entry["error"] = str(exc)
+
+                results.append(entry)
+    finally:
+        try:
+            kp_file.unlink()
+        except OSError:
+            pass
+
+    return results
+
+
+def cmd_archive(
+    receipts: list[dict],
+    output_dir: str,
+    rpc_url: str | None = None,
+) -> dict:
+    """
+    Archive a batch of x402 receipts.
+
+    Steps:
+      1. Write receipts.jsonl to output_dir.
+      2. Call liquefy_vault_anchor.py for vault-level (whole-blob) anchoring.
+      3. If SOLANA_KEYPAIR is set, call cmd_anchor_receipts() for per-receipt
+         on-chain SPL-Memo anchoring.
+      4. Return a manifest dict with all results.
+
+    Returns:
+      {
+          "receipts_jsonl":     str,           # absolute path
+          "vault_anchor":       dict | None,   # result from liquefy_vault_anchor
+          "per_receipt_anchors": list[dict],   # from cmd_anchor_receipts, or []
+          "anchored_at":        float,         # unix timestamp
+      }
+    """
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    receipts_jsonl_path = out / "receipts.jsonl"
+
+    # ── Step 1: write receipts.jsonl ─────────────────────────────────────────
+    with open(receipts_jsonl_path, "w", encoding="utf-8") as fh:
+        for r in receipts:
+            fh.write(json.dumps(r, separators=(",", ":")) + "\n")
+
+    manifest: dict = {
+        "receipts_jsonl":      str(receipts_jsonl_path),
+        "vault_anchor":        None,
+        "per_receipt_anchors": [],
+        "anchored_at":         time.time(),
+    }
+
+    # ── Step 2: vault-level anchor via liquefy_vault_anchor.py ──────────────
+    if VAULT_ANCHOR_SCRIPT.exists():
+        try:
+            vault_result = subprocess.run(
+                [sys.executable, str(VAULT_ANCHOR_SCRIPT), str(receipts_jsonl_path)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if vault_result.returncode == 0:
+                try:
+                    manifest["vault_anchor"] = json.loads(vault_result.stdout)
+                except json.JSONDecodeError:
+                    manifest["vault_anchor"] = {"raw_output": vault_result.stdout.strip()}
+            else:
+                manifest["vault_anchor"] = {
+                    "error": vault_result.stderr.strip() or vault_result.stdout.strip()
+                }
+        except Exception as exc:  # noqa: BLE001
+            manifest["vault_anchor"] = {"error": str(exc)}
     else:
-        print(json.dumps({
-            "schema_version": "liquefy.dna.bridge.v1",
-            "command": "archive",
-            "ok": False,
-            "error": result.stderr[:500],
-        }, indent=2))
-        return False
+        manifest["vault_anchor"] = {
+            "skipped": True,
+            "reason":  f"liquefy_vault_anchor.py not found at {VAULT_ANCHOR_SCRIPT}",
+        }
+
+    # ── Step 3: per-receipt anchoring (only if keypair available) ───────────
+    keypair_present = bool(os.environ.get("SOLANA_KEYPAIR", "").strip())
+    if keypair_present:
+        try:
+            per_receipt = cmd_anchor_receipts(
+                receipts_jsonl_path=str(receipts_jsonl_path),
+                rpc_url=rpc_url,
+            )
+            manifest["per_receipt_anchors"] = per_receipt
+        except Exception as exc:  # noqa: BLE001
+            manifest["per_receipt_anchors"] = [{"error": str(exc)}]
+
+    return manifest
 
 
-def main():
-    parser = argparse.ArgumentParser(description="DNA x402 Payment Bridge for Liquefy")
-    parser.add_argument("--server", default=DNA_SERVER, help="DNA server URL")
-    sub = parser.add_subparsers(dest="command")
+# ---------------------------------------------------------------------------
+# CLI entry-point (optional convenience)
+# ---------------------------------------------------------------------------
 
-    sub.add_parser("status", help="Check DNA server status")
+if __name__ == "__main__":
+    import argparse
 
-    p_export = sub.add_parser("export", help="Export DNA data to Liquefy-ready dir")
-    p_export.add_argument("--out", default="./vault-staging/dna-export", help="Output directory")
+    parser = argparse.ArgumentParser(
+        description="DNA x402 bridge: archive receipts and anchor on Solana."
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_archive = sub.add_parser("archive", help="Export + pack into .null vault")
-    p_archive.add_argument("--out", default="./vault-staging/dna-export", help="Staging directory")
-    p_archive.add_argument("--vault-out", default="./vault/dna-payments", help="Final vault output")
+    p_archive = sub.add_parser("archive", help="Archive receipt batch from JSON file")
+    p_archive.add_argument("receipts_json", help="Path to JSON file containing list of receipts")
+    p_archive.add_argument("output_dir",    help="Directory to write receipts.jsonl and manifest")
+    p_archive.add_argument("--rpc",         help="Solana RPC URL override", default=None)
+
+    p_anchor = sub.add_parser("anchor-receipts", help="Anchor existing receipts.jsonl on Solana")
+    p_anchor.add_argument("receipts_jsonl", help="Path to receipts.jsonl")
+    p_anchor.add_argument("--rpc",          help="Solana RPC URL override", default=None)
 
     args = parser.parse_args()
 
-    if args.command == "status":
-        sys.exit(0 if cmd_status(args) else 1)
-    elif args.command == "export":
-        sys.exit(0 if cmd_export(args) else 1)
-    elif args.command == "archive":
-        sys.exit(0 if cmd_archive(args) else 1)
-    else:
-        parser.print_help()
-        sys.exit(1)
+    if args.cmd == "archive":
+        with open(args.receipts_json, "r", encoding="utf-8") as f:
+            receipt_list = json.load(f)
+        result = cmd_archive(receipt_list, args.output_dir, rpc_url=args.rpc)
+        print(json.dumps(result, indent=2))
 
-
-if __name__ == "__main__":
-    main()
+    elif args.cmd == "anchor-receipts":
+        result = cmd_anchor_receipts(args.receipts_jsonl, rpc_url=args.rpc)
+        print(json.dumps(result, indent=2))
