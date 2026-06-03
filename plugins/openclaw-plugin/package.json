@@ -1,7 +1,7 @@
 {
   "name": "@parad0x-labs/liquefy-openclaw-plugin",
-  "version": "0.1.0-alpha",
-  "description": "OpenClaw plugin wrapper for Liquefy CLI (scan/apply tools, safe defaults)",
+  "version": "0.1.1",
+  "description": "OpenClaw plugin wrapper for Liquefy CLI (scan/apply tools, safe defaults, vault-scan PII gate)",
   "type": "module",
   "main": "dist/index.js",
   "files": [
