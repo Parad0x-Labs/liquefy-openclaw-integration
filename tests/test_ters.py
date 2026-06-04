@@ -147,7 +147,7 @@ def test_verify_handles_bad_anchored_count():
 
 
 def test_empty_chain_seal_is_authenticated():
-    # Hardening: empty-chain seal is keyed (not a public constant) — a wrong
+    # Hardening: empty-chain seal is keyed (not a public constant) -- a wrong
     # master must NOT reproduce it.
     s = ters.seal(MASTER, SESSION, [])
     res = ters.verify_seal(b"different-master-secret-bytes-000", SESSION, [], s)

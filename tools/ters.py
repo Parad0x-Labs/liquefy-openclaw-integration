@@ -101,7 +101,7 @@ def seal(master_secret: bytes, session_id: str, entries: Sequence[Dict[str, obje
     """Compute the anchorable seal over a FIRC entry list.
 
     Returns ``{count, agg_mac, settlement_root, session_id}``. Anchor this
-    (e.g. to Solana) — verification recomputes it and compares. ``agg_mac`` is a
+    (e.g. to Solana) -- verification recomputes it and compares. ``agg_mac`` is a
     finalization MAC binding count + the running forward-secure aggregate +
     settlement_root under the final epoch key, so that single keyed value
     commits the whole chain (empty chains included).
@@ -149,7 +149,7 @@ def verify_seal(
     """
     try:
         recomputed = seal(master_secret, session_id, entries)
-    except Exception as exc:  # malformed (non-hex/odd) entry fields → fail closed
+    except Exception as exc:  # malformed (non-hex/odd) entry fields -> fail closed
         return {"ok": False, "malformed": True, "error": "MALFORMED: %s" % exc,
                 "agg_ok": False, "count_ok": False, "settlement_root_ok": False}
     try:
