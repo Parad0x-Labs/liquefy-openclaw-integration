@@ -70,6 +70,8 @@ def hkdf_sha256(ikm: bytes, salt: bytes, info: bytes, length: int = _KEY_LEN) ->
     """RFC 5869 HKDF-SHA256 (extract + expand)."""
     if not salt:
         salt = b"\x00" * hashlib.sha256().digest_size
+    if length > 255 * hashlib.sha256().digest_size:
+        raise ValueError("HKDF: requested length exceeds 255*HashLen")
     prk = hmac.new(salt, ikm, hashlib.sha256).digest()
     okm = b""
     block = b""
@@ -95,10 +97,15 @@ def _entry_digest(seq: int, prev_hash: bytes, leaf_hash: bytes, receipt_hash: by
 
 
 def _tag(epoch_key: bytes, entry_digest: bytes) -> bytes:
+    # fixed-length inputs keep the raw concat unambiguous; enforce the invariant
+    if len(epoch_key) != _KEY_LEN or len(entry_digest) != 32:
+        raise ValueError("FIRC internal: unexpected key/digest length")
     return hmac.new(epoch_key, _DOMAIN + b"/tag" + entry_digest, hashlib.sha256).digest()
 
 
 def _evolve(epoch_key: bytes) -> bytes:
+    if len(epoch_key) != _KEY_LEN:
+        raise ValueError("FIRC internal: unexpected key length")
     return hashlib.sha256(_DOMAIN + b"/evolve" + epoch_key).digest()
 
 
@@ -123,8 +130,17 @@ class FIRCChain:
         return cls(derive_seed(master_secret, session_id), session_id=session_id)
 
     def append(self, leaf: bytes, *, receipt_hash: bytes = b"", mandate: bytes = b"") -> Dict[str, object]:
+        """Append a leaf to the chain.
+
+        ``receipt_hash`` is the caller-provided digest of the bound x402 receipt
+        (already hashed); ``mandate`` is the raw mandate-scope bytes (hashed
+        internally). Empty bytes mean "none" for that field.
+        """
         if self._key is None:
             raise RuntimeError("chain is closed")
+        for _name, _val in (("leaf", leaf), ("receipt_hash", receipt_hash), ("mandate", mandate)):
+            if not isinstance(_val, (bytes, bytearray)):
+                raise TypeError("%s must be bytes, got %s" % (_name, type(_val).__name__))
         leaf_hash = hashlib.sha256(leaf).digest()
         mandate_hash = hashlib.sha256(mandate).digest() if mandate else b""
         digest = _entry_digest(self._seq, self._prev, leaf_hash, receipt_hash, mandate_hash)
@@ -224,14 +240,18 @@ def verify_chain(
         "failures": failures,
     }
     if expected_head is not None:
-        head_ok = (
-            int(expected_head.get("count", -1)) == len(entries)
-            and str(expected_head.get("head_hash", "")) == prev.hex()
-        )
+        if failures:
+            # inner verification already failed; the head check is meaningless
+            head_ok = False
+        else:
+            head_ok = (
+                int(expected_head.get("count", -1)) == len(entries)
+                and str(expected_head.get("head_hash", "")) == prev.hex()
+            )
+            if not head_ok:
+                failures.append({"error": "HEAD_MISMATCH_TRUNCATION_OR_EXTENSION"})
         result["head_ok"] = head_ok
         result["ok"] = bool(result["ok"] and head_ok)
-        if not head_ok:
-            failures.append({"error": "HEAD_MISMATCH_TRUNCATION_OR_EXTENSION"})
     return result
 
 

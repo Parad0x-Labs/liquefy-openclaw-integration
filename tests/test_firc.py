@@ -3,6 +3,8 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TOOLS_DIR = REPO_ROOT / "tools"
 if str(TOOLS_DIR) not in sys.path:
@@ -133,3 +135,30 @@ def test_empty_chain_verifies_vacuously():
     res = verify_chain(MASTER, SESSION, [])
     assert res["ok"] is True
     assert res["verified"] == 0
+
+
+def test_head_ok_false_when_inner_verification_fails():
+    # Hardening: a broken chain must never report head_ok True, even if a
+    # crafted head matches the surviving prefix.
+    chain = _build(3)
+    head = chain.head()
+    e = chain.entries[1]
+    e["tag"] = ("0" * 64) if e["tag"][0] != "0" else ("1" * 64)
+    res = verify_chain(MASTER, SESSION, chain.entries, expected_head=head)
+    assert res["ok"] is False
+    assert res.get("head_ok") is False
+
+
+def test_append_rejects_non_bytes():
+    chain = FIRCChain.from_master(MASTER, SESSION)
+    with pytest.raises(TypeError):
+        chain.append("not-bytes")
+    with pytest.raises(TypeError):
+        chain.append(b"ok", receipt_hash="not-bytes")
+    with pytest.raises(TypeError):
+        chain.append(b"ok", mandate=123)
+
+
+def test_hkdf_rejects_oversized_length():
+    with pytest.raises(ValueError):
+        firc.hkdf_sha256(b"ikm", b"salt", b"info", length=255 * 32 + 1)
