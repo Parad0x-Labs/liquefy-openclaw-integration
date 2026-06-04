@@ -19,7 +19,9 @@ PYTHONPATH_EXPORT := PYTHONPATH=tools:api
         compliance compliance-verify compliance-timeline \
         vision-scan vision-pack vision-restore vision-stats \
         cloud-push cloud-pull cloud-status cloud-verify \
-        context-gate context-gate-history
+        context-gate context-gate-history \
+        vault-proof vault-anchor vault-verify vault-show \
+        vault-sign vault-verify-signature
 
 # ─── Default target ───
 
@@ -99,6 +101,8 @@ help: ## Show this help
 	@echo "    make vault-anchor VAULT=. KEYPAIR=~/.config/solana/id.json  Anchor on Solana"
 	@echo "    make vault-verify VAULT=./vault         Verify vault vs anchor"
 	@echo "    make vault-show PROOF=./proof.json      Display anchor proof"
+	@echo "    make vault-sign VAULT=./vault           Ed25519-sign vault artifacts (publicly verifiable)"
+	@echo "    make vault-verify-signature VAULT=./vault  Verify signature with the public key (no secret)"
 	@echo ""
 	@echo "  CONTENT-ADDRESSED STORAGE"
 	@echo "    make cas-ingest DIR=./agent-output    Ingest into CAS"
@@ -411,6 +415,15 @@ vault-verify: $(VENV) ## Verify vault matches its on-chain anchor
 vault-show: $(VENV) ## Display an existing anchor proof
 	@test -n "$(PROOF)" || { echo "Usage: make vault-show PROOF=./vault/.anchor-proof.json"; exit 1; }
 	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_vault_anchor.py show --proof "$(PROOF)" --json
+
+vault-sign: $(VENV) ## Sign vault artifacts with Ed25519 (publicly verifiable; ALGO=hmac for local-only)
+	@test -n "$(VAULT)" || { echo "Usage: make vault-sign VAULT=./vault [ALGO=ed25519|hmac]"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_sign.py sign "$(VAULT)" --algorithm $(or $(ALGO),ed25519) --json
+
+vault-verify-signature: $(VENV) ## Verify a vault signature with the public key (no secret needed)
+	@test -n "$(VAULT)" || { echo "Usage: make vault-verify-signature VAULT=./vault [PUBKEY=hex|path] [FINGERPRINT=...]"; exit 1; }
+	$(PYTHONPATH_EXPORT) $(PY) tools/liquefy_sign.py verify-signature "$(VAULT)" \
+		$(if $(PUBKEY),--public-key "$(PUBKEY)",) $(if $(FINGERPRINT),--key-fingerprint "$(FINGERPRINT)",) --json
 
 # ─── Content-Addressed Storage ───
 

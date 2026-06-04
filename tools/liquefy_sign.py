@@ -32,12 +32,27 @@ def main() -> None:
     p_sign = sub.add_parser("sign")
     p_sign.add_argument("vault_dir")
     p_sign.add_argument("--key-path", default=None)
+    p_sign.add_argument(
+        "--algorithm",
+        default="ed25519",
+        help="ed25519 (default, publicly verifiable) or hmac (local-only/legacy)",
+    )
     p_sign.add_argument("--json", action="store_true")
     p_sign.add_argument("--json-file", default=None)
 
     p_verify = sub.add_parser("verify-signature")
     p_verify.add_argument("vault_dir")
-    p_verify.add_argument("--key-path", default=None)
+    p_verify.add_argument("--key-path", default=None, help="HMAC (legacy) secret key path")
+    p_verify.add_argument(
+        "--public-key",
+        default=None,
+        help="Ed25519 public key (hex) or path to a pubkey file — verify with no secret",
+    )
+    p_verify.add_argument(
+        "--key-fingerprint",
+        default=None,
+        help="Expected signing-key fingerprint (e.g. from the on-chain anchor) to bind against",
+    )
     p_verify.add_argument("--json", action="store_true")
     p_verify.add_argument("--json-file", default=None)
 
@@ -47,7 +62,7 @@ def main() -> None:
     key_path = Path(args.key_path).expanduser().resolve() if args.key_path else None
 
     if args.command == "sign":
-        result = sign_vault_artifacts(vault_dir, key_path=key_path)
+        result = sign_vault_artifacts(vault_dir, key_path=key_path, algorithm=args.algorithm)
         payload = {
             "schema_version": CLI_SCHEMA_VERSION,
             "tool": "liquefy_sign",
@@ -58,10 +73,20 @@ def main() -> None:
         _emit(payload, enabled_json=args.json, json_file=json_file)
         if not args.json:
             print(f"[sign] OK vault={vault_dir}")
+            print(f"  algorithm={result.get('algorithm')}")
             print(f"  signature={result.get('signature_path')}")
+            if result.get("algorithm") == "Ed25519":
+                print(f"  public_key={result.get('public_key')}")
+                print(f"  public_key_file={result.get('public_key_path')}")
+                print(f"  key_fingerprint={result.get('key_fingerprint')}  (publish / anchor this)")
         return
 
-    result = verify_vault_signature(vault_dir, key_path=key_path)
+    result = verify_vault_signature(
+        vault_dir,
+        key_path=key_path,
+        public_key=args.public_key,
+        expected_key_fingerprint=args.key_fingerprint,
+    )
     payload = {
         "schema_version": CLI_SCHEMA_VERSION,
         "tool": "liquefy_sign",
@@ -72,7 +97,14 @@ def main() -> None:
     _emit(payload, enabled_json=args.json, json_file=json_file)
     if not args.json:
         print(f"[verify-signature] {'PASS' if payload['ok'] else 'FAIL'} vault={vault_dir}")
+        if result.get("algorithm"):
+            verifiability = "public-key only" if result.get("publicly_verifiable") else "requires secret key"
+            print(f"  algorithm={result.get('algorithm')} ({verifiability})")
+        if result.get("error"):
+            print(f"  error={result.get('error')}")
     if not payload["ok"]:
         raise SystemExit(1)
+
+
 if __name__ == "__main__":
     main()
