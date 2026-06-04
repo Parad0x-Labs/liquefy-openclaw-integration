@@ -6,6 +6,38 @@
 
 This guide describes how to verify the **Zero-Persistence** and **Bit-Perfect** guarantees of the Liquefy platform using the sealed decoder appliance.
 
+---
+
+## Path C: Public Reference Verification (no license required)
+
+You do **not** need the sealed appliance to independently confirm a Trace Vault
+archive is bit-perfect. The repository ships a real, source-visible reference
+decoder, [`decompress_local.py`](../decompress_local.py), that reconstructs the
+original bytes using the same in-repo engines that packed them and checks them
+against the `sha256_original` recorded per-receipt in `tracevault_index.json`.
+
+```bash
+# Verify a single .null archive against its recorded original hash (writes nothing).
+# Exits non-zero on any mismatch — it prints the real restored hash, never a canned result.
+python decompress_local.py vault/run_001/events.jsonl.null --verify-only
+
+# Restore an archive locally (also integrity-checked when a recorded hash exists).
+python decompress_local.py vault/run_001/events.jsonl.null -o restored/events.jsonl
+```
+
+Notes:
+- The decoder auto-discovers `tracevault_index.json` next to the archive to learn
+  the `engine_used`, the expected `sha256_original`, and whether the blob is encrypted.
+- Encrypted archives require the tenant master secret in `LIQUEFY_SECRET`.
+- The decode direction is deterministic / byte-stable, so re-running always
+  reproduces identical bytes even though the compress direction is not bit-stable
+  across zstd builds.
+- Exit codes: `0` verified/restored, `2` hash mismatch, `3` decode failure,
+  `4` cannot verify (no recorded hash, or missing decryption secret).
+
+The sealed appliance below (Path B) is a hardened, offline distribution of the
+same decode guarantee for enterprise workflows — not a prerequisite for trust.
+
 ## Prerequisites
 
 - Docker or Podman installed.
