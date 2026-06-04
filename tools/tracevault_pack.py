@@ -902,23 +902,25 @@ async def pack(
         "prev_manifest_hash": prev_manifest_hash,
     }
     run_metadata_path = out_dir / "run_metadata.json"
+    # Mark "signed" BEFORE writing+signing so the file that gets signed already
+    # carries its final content. Mutating run_metadata.json *after* signing it
+    # would invalidate its own signature (the signed bytes must match disk), so
+    # the algorithm/key_id details live in the index/result payload and in
+    # .liquefy/signature.json — not back inside the signed file.
+    if sign_artifacts:
+        run_metadata["signed"] = True
     write_text_private(run_metadata_path, json.dumps(run_metadata, indent=2))
 
     signature_info = None
     if sign_artifacts:
         signature_info = sign_vault_artifacts(out_dir)
-        run_metadata["signed"] = True
-        run_metadata["signature"] = {
-            "algorithm": signature_info.get("algorithm"),
-            "key_id": signature_info.get("key_id"),
-            "signature_path": signature_info.get("signature_path"),
-        }
-        write_text_private(run_metadata_path, json.dumps(run_metadata, indent=2))
 
     index["_manifest_path"] = str(manifest_path)
     index["_run_metadata_path"] = str(run_metadata_path)
     if signature_info:
         index["_signature_path"] = str(signature_info.get("signature_path"))
+        index["_signature_algorithm"] = signature_info.get("algorithm")
+        index["_signature_key_id"] = signature_info.get("key_id")
 
     if verbose:
         print(f"\n  input:         {total_in:,} bytes")
@@ -1143,6 +1145,7 @@ def main():
                 "manifest_path": index.get("_manifest_path"),
                 "run_metadata_path": index.get("_run_metadata_path"),
                 "signature_path": index.get("_signature_path"),
+                "signature_algorithm": index.get("_signature_algorithm"),
                 "version": index.get("version"),
                 "files_processed": index.get("files_processed"),
                 "files_skipped": index.get("files_skipped"),

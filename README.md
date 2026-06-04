@@ -757,9 +757,25 @@ make vault-show   PROOF=./vault/.anchor-proof.json  # Display proof
 ```
 
 - **Cost:** ~0.000005 SOL per anchor
-- **What's anchored:** vault file hash, audit chain tip hash, encryption key fingerprint
-- **What's NOT anchored:** your data, your key, anything readable
+- **What's anchored:** vault file hash, audit chain tip hash, signing-key fingerprint (the Ed25519 **public-key** fingerprint when the vault is signed — publicly reproducible; falls back to the encryption-key fingerprint for unsigned vaults)
+- **What's NOT anchored:** your data, your private key, anything readable
 - Install solders + httpx: `pip install solders httpx` (proof generation works without them)
+
+#### Publicly verifiable vault signatures
+
+Signed vaults carry an **Ed25519** signature (`.liquefy/signature.json`) and the
+**public key** (`.liquefy/signing_pubkey.ed25519`). Verification needs *only* the
+public key — no secret — so any third party can confirm a vault, and the
+key fingerprint anchored on-chain pins which key is authentic. (A legacy
+HMAC-SHA256 mode exists for local-only integrity; it is **not** publicly
+verifiable and isn't used for anything claimed to be.)
+
+```bash
+make vault-sign VAULT=./vault                                  # Ed25519-sign (default)
+make vault-verify-signature VAULT=./vault                      # verify with the published public key
+```
+
+See [`docs/VERIFY_VAULT_SIGNATURE.md`](./docs/VERIFY_VAULT_SIGNATURE.md) for the trust model and how to pin verification to the on-chain fingerprint.
 
 ---
 

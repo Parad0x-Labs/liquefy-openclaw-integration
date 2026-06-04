@@ -18,7 +18,10 @@ Architecture:
 On-chain data (80 bytes):
     - vault_hash:      SHA-256 of all vault file hashes concatenated (32 bytes)
     - chain_tip:       latest audit chain hash (32 bytes)
-    - key_fingerprint: SHA-256 of LIQUEFY_SECRET (first 16 bytes)
+    - key_fingerprint: SHA-256 (first 16 hex) of the vault's Ed25519 signing
+                       *public key* when the vault is signed (publicly
+                       reproducible); falls back to SHA-256 of LIQUEFY_SECRET
+                       for unsigned/legacy vaults.
 
 Uses the SPL Memo program (standard, no custom program needed).
 Transaction signature = permanent on-chain receipt.
@@ -133,11 +136,52 @@ def _get_key_fingerprint() -> str:
     return "0" * 16
 
 
+def _get_pubkey_fingerprint(vault_dir: Path) -> Optional[str]:
+    """Fingerprint of the vault's published Ed25519 *signing public key*.
+
+    This is the publicly verifiable fingerprint: anyone can recompute it from
+    the published public key (unlike the secret-derived fingerprint). Returns
+    None if the vault is not Ed25519-signed.
+    """
+    pub_hex: Optional[str] = None
+    sig_path = vault_dir / ".liquefy" / "signature.json"
+    if sig_path.exists():
+        try:
+            sig = json.loads(sig_path.read_text("utf-8"))
+            if sig.get("algorithm") == "Ed25519" and isinstance(sig.get("public_key"), str):
+                pub_hex = sig["public_key"].strip()
+        except (json.JSONDecodeError, OSError):
+            pub_hex = None
+    if not pub_hex:
+        pub_file = vault_dir / ".liquefy" / "signing_pubkey.ed25519"
+        if pub_file.exists():
+            try:
+                pub_hex = pub_file.read_text("utf-8").strip()
+            except OSError:
+                pub_hex = None
+    if not pub_hex:
+        return None
+    try:
+        return hashlib.sha256(bytes.fromhex(pub_hex)).hexdigest()[:16]
+    except ValueError:
+        return None
+
+
 def compute_proof(vault_dir: Path) -> Dict[str, Any]:
     """Compute a complete vault proof (offline, free)."""
     vault_hash, file_count, total_bytes = _compute_vault_hash(vault_dir)
     chain_tip = _get_chain_tip(vault_dir)
-    key_fp = _get_key_fingerprint()
+    # Prefer the Ed25519 signing public-key fingerprint when the vault is
+    # signed: it is publicly reproducible, so anchoring it lets a third party
+    # confirm the published public key is the one the owner committed to. Fall
+    # back to the secret-derived fingerprint for unsigned/legacy vaults.
+    pubkey_fp = _get_pubkey_fingerprint(vault_dir)
+    if pubkey_fp:
+        key_fp = pubkey_fp
+        key_fp_source = "ed25519-pubkey"
+    else:
+        key_fp = _get_key_fingerprint()
+        key_fp_source = "secret" if key_fp != "0" * 16 else "none"
     ts = datetime.now(timezone.utc).isoformat()
 
     anchor_payload = f"LQFY|{vault_hash[:16]}|{chain_tip[:16]}|{key_fp}"
@@ -150,6 +194,7 @@ def compute_proof(vault_dir: Path) -> Dict[str, Any]:
         "vault_hash": vault_hash,
         "chain_tip": chain_tip,
         "key_fingerprint": key_fp,
+        "key_fingerprint_source": key_fp_source,
         "file_count": file_count,
         "total_bytes": total_bytes,
         "anchor_payload": anchor_payload,
