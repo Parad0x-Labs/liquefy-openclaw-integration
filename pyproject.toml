@@ -7,7 +7,7 @@ name = "liquefy-openclaw"
 version = "1.1.0"
 description = "Entropy-native compression, auditing, and observability for AI agent runs"
 readme = "README.md"
-license = {text = "BUSL-1.1"}
+license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
     {name = "Parad0x Labs"},
