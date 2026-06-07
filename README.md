@@ -1,7 +1,6 @@
 # Liquefy: 24-Engine Compression + Security Layer for AI Agents
 
-![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)
-![License: Commercial](https://img.shields.io/badge/License-Commercial-orange.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Conduction: 24 Engines](https://img.shields.io/badge/Conduction-24_Engines-cyan?style=flat-square)
 ![Verification: Bit--Perfect](https://img.shields.io/badge/Verification-Bit--Perfect-white?style=flat-square)
 
@@ -278,7 +277,7 @@ Status artifacts (generated):
 - `./bench/results/LIQUEFY_STATUS_REPORT.md`
 - `./bench/results/LIQUEFY_STATUS_REPORT.json`
 
-Free for personal/private, nonprofit, and academic use (including production in those contexts). Commercial / for-profit use requires a [license](./COMMERCIAL_LICENSE.md), including monetized hosted/API offerings and paid wrappers built on Liquefy.
+Free for any use under the MIT License — personal, nonprofit, academic, and commercial alike, including monetized hosted/API offerings and paid wrappers. No separate commercial license, no change date.
 
 **Decoder is always available.** Decompression and verification never require a license, a running service, or access to this repo. Archives are self-contained. Your data is never hostage.
 
@@ -298,11 +297,9 @@ python tools/openclaw_tracevault.py pack --agent <agentId> --since-days 7 --out 
 </p>
 
 ## ⚖️ License
-Liquefy is licensed under the **Business Source License 1.1 (BUSL-1.1)**:
-- **Free use (including production)**: Personal/private non-commercial, nonprofit, and academic/educational/research use are permitted under the Additional Use Grant (see `LICENSE`).
-- **Commercial / for-profit use**: Requires a commercial license from Parad0x Labs (including internal company use, SaaS/hosted services, embedding, and paid-client work). **30-Day Evaluation License available** for proof-of-concept testing — no registration required. See [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md).
-- **Change Date**: 2028-02-22 — after this date, automatically converts to **GPL-2.0-or-later**.
-- **Decode-only recovery**: Always free. No license required to decompress or verify `.null` archives.
+Licensed under the **MIT License** — free for any use, commercial or not, with no change date and no separate commercial tier. See [`LICENSE`](./LICENSE).
+- **Free for everyone, everywhere.** Use it, embed it, run it in production, build a paid product on it — MIT permits all of it.
+- **Decode-only recovery**: Always free and self-contained. Decompression and verification never require a license, a running service, or access to this repo.
 
 ---
 
@@ -364,9 +361,9 @@ Unlike our previous black-box releases, this repository now contains the **compl
 
 You can inspect, compile, and run the entire source-available stack locally:
 
-### Using the Source-Available Engines
+### Using the Open-Source Engines
 
-See the `api/engines` folder for the Python implementations. You can run compressions directly without Docker for non-production use under the BUSL-1.1 license terms.
+See the `api/engines` folder for the Python implementations. Under the MIT License you can run compressions directly, with or without Docker, for any use — personal or production.
 
 ### OpenClaw Plugin Wrapper (Node.js scaffold)
 
@@ -798,9 +795,9 @@ The decoder CLI/appliance path is built for **enterprise-grade reliability**. To
 
 ---
 
-## 🏢 Commercial License
+## 🏢 Contact
 
-For production use of the Licensed Work, Parad0x Labs provides a **Commercial License**.
+OpenClaw Vault is MIT-licensed — there's no license to buy. For managed/hosted deployments, support, or partnership:
 
 *   **Email:** [hello@parad0xlabs.com](mailto:hello@parad0xlabs.com)
 *   **X (Twitter):** [@Parad0x_Labs](https://x.com/Parad0x_Labs)
