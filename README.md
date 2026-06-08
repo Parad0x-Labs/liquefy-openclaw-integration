@@ -8,7 +8,7 @@
   <img src="./docs/assets/github-header-liquefy-openclaw.png" alt="Parad0x Labs" width="100%" />
 </p>
 
-**24 domain-aware compression engines. Bit-perfect verification. Tamper-proof audit trails. One tool.**
+**24 domain-aware compression engines. Bit-perfect verification. Tamper-evident audit trails. One tool.**
 
 Liquefy is an entropy-native compression engine and security layer for AI agent infrastructure. It doesn't just gzip your logs — it understands them. JSON, SQL, VPC flow logs, PCAP, Parquet, agent traces, screenshots — each data type gets a specialized compression engine that outperforms generic compressors, then packs everything into encrypted, verified, restorable vaults.
 
@@ -16,7 +16,7 @@ Liquefy is an entropy-native compression engine and security layer for AI agent 
 
 If an AI agent acts on your behalf, you need to prove what it actually did. This is the black-box flight recorder:
 
-- 🧾 **Tamper-proof trail** — every agent action hash-chained and anchored on Solana.
+- 🧾 **Tamper-evident trail** — every agent action hash-chained and anchored on Solana.
 - ✅ **Pass audits** — bit-perfect records for compliance reviews (EU AI Act, ISO-42001).
 - 🛑 **Kill-switch + replay protection** — stop a misbehaving agent and prove you did.
 - 🆓 **The decoder is always free.**
@@ -47,7 +47,7 @@ category: compression and audit layer for AI infrastructure
 best_for:
   - trace vaults
   - verified restore
-  - tamper-proof audit trails
+  - tamper-evident audit trails
   - framework-agnostic agent data protection
 entrypoints:
   quickstart: ./README.md
@@ -303,8 +303,8 @@ Licensed under the **MIT License** — free for any use, commercial or not, with
 
 ---
 
-## 🎖️ Enterprise Certification
-Liquefy is certified for **100% bit-perfect restoration**. Our comprehensive test suite covers 24 engine combinations and validates integrity against the Golden-Rule standard.
+## 🎖️ Bit-Perfect Restoration
+Liquefy is internally tested for **bit-perfect round-trip across the suite**. Our test suite covers 24 engine combinations and validates integrity against the Golden-Rule standard.
 
 *   [**View Enterprise Evaluation Notes**](./docs/enterprise-evaluation.md)
 *   [**View Technical Specification**](./docs/technical-specification.md)
@@ -533,9 +533,9 @@ make vision-stats SRC=./vault/vision.vsnx         # Show dedup stats
 - **VSNX container** — compact binary format with manifest + compressed unique blobs
 - Install Pillow for full perceptual mode: `pip install Pillow`
 
-### Cryptographic Flight Recorder (Forensic Replay & Tamper-Proofing)
+### Cryptographic Flight Recorder (Forensic Replay & Tamper-Evidence)
 
-Every agent run is captured into a cryptographically signed, tamper-proof "black box." If an agent goes rogue — drops a database, leaks customer data, burns $50K in API calls — you don't grep through JSON. You open an HTML report and see exactly what happened, verified by an unbroken SHA-256 hash chain that proves the logs were not altered after the fact.
+Every agent run is captured into a cryptographically signed, tamper-evident "black box." If an agent goes rogue — drops a database, leaks customer data, burns $50K in API calls — you don't grep through JSON. You open an HTML report and see exactly what happened, verified by an unbroken SHA-256 hash chain that proves the logs were not altered after the fact.
 
 ```bash
 make compliance VAULT=./vault ORG=acme TITLE="Q1 Audit"  # HTML forensic report
@@ -547,7 +547,7 @@ make vault-anchor VAULT=./vault                            # Anchor proof to Sol
 - **SHA-256 hash chain** — every audit event links to the previous via cryptographic hash. Tamper with one entry and the entire chain breaks. Verified per-entry by `compliance verify`.
 - **On-chain anchoring** — vault integrity proofs (file hashes, chain tip, key fingerprint) can be anchored to Solana. Third parties can independently verify your logs existed at a specific point in time without seeing the data.
 - **One-click HTML reports** — professional forensic dashboards designed for CTOs, compliance officers, and legal teams who need answers without touching a terminal.
-- **Holds up in audits** — SOC2, regulatory review, or incident investigation. The combination of hash-chained logs + on-chain timestamp proofs gives you mathematical certainty, not just "trust us."
+- **Intended to support audit/regulatory review** — or incident investigation. The combination of hash-chained logs + on-chain timestamp proofs gives you cryptographically verifiable evidence, not just "trust us."
 
 ### Cloud Sync (S3 / R2 / MinIO)
 

@@ -167,7 +167,7 @@ Conflict resolution: `last_write`, `largest`, `priority`, or `both` (keep-both).
 ### Compliance & Audit
 
 ```bash
-make audit-verify                    # Verify tamper-proof hash chain is intact
+make audit-verify                    # Verify tamper-evident hash chain is intact
 make compliance VAULT=./vault ORG=acme TITLE="Q1 Audit"  # Generate HTML compliance report
 make compliance-verify VAULT=./vault  # Chain integrity check (pass/fail)
 make compliance-timeline VAULT=./vault # Chronological event timeline (HTML)
@@ -460,7 +460,7 @@ for e in chain.query():
 - `--trace-id` flag on `liquefy_openclaw.py`, `liquefy_policy_enforcer.py`
 - Also reads `LIQUEFY_TRACE_ID` env var (for agent frameworks that set env)
 - Written into `.liquefy-trace-id` file inside the vault for offline correlation
-- Logged into the tamper-proof audit chain with every operation
+- Logged into the tamper-evident audit chain with every operation
 - Forwarded through Telemetry Forwarder to SIEM systems
 
 ### Telemetry Forwarder (SIEM Streaming)
@@ -536,7 +536,7 @@ python tools/liquefy_token_ledger.py models --add 'gpt-6:0.01:0.03'  # Add/updat
 
 Or drop a `model_costs.json` at `~/.liquefy/tokens/model_costs.json` or set `LIQUEFY_MODEL_COSTS` env var.
 
-All usage data is logged to the Liquefy audit chain for tamper-proof tracking.
+All usage data is logged to the Liquefy audit chain for tamper-evident tracking.
 
 ### Config Guard (Update Protection)
 
@@ -773,7 +773,7 @@ python tools/liquefy_cli.py version --json
 | **LLM summarization** | `liquefy_intelligence.py summarize` | Production |
 | **Policy suggestions** | `liquefy_intelligence.py suggest` | Production |
 | **Backup migration** | `liquefy_intelligence.py migrate` | Production |
-| **Tamper-proof audit** | `liquefy_audit_chain.py` | Production |
+| **Tamper-evident audit** | `liquefy_audit_chain.py` | Production |
 | **Graceful degradation** | `liquefy_resilience.py` | Production |
 | **Plugin ecosystem** | `plugin_loader.py` + community dirs | Production |
 | **Fleet coordination** | `liquefy_fleet.py` + `liquefy_fleet_cli.py` | Production |
@@ -844,7 +844,7 @@ liquefy/
 │   ├── liquefy_safety.py       # MRTV verification
 │   ├── liquefy_security.py     # LSEC v2 encryption
 │   ├── liquefy_primitives.py   # Shared varint/zigzag/bloom
-│   ├── liquefy_audit_chain.py  # Tamper-proof hash-chained audit log
+│   ├── liquefy_audit_chain.py  # Tamper-evident hash-chained audit log
 │   ├── liquefy_resilience.py   # Graceful degradation + self-healing
 │   ├── liquefy_fleet.py        # Multi-agent fleet coordination core
 │   └── orchestrator/
@@ -879,7 +879,7 @@ If you're building an AI agent that uses Liquefy:
 8. **Extend**: Drop engines into `api/engines/community/` or patterns into `patterns/community/` — auto-discovered
 9. **OpenClaw Native**: Run `make openclaw-hook` once — Liquefy becomes the invisible default session store
 10. **Intelligence**: Use `make predict` / `make suggest` / `make summarize` for proactive insights
-11. **Compliance**: `make audit-verify` checks tamper-proof hash chain integrity. `make compliance VAULT=./vault` generates a beautiful HTML report for auditors
+11. **Compliance**: `make audit-verify` checks tamper-evident hash chain integrity. `make compliance VAULT=./vault` generates a beautiful HTML report for auditors
 12. **Fleet**: Running multiple agents? Use `make fleet-register` + `make fleet-ingest` for shared namespace with quotas
 13. **Vision**: Agent screenshots eating storage? `make vision-pack DIR=./screenshots` deduplicates near-identical frames (80-95% savings)
 14. **Cloud Sync**: `make cloud-push VAULT=./vault BUCKET=x` syncs encrypted vaults to S3/R2/MinIO — cloud sees only opaque blobs
