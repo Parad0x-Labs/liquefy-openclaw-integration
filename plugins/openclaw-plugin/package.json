@@ -27,7 +27,7 @@
   "bugs": {
     "url": "https://github.com/Parad0x-Labs/liquefy-openclaw-integration/issues"
   },
-  "license": "BUSL-1.1",
+  "license": "MIT",
   "publishConfig": {
     "access": "public"
   },

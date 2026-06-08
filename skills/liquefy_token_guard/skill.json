@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "One-click token usage scan, waste audit, and budget guard for OpenClaw and other agent workspaces. Detects duplicate prompts, oversized context, and expensive-model overkill, then recommends concrete fixes.",
   "author": "Parad0x Labs",
-  "license": "BUSL-1.1",
+  "license": "MIT",
   "homepage": "https://github.com/Parad0x-Labs/liquefy-openclaw-integration",
   "tags": ["tokens", "budget", "audit", "cost", "openclaw"],
   "category": "Operations",
