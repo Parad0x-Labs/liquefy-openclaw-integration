@@ -1,6 +1,6 @@
 # openclaw-x402-pay — self-custody x402 payments for OpenClaw agents
 
-> 💜 [Star it on ClawHub](https://clawhub.ai/parad0x-labs/x402-pay) if it earns its keep.
+> 💜 If it earns its keep, [star openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills) — stars are how agent builders find it. (ClawHub listing: pending publish.)
 
 Give your agent one tool — `pay_x402` — that fetches an x402-gated URL and, if it
 answers HTTP **402 Payment Required**, pays for it on Solana and returns the

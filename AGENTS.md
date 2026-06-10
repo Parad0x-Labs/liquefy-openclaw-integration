@@ -27,7 +27,7 @@ setup.bat
 
 **pip install (into existing project):**
 ```bash
-pip install git+https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git
+pip install git+https://github.com/Parad0x-Labs/openclaw-skills.git
 ```
 
 Optional extras: `pip install "liquefy-openclaw[vision,cloud,anchor,api,all] @ git+https://..."`
@@ -881,10 +881,10 @@ If you're building an AI agent that uses Liquefy:
 10. **Intelligence**: Use `make predict` / `make suggest` / `make summarize` for proactive insights
 11. **Compliance**: `make audit-verify` checks tamper-evident hash chain integrity. `make compliance VAULT=./vault` generates a beautiful HTML report for auditors
 12. **Fleet**: Running multiple agents? Use `make fleet-register` + `make fleet-ingest` for shared namespace with quotas
-13. **Vision**: Agent screenshots eating storage? `make vision-pack DIR=./screenshots` deduplicates near-identical frames (80-95% savings)
+13. **Vision**: Agent screenshots eating storage? `make vision-pack DIR=./screenshots` deduplicates near-identical frames (estimated 80-95% savings on repetitive captures — varies by content)
 14. **Cloud Sync**: `make cloud-push VAULT=./vault BUCKET=x` syncs encrypted vaults to S3/R2/MinIO — cloud sees only opaque blobs
 15. **Agent Blueprints**: `liquefy agents list` shows 15 ready-made templates. `liquefy agents scaffold <id>` generates a full workspace with guardrails, handoff contracts, and safe-run wiring. See `docs/OPENCLAW_AGENT_BLUEPRINTS.md`
 16. **State Guard**: Agent crashed and forgot its wallet balance? `liquefy state-guard init ~/.openclaw --files wallet-state.json --strict` declares critical state. `check` verifies before each run, `checkpoint` backs up after, `recover` restores on crash. No more session-reset amnesia
 17. **History Guard**: Agent has email/calendar/social access? `liquefy history-guard init` sets up continuous backup pulls + approval-gated destructive commands. Pre-action snapshots + auto-recovery. See `docs/OPENCLAW_HISTORY_GUARD.md`
 18. **PII Redaction**: Strip emails, IPs, API keys, phone numbers, SSNs, wallet addresses before LLM ingestion. `liquefy redact scan ./data` for dry-run, `liquefy redact apply ./data --out ./clean` for redacted copy
-19. **Log De-Noise**: Kill the Context Window Tax. `liquefy denoise stats ./logs` estimates noise ratio, `liquefy denoise filter ./logs --out ./signal` strips heartbeats/200s/health checks, keeps errors + context. 60-95% token reduction
+19. **Log De-Noise**: Kill the Context Window Tax. `liquefy denoise stats ./logs` estimates noise ratio, `liquefy denoise filter ./logs --out ./signal` strips heartbeats/200s/health checks, keeps errors + context. Can cut token cost 60-95% depending on log composition — run `denoise stats` first to see yours

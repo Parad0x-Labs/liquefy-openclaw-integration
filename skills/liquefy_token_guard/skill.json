@@ -4,7 +4,7 @@
   "description": "One-click token usage scan, waste audit, and budget guard for OpenClaw and other agent workspaces. Detects duplicate prompts, oversized context, and expensive-model overkill, then recommends concrete fixes.",
   "author": "Parad0x Labs",
   "license": "MIT",
-  "homepage": "https://github.com/Parad0x-Labs/liquefy-openclaw-integration",
+  "homepage": "https://github.com/Parad0x-Labs/openclaw-skills/tree/main/skills/liquefy_token_guard",
   "tags": ["tokens", "budget", "audit", "cost", "openclaw"],
   "category": "Operations",
   "icon": "shield",

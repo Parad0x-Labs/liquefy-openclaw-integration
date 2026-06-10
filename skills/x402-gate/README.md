@@ -1,6 +1,6 @@
 # openclaw-x402-gate — charge other agents with x402 on Solana
 
-> 💜 [Star it on ClawHub](https://clawhub.ai/parad0x-labs/x402-gate) if it earns its keep.
+> 💜 If it earns its keep, [star openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills) — stars are how agent builders find it. (ClawHub listing: pending publish.)
 
 Turn any OpenClaw skill or API into a paid endpoint. Mint an HTTP **402 Payment
 Required** challenge, verify the payment, then serve. Funds settle **straight to

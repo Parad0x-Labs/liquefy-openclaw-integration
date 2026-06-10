@@ -14,7 +14,7 @@ speaks the same skill format.
 |---|---|---|---|---|
 | [`x402-pay`](./skills/x402-pay) | Your agent **pays** x402-gated APIs/agents in USDC on Solana — BYO signer, never holds a key, devnet-default, hard spend cap | ✅ works against any x402 endpoint | `x402-gate` (the selling side) | from source — npm publish pending |
 | [`x402-gate`](./skills/x402-gate) | **Charge** other agents per call — mint a 402 challenge, verify (optionally on-chain-confirmed), serve; funds land in your own wallet | ✅ any x402 client can pay it | `x402-pay` (the buying side) | from source — npm publish pending |
-| [`context-capsule`](./skills/context-capsule) | Compresses long session history before the model call (measured 99.3% token savings, 90% recovery) — no network, no chain | ✅ fully self-contained | everything — orthogonal | `npm i @parad0x_labs/openclaw-context-capsule` |
+| [`context-capsule`](./skills/context-capsule) | Compresses long session history before the model call (99.3% token savings / 90% recovery, measured by the [public bench](https://github.com/Parad0x-Labs/dna-x402/tree/main/packages/context-capsule)) — no network, no chain | ✅ fully self-contained | everything — orthogonal | `npm i @parad0x_labs/openclaw-context-capsule` |
 | [`liquefy-openclaw`](./skills/liquefy-openclaw) | Skill pack for the vault appliance: scan/pack flows, guarded runs, context gate, replay blocking, restore | needs the vault appliance below | vault appliance | copy skill dir / ClawHub |
 | [`liquefy_archive`](./skills/liquefy_archive) | One-click compression, redaction & vault archival of OpenClaw workspaces | needs the vault appliance below | vault appliance | skill.json install |
 | [`liquefy_token_guard`](./skills/liquefy_token_guard) | Token usage scan, waste audit, and budget guard for agent workspaces | needs the vault appliance below | vault appliance | skill.json install |
@@ -22,6 +22,11 @@ speaks the same skill format.
 Plus the **resident module**: the [vault appliance](#the-vault-appliance-resident-module)
 (Python, repo root) — trace vaults, policy enforcement, flight recorder,
 state/history guards. The three liquefy skills above are its front-ends.
+
+**Start here →** [**The Web0 agent loop**](./docs/WEB0_AGENT_LOOP.md): register a
+.null name, publish a compressed page to permanent storage, put your payment
+endpoint on-chain, and charge other agents per call — each step labeled with
+its real, verified status.
 
 ## The modularity contract
 
@@ -153,11 +158,13 @@ Default profile is the production-oriented baseline. The scoreboard below is the
 
 ![Liquefy Scoreboard (Default Profile)](./liquefy_scoreboard_default.png)
 
-Scoreboard source of truth:
+Scoreboard source of truth (generated locally by the bench runner — `bench/results/`
+is gitignored, so these files are **not** present in a fresh clone; regenerate them
+with the bench scripts before quoting numbers):
 - `./bench/results/SCOREBOARD.csv`
 - `./bench/results/SCOREBOARD_SUMMARY.md`
 
-Current scoreboard summary (latest committed scoreboard artifact):
+Scoreboard summary from the reference run behind the image above:
 - `WIN_SPEED`: `16`
 - `WIN_RATIO`: `7`
 - `WIN_RATIO+SPEED`: `2`
@@ -185,7 +192,7 @@ Note: engine-core tuning has moved since some previously generated benchmark art
 
 These tiny fixtures are routing/correctness smoke examples only. Do not use them as headline performance numbers.
 
-### Quick start
+### Local development install
 
 ```bash
 # One-command local install (macOS/Linux, Apple Silicon-friendly source path)
@@ -532,7 +539,7 @@ liquefy redact profile ./agent-output --json                 # PII density + imp
 
 ### Log De-Noise — Context Window Tax Killer
 
-Logs are 90% garbage (heartbeats, health checks, status 200s, metrics scrapes). The De-Noise tool strips routine noise and keeps only signal lines (errors, warnings, crashes, security events, state changes, payment activity) plus configurable context around them. Reduces LLM context window token cost by 60-95%.
+Logs are mostly noise (heartbeats, health checks, status 200s, metrics scrapes). The De-Noise tool strips routine noise and keeps only signal lines (errors, warnings, crashes, security events, state changes, payment activity) plus configurable context around them. Can cut LLM context token cost by 60-95% depending on log composition — run `denoise stats` first to see yours.
 
 ```bash
 liquefy denoise stats ./logs --json                          # Estimate noise ratio
@@ -809,9 +816,9 @@ See [`docs/VERIFY_VAULT_SIGNATURE.md`](./docs/VERIFY_VAULT_SIGNATURE.md) for the
 
 ## 🛡️ Execution & Maintenance Policy
 
-The decoder CLI/appliance path is built for **enterprise-grade reliability**. To ensure secure conduction and data sovereignty, the following policies are enforced:
+The decoder CLI/appliance path is built to fail closed rather than guess. To ensure secure conduction and data sovereignty, the following policies are enforced:
 
-1.  **Maintenance & Compatibility:** This build is optimized for archives generated by v3.1 cores. While decompression is never paywalled, newer archive formats may require the latest signed build of the SDK.
+1.  **Maintenance & Compatibility:** This build is optimized for archives generated by the engine cores in this repo. While decompression is never paywalled, newer archive formats may require pulling the latest version.
 2.  **Execution Safety:** To prevent runtime instability, the appliance requires a standard execution environment. If unauthorized runtime hooks (e.g. `LD_PRELOAD`) are detected, the appliance fails closed.
 3.  **Data Sovereignty:** All operations happen locally. No data is ever transmitted back to Parad0x Labs.
 
