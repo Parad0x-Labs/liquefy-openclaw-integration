@@ -69,9 +69,9 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration"
-Repository = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration"
-Issues = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration/issues"
+Homepage = "https://github.com/Parad0x-Labs/openclaw-skills"
+Repository = "https://github.com/Parad0x-Labs/openclaw-skills"
+Issues = "https://github.com/Parad0x-Labs/openclaw-skills/issues"
 
 [project.scripts]
 liquefy-pack = "tools.tracevault_pack:main"

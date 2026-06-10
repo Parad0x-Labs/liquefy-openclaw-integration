@@ -1,9 +1,21 @@
 name: CI
 
+# Vault-appliance CI. TypeScript skill modules have their own path-filtered
+# lane (skills-ts.yml) — changes there must not rebuild the Python appliance.
 on:
   pull_request:
+    paths-ignore:
+      - "skills/x402-pay/**"
+      - "skills/x402-gate/**"
+      - "skills/context-capsule/**"
+      - "skills/README.md"
   push:
     branches: ["main", "master"]
+    paths-ignore:
+      - "skills/x402-pay/**"
+      - "skills/x402-gate/**"
+      - "skills/context-capsule/**"
+      - "skills/README.md"
   workflow_dispatch:
 
 jobs:

@@ -1,31 +1,55 @@
-# Liquefy: 24-Engine Compression + Security Layer for AI Agents
+# openclaw-skills 🧩 — Parad0x Labs skills for OpenClaw & every *claw agent
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
-![Conduction: 24 Engines](https://img.shields.io/badge/Conduction-24_Engines-cyan?style=flat-square)
-![Verification: Bit--Perfect](https://img.shields.io/badge/Verification-Bit--Perfect-white?style=flat-square)
+![Skills: 6 modules + vault appliance](https://img.shields.io/badge/skills-6_modules_+_vault-cyan?style=flat-square)
+![Format: OpenClaw SKILL.md](https://img.shields.io/badge/format-OpenClaw_SKILL.md-white?style=flat-square)
 
-<p align="center">
-  <img src="./docs/assets/github-header-liquefy-openclaw.png" alt="Parad0x Labs" width="100%" />
-</p>
+One home for Parad0x Labs' agent skills — payments, context compression, and
+workspace guardrails — for **OpenClaw and every *claw-family runtime** that
+speaks the same skill format.
 
-**24 domain-aware compression engines. Bit-perfect verification. Tamper-evident audit trails. One tool.**
+## The catalog
 
-Liquefy is an entropy-native compression engine and security layer for AI agent infrastructure. It doesn't just gzip your logs — it understands them. JSON, SQL, VPC flow logs, PCAP, Parquet, agent traces, screenshots — each data type gets a specialized compression engine that outperforms generic compressors, then packs everything into encrypted, verified, restorable vaults.
+| Skill | What it does | Standalone? | Pairs with | Install |
+|---|---|---|---|---|
+| [`x402-pay`](./skills/x402-pay) | Your agent **pays** x402-gated APIs/agents in USDC on Solana — BYO signer, never holds a key, devnet-default, hard spend cap | ✅ works against any x402 endpoint | `x402-gate` (the selling side) | from source — npm publish pending |
+| [`x402-gate`](./skills/x402-gate) | **Charge** other agents per call — mint a 402 challenge, verify (optionally on-chain-confirmed), serve; funds land in your own wallet | ✅ any x402 client can pay it | `x402-pay` (the buying side) | from source — npm publish pending |
+| [`context-capsule`](./skills/context-capsule) | Compresses long session history before the model call (99.3% token savings / 90% recovery, measured by the [public bench](https://github.com/Parad0x-Labs/dna-x402/tree/main/packages/context-capsule)) — no network, no chain | ✅ fully self-contained | everything — orthogonal | `npm i @parad0x_labs/openclaw-context-capsule` |
+| [`liquefy-openclaw`](./skills/liquefy-openclaw) | Skill pack for the vault appliance: scan/pack flows, guarded runs, context gate, replay blocking, restore | needs the vault appliance below | vault appliance | copy skill dir / ClawHub |
+| [`liquefy_archive`](./skills/liquefy_archive) | One-click compression, redaction & vault archival of OpenClaw workspaces | needs the vault appliance below | vault appliance | skill.json install |
+| [`liquefy_token_guard`](./skills/liquefy_token_guard) | Token usage scan, waste audit, and budget guard for agent workspaces | needs the vault appliance below | vault appliance | skill.json install |
 
-## 🛡️ Why it matters to you
+Plus the **resident module**: the [vault appliance](#the-vault-appliance-resident-module)
+(Python, repo root) — trace vaults, policy enforcement, flight recorder,
+state/history guards. The three liquefy skills above are its front-ends.
 
-If an AI agent acts on your behalf, you need to prove what it actually did. This is the black-box flight recorder:
+**Start here →** [**The Web0 agent loop**](./docs/WEB0_AGENT_LOOP.md): register a
+.null name, publish a compressed page to permanent storage, put your payment
+endpoint on-chain, and charge other agents per call — each step labeled with
+its real, verified status.
 
-- 🧾 **Tamper-evident trail** — every agent action hash-chained and anchored on Solana.
-- ✅ **Pass audits** — bit-perfect records for compliance reviews (EU AI Act, ISO-42001).
-- 🛑 **Kill-switch + replay protection** — stop a misbehaving agent and prove you did.
-- 🆓 **The decoder is always free.**
+## The modularity contract
 
-For teams running agents who need receipts, not faith.
+Every entry under `skills/` is a **self-contained module**:
+
+- **No imports across skills.** A skill never references a sibling's code —
+  shared constants are vendored. Updating or deleting one skill cannot break
+  another.
+- **Own version, own README, own SKILL.md.** Each module documents what it
+  does, whether it works standalone, and what it pairs with.
+- **Own CI lane.** Workflows are path-filtered to `skills/<name>/**` — a change
+  to one skill builds and tests only that skill.
+- **Trust model up front.** Skills that can touch money state it bluntly
+  (custody, caps, network defaults) before the install instructions.
+
+> **Status: Public Beta.** Everything here is MIT and **unaudited — no external
+> audit has been completed or scheduled.** Money-touching skills are
+> non-custodial by design, devnet-first, and capped; read each skill's trust
+> model before pointing it at real funds.
 
 ### How this fits the Parad0x stack
 
-Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. **You are here: 🛡️ Audit (the forensics sibling of Liquefy).**
+Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. **You are here: 🧩 Skills — the OpenClaw-facing distribution of the stack below.**
 
 | Layer | Repo | Does |
 |---|---|---|
@@ -33,7 +57,7 @@ Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. 
 | 🛠️ Build | [dna-x402-builders](https://github.com/Parad0x-Labs/dna-x402-builders) | Hosted kit: turn any API/bot into a paid agent |
 | 🕶️ Privacy | [Dark-Null-Protocol](https://github.com/Parad0x-Labs/Dark-Null-Protocol) | Groth16 privacy settlement, published proofs |
 | 🗜️ Data | [liquefy](https://github.com/Parad0x-Labs/liquefy) | Columnar compression that beats Zstd |
-| 🛡️ Audit | **liquefy-openclaw-integration** (this repo) | Flight recorder: 24 engines + Solana-anchored audit trails |
+| 🛡️ Audit | [liquefy-openclaw-integration](https://github.com/Parad0x-Labs/liquefy-openclaw-integration) | Flight recorder: 24 engines + Solana-anchored audit trails |
 | 🎬 Media | [nebula-media](https://github.com/Parad0x-Labs/nebula-media) | Proof-carrying media compression — scene-aware + on-chain receipts |
 | 🧠 Local AI | [nulla-local](https://github.com/Parad0x-Labs/nulla-local) | Local-first agent runtime — your machine, your memory |
 
@@ -42,28 +66,40 @@ Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. 
 ## LLM / Agent Quick Parse
 
 ```yaml
-product: liquefy-openclaw-integration
-category: compression and audit layer for AI infrastructure
-best_for:
-  - trace vaults
-  - verified restore
-  - tamper-evident audit trails
-  - framework-agnostic agent data protection
+product: openclaw-skills
+category: modular agent skills for OpenClaw and *claw-family runtimes
+skills:
+  x402-pay: pay x402-gated APIs on Solana (BYO signer, capped, devnet-default)
+  x402-gate: charge other agents per call (no custody, on-chain verify option)
+  context-capsule: compress long session history (no network, no chain)
+  liquefy-openclaw: guardrail flows for the vault appliance
+  liquefy_archive: one-click workspace vaulting
+  liquefy_token_guard: token waste audit + budgets
+resident_module: vault appliance (Python, repo root — trace vaults, policy, flight recorder)
+contract: skills are self-contained — no cross-skill imports, path-filtered CI
 entrypoints:
-  quickstart: ./README.md
+  catalog: ./README.md
+  skills: ./skills/
   agent_guide: ./AGENTS.md
   stack_map: ./docs/PARADOX_STACK.md
 not_for:
-  - x402 payment rail
-  - privacy settlement protocol
+  - the x402 rail itself (see dna-x402)
+  - privacy settlement protocol (see Dark-Null-Protocol)
 related_repos:
   payment_rail: https://github.com/Parad0x-Labs/dna-x402
   privacy_settlement: https://github.com/Parad0x-Labs/Dark-Null-Protocol
+  audit_layer: https://github.com/Parad0x-Labs/liquefy-openclaw-integration
 ```
 
-## Parad0x Stack
+---
 
-See [`docs/PARADOX_STACK.md`](./docs/PARADOX_STACK.md) for the product map across DNA x402, Dark Null Protocol, and Liquefy.
+## The vault appliance (resident module)
+
+The rest of this README documents the repo's largest module: the **vault
+appliance** — an entropy-native compression + security layer for agent
+infrastructure. Trace vaults, bit-perfect verification, tamper-evident audit
+trails, policy enforcement, and Solana anchoring. The `liquefy-*` skills in the
+catalog are thin front-ends over these tools.
 
 ### Why teams deploy Liquefy
 
@@ -85,32 +121,32 @@ Restore is bit-perfect.
 
 **macOS / Linux:**
 ```bash
-git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration
-cd liquefy-openclaw-integration
+git clone https://github.com/Parad0x-Labs/openclaw-skills
+cd openclaw-skills
 make setup
 make quick DIR=~/openclaw/sessions
 ```
 
 **Windows (PowerShell):**
 ```powershell
-git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration
-cd liquefy-openclaw-integration
+git clone https://github.com/Parad0x-Labs/openclaw-skills
+cd openclaw-skills
 .\setup.ps1
 .venv\Scripts\python tools\tracevault_pack.py .\your\data --org default --out .\vault\output --json
 ```
 
 **pip install (add to existing project):**
 ```bash
-pip install git+https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git
-pip install "liquefy-openclaw[all] @ git+https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git"  # with all extras
+pip install git+https://github.com/Parad0x-Labs/openclaw-skills.git
+pip install "liquefy-openclaw[all] @ git+https://github.com/Parad0x-Labs/openclaw-skills.git"  # with all extras
 ```
 
 Optional extras: `vision` (Pillow), `cloud` (boto3), `anchor` (solders), `api` (FastAPI server), `all` (everything).
 
 **Docker:**
 ```bash
-git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration
-cd liquefy-openclaw-integration
+git clone https://github.com/Parad0x-Labs/openclaw-skills
+cd openclaw-skills
 docker compose run liquefy tools/tracevault_pack.py ./data --org default --out ./vault/output --json
 ```
 
@@ -122,11 +158,13 @@ Default profile is the production-oriented baseline. The scoreboard below is the
 
 ![Liquefy Scoreboard (Default Profile)](./liquefy_scoreboard_default.png)
 
-Scoreboard source of truth:
+Scoreboard source of truth (generated locally by the bench runner — `bench/results/`
+is gitignored, so these files are **not** present in a fresh clone; regenerate them
+with the bench scripts before quoting numbers):
 - `./bench/results/SCOREBOARD.csv`
 - `./bench/results/SCOREBOARD_SUMMARY.md`
 
-Current scoreboard summary (latest committed scoreboard artifact):
+Scoreboard summary from the reference run behind the image above:
 - `WIN_SPEED`: `16`
 - `WIN_RATIO`: `7`
 - `WIN_RATIO+SPEED`: `2`
@@ -154,7 +192,7 @@ Note: engine-core tuning has moved since some previously generated benchmark art
 
 These tiny fixtures are routing/correctness smoke examples only. Do not use them as headline performance numbers.
 
-### Quick start
+### Local development install
 
 ```bash
 # One-command local install (macOS/Linux, Apple Silicon-friendly source path)
@@ -212,8 +250,8 @@ python tools/tracevault_pack.py ./agent-output --org dev --out ./vault/latest
 
 ```bash
 # Fastest OpenClaw source install + self-test + first safe scan (macOS/Linux)
-git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git && \
-  cd liquefy-openclaw-integration && \
+git clone https://github.com/Parad0x-Labs/openclaw-skills.git && \
+  cd openclaw-skills && \
   ./install.sh && \
   ./.venv/bin/python tools/liquefy_openclaw.py --self-test --json && \
   ./.venv/bin/python tools/liquefy_openclaw.py --workspace ~/.openclaw --out ./openclaw-vault --json
@@ -320,11 +358,11 @@ The Liquefy decoder CLI/appliance path provides offline data recovery and verifi
 ### One-Command Installation
 ```bash
 # Fastest source install (macOS/Linux, Apple Silicon-friendly)
-git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git && cd liquefy-openclaw-integration && ./install.sh
+git clone https://github.com/Parad0x-Labs/openclaw-skills.git && cd openclaw-skills && ./install.sh
 
 # Equivalent step-by-step:
-git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git
-cd liquefy-openclaw-integration
+git clone https://github.com/Parad0x-Labs/openclaw-skills.git
+cd openclaw-skills
 # Source install (works today)
 ./install.sh
 
@@ -501,7 +539,7 @@ liquefy redact profile ./agent-output --json                 # PII density + imp
 
 ### Log De-Noise — Context Window Tax Killer
 
-Logs are 90% garbage (heartbeats, health checks, status 200s, metrics scrapes). The De-Noise tool strips routine noise and keeps only signal lines (errors, warnings, crashes, security events, state changes, payment activity) plus configurable context around them. Reduces LLM context window token cost by 60-95%.
+Logs are mostly noise (heartbeats, health checks, status 200s, metrics scrapes). The De-Noise tool strips routine noise and keeps only signal lines (errors, warnings, crashes, security events, state changes, payment activity) plus configurable context around them. Can cut LLM context token cost by 60-95% depending on log composition — run `denoise stats` first to see yours.
 
 ```bash
 liquefy denoise stats ./logs --json                          # Estimate noise ratio
@@ -778,9 +816,9 @@ See [`docs/VERIFY_VAULT_SIGNATURE.md`](./docs/VERIFY_VAULT_SIGNATURE.md) for the
 
 ## 🛡️ Execution & Maintenance Policy
 
-The decoder CLI/appliance path is built for **enterprise-grade reliability**. To ensure secure conduction and data sovereignty, the following policies are enforced:
+The decoder CLI/appliance path is built to fail closed rather than guess. To ensure secure conduction and data sovereignty, the following policies are enforced:
 
-1.  **Maintenance & Compatibility:** This build is optimized for archives generated by v3.1 cores. While decompression is never paywalled, newer archive formats may require the latest signed build of the SDK.
+1.  **Maintenance & Compatibility:** This build is optimized for archives generated by the engine cores in this repo. While decompression is never paywalled, newer archive formats may require pulling the latest version.
 2.  **Execution Safety:** To prevent runtime instability, the appliance requires a standard execution environment. If unauthorized runtime hooks (e.g. `LD_PRELOAD`) are detected, the appliance fails closed.
 3.  **Data Sovereignty:** All operations happen locally. No data is ever transmitted back to Parad0x Labs.
 
@@ -797,7 +835,7 @@ The decoder CLI/appliance path is built for **enterprise-grade reliability**. To
 
 ## 🏢 Contact
 
-OpenClaw Vault is MIT-licensed — there's no license to buy. For managed/hosted deployments, support, or partnership:
+openclaw-skills is MIT-licensed — there's no license to buy. For managed/hosted deployments, support, or partnership:
 
 *   **Email:** [hello@parad0xlabs.com](mailto:hello@parad0xlabs.com)
 *   **X (Twitter):** [@Parad0x_Labs](https://x.com/Parad0x_Labs)

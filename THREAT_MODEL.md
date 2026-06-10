@@ -4,7 +4,7 @@
 
 - Original data confidentiality (encrypted vault blobs)
 - Data integrity / authenticity of encrypted payloads
-- Byte-perfect restoration correctness
+- Byte-perfect restoration correctness (verified per-archive by SHA-256 round-trip checks)
 - Operator secrets in OpenClaw/TraceVault workspaces (denylist-protected by default)
 - Local filesystem boundaries during pack/restore
 

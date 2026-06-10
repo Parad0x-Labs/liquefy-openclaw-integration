@@ -8,7 +8,7 @@ Use it to verify that the file you downloaded matches the release artifact exact
 
 Download from the official repository releases page:
 
-- `Parad0x-Labs/liquefy-openclaw-integration`
+- `Parad0x-Labs/openclaw-skills`
 
 Make sure both files are in the same directory:
 

@@ -344,7 +344,7 @@ class Orchestrator:
             duration_ms=duration_ms,
         )
 
-        # Audit trail (legacy + tamper-proof chain)
+        # Audit trail (legacy + tamper-evident chain)
         audit_payload = {
             "engine": engine_id_str,
             "tenant": tenant_id,

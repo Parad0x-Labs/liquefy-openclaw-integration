@@ -1,0 +1,26 @@
+{
+  "id": "x402-pay",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "maxAmountUsdc": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Hard spend cap. The skill refuses any single 402 payment above this many USDC. Default: 1.0."
+      },
+      "allowMainnet": {
+        "type": "boolean",
+        "description": "Must be true to authorize real-money payments on solana-mainnet. Default: false (devnet only)."
+      },
+      "rpcUrl": {
+        "type": "string",
+        "description": "Optional Solana RPC URL override (use a private RPC in production). Defaults to the public endpoint for the selected network."
+      }
+    }
+  }
+}

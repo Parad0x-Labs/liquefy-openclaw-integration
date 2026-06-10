@@ -4,7 +4,7 @@
   "description": "One-click compression, redaction & vault archival for OpenClaw workspaces. Auto-packs sessions, memory, and artifacts into verified .null vaults with leak detection and MRTV proofs.",
   "author": "Parad0x Labs",
   "license": "MIT",
-  "homepage": "https://github.com/parad0x-labs/liquefy",
+  "homepage": "https://github.com/Parad0x-Labs/openclaw-skills/tree/main/skills/liquefy_archive",
   "tags": ["compression", "archival", "security", "redaction", "vault"],
   "category": "Data Management",
   "icon": "archive",

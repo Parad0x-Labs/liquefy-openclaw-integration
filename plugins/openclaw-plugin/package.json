@@ -20,12 +20,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git",
+    "url": "git+https://github.com/Parad0x-Labs/openclaw-skills.git",
     "directory": "plugins/openclaw-plugin"
   },
-  "homepage": "https://github.com/Parad0x-Labs/liquefy-openclaw-integration/tree/main/plugins/openclaw-plugin",
+  "homepage": "https://github.com/Parad0x-Labs/openclaw-skills/tree/main/plugins/openclaw-plugin",
   "bugs": {
-    "url": "https://github.com/Parad0x-Labs/liquefy-openclaw-integration/issues"
+    "url": "https://github.com/Parad0x-Labs/openclaw-skills/issues"
   },
   "license": "MIT",
   "publishConfig": {

@@ -79,7 +79,7 @@ help: ## Show this help
 	@echo "    make fleet-gc [MAX_AGE=30]                  Fleet-wide garbage collect"
 	@echo ""
 	@echo "  COMPLIANCE"
-	@echo "    make audit-verify                      Verify tamper-proof audit chain"
+	@echo "    make audit-verify                      Verify tamper-evident audit chain"
 	@echo "    make compliance VAULT=./vault           Generate HTML compliance report"
 	@echo "    make compliance-verify VAULT=./vault    Verify chain integrity (pass/fail)"
 	@echo "    make compliance-timeline VAULT=./vault  Generate event timeline HTML"
@@ -320,7 +320,7 @@ migrate: $(VENV) ## Import from tar/zstd/gzip backups
 
 # ─── Compliance ───
 
-audit-verify: $(VENV) ## Verify tamper-proof audit chain integrity
+audit-verify: $(VENV) ## Verify tamper-evident audit chain integrity
 	$(PYTHONPATH_EXPORT) $(PY) -c "from liquefy_audit_chain import audit_verify; import json; print(json.dumps(audit_verify(), indent=2))"
 
 compliance: $(VENV) ## Generate HTML compliance report from audit chain
