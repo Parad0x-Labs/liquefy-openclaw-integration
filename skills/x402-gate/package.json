@@ -1,0 +1,54 @@
+{
+  "name": "@parad0x_labs/openclaw-x402-gate",
+  "version": "1.0.0",
+  "description": "Charge other agents for your OpenClaw skill or API with x402 micropayments on Solana. Mint a 402 challenge, verify the payment, then serve. Funds go straight to your own wallet address — the skill never holds keys or custody.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": [
+    "src/",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "x402",
+    "solana",
+    "payments",
+    "paywall",
+    "monetization",
+    "usdc",
+    "micropayments",
+    "parad0x-labs"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "compat": {
+      "pluginApi": "1.x"
+    },
+    "build": {
+      "openclawVersion": ">=1.0.0"
+    }
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Parad0x-Labs/openclaw-skills",
+    "directory": "skills/x402-gate"
+  }
+}

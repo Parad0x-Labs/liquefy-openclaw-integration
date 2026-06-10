@@ -47,6 +47,10 @@ dist/
 build/
 *.spec
 
+# Node (TypeScript skill modules under skills/)
+node_modules/
+*.tsbuildinfo
+
 # OS
 .DS_Store
 Thumbs.db

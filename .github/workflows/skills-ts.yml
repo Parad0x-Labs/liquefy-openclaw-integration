@@ -1,0 +1,78 @@
+name: Skills (TypeScript)
+
+# Path-filtered per-skill CI: a change to one skill builds ONLY that skill.
+# This is the enforcement half of the modularity contract in skills/README.md.
+on:
+  pull_request:
+    paths:
+      - "skills/x402-pay/**"
+      - "skills/x402-gate/**"
+      - "skills/context-capsule/**"
+      - ".github/workflows/skills-ts.yml"
+  push:
+    branches: ["main", "master"]
+    paths:
+      - "skills/x402-pay/**"
+      - "skills/x402-gate/**"
+      - "skills/context-capsule/**"
+      - ".github/workflows/skills-ts.yml"
+  workflow_dispatch:
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      x402-pay: ${{ steps.filter.outputs.x402-pay }}
+      x402-gate: ${{ steps.filter.outputs.x402-gate }}
+      context-capsule: ${{ steps.filter.outputs.context-capsule }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            x402-pay:
+              - 'skills/x402-pay/**'
+              - '.github/workflows/skills-ts.yml'
+            x402-gate:
+              - 'skills/x402-gate/**'
+              - '.github/workflows/skills-ts.yml'
+            context-capsule:
+              - 'skills/context-capsule/**'
+              - '.github/workflows/skills-ts.yml'
+
+  skill:
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x402-pay
+            changed: ${{ needs.detect.outputs.x402-pay }}
+          - name: x402-gate
+            changed: ${{ needs.detect.outputs.x402-gate }}
+          - name: context-capsule
+            changed: ${{ needs.detect.outputs.context-capsule }}
+    steps:
+      - uses: actions/checkout@v6
+        if: matrix.changed == 'true'
+      - uses: actions/setup-node@v4
+        if: matrix.changed == 'true'
+        with:
+          node-version: 22
+      - name: Install (isolated to the one skill)
+        if: matrix.changed == 'true'
+        working-directory: skills/${{ matrix.name }}
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        if: matrix.changed == 'true'
+        working-directory: skills/${{ matrix.name }}
+        run: npm run typecheck
+      - name: Claims guard — no audit-date claims allowed
+        if: matrix.changed == 'true'
+        working-directory: skills/${{ matrix.name }}
+        run: |
+          ! grep -RniE "audit (scheduled|planned|booked)|audited" --include="*.md" --include="*.ts" . \
+            | grep -viE "unaudited|not (yet )?audited|no external audit|audit has been" || {
+              echo "::error::Found an audit claim — the org rule is: unaudited, nothing scheduled."; exit 1; }

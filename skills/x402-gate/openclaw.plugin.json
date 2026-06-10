@@ -1,0 +1,36 @@
+{
+  "id": "x402-gate",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "recipientAddress": {
+        "type": "string",
+        "description": "YOUR Solana wallet address (base58) — where payments settle. Public key only; the skill never holds custody. Required."
+      },
+      "priceUsdc": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Default price per request in USDC. Default: 0.01."
+      },
+      "network": {
+        "type": "string",
+        "enum": ["solana-mainnet", "solana-devnet"],
+        "description": "Settlement network. Default: solana-devnet."
+      },
+      "requireOnChain": {
+        "type": "boolean",
+        "description": "If true, a payment is accepted only after its transaction is confirmed settled on Solana (revenue-grade). Default: false (structural check only)."
+      },
+      "rpcUrl": {
+        "type": "string",
+        "description": "Optional Solana RPC URL override for on-chain confirmation."
+      }
+    },
+    "required": ["recipientAddress"]
+  }
+}

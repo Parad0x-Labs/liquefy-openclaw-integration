@@ -1,0 +1,48 @@
+{
+  "name": "@parad0x_labs/openclaw-context-capsule",
+  "version": "1.4.0",
+  "description": "Self-contained OpenClaw context engine that compresses long agent session history (> 20 messages) into a compact capsule before the model call, keeping the last 10 messages verbatim. Cuts token cost on long chats with any model. No external runtime dependencies; no network, file, or on-chain access.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": [
+    "src/",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "context-compression",
+    "llm",
+    "token-savings",
+    "ollama",
+    "context-capsule"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "compat": {
+      "pluginApi": "1.x"
+    },
+    "build": {
+      "openclawVersion": ">=1.0.0"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Parad0x-Labs/openclaw-skills",
+    "directory": "skills/context-capsule"
+  }
+}
