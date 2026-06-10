@@ -72,7 +72,11 @@ jobs:
       - name: Claims guard — no audit-date claims allowed
         if: matrix.changed == 'true'
         working-directory: skills/${{ matrix.name }}
+        # Scans only this skill's own sources — third-party deps describe their
+        # own audit status and are none of our business.
         run: |
-          ! grep -RniE "audit (scheduled|planned|booked)|audited" --include="*.md" --include="*.ts" . \
+          ! grep -RniE "audit (scheduled|planned|booked)|audited" \
+              --include="*.md" --include="*.ts" \
+              --exclude-dir=node_modules --exclude-dir=dist . \
             | grep -viE "unaudited|not (yet )?audited|no external audit|audit has been" || {
               echo "::error::Found an audit claim — the org rule is: unaudited, nothing scheduled."; exit 1; }
