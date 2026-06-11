@@ -8,6 +8,7 @@ on:
       - "skills/x402-pay/**"
       - "skills/x402-gate/**"
       - "skills/context-capsule/**"
+      - "skills/mcp-server/**"
       - ".github/workflows/skills-ts.yml"
   push:
     branches: ["main", "master"]
@@ -15,6 +16,7 @@ on:
       - "skills/x402-pay/**"
       - "skills/x402-gate/**"
       - "skills/context-capsule/**"
+      - "skills/mcp-server/**"
       - ".github/workflows/skills-ts.yml"
   workflow_dispatch:
 
@@ -25,6 +27,7 @@ jobs:
       x402-pay: ${{ steps.filter.outputs.x402-pay }}
       x402-gate: ${{ steps.filter.outputs.x402-gate }}
       context-capsule: ${{ steps.filter.outputs.context-capsule }}
+      mcp-server: ${{ steps.filter.outputs.mcp-server }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
@@ -40,6 +43,9 @@ jobs:
             context-capsule:
               - 'skills/context-capsule/**'
               - '.github/workflows/skills-ts.yml'
+            mcp-server:
+              - 'skills/mcp-server/**'
+              - '.github/workflows/skills-ts.yml'
 
   skill:
     needs: detect
@@ -54,6 +60,8 @@ jobs:
             changed: ${{ needs.detect.outputs.x402-gate }}
           - name: context-capsule
             changed: ${{ needs.detect.outputs.context-capsule }}
+          - name: mcp-server
+            changed: ${{ needs.detect.outputs.mcp-server }}
     steps:
       - uses: actions/checkout@v6
         if: matrix.changed == 'true'

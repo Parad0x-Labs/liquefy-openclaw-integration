@@ -1,12 +1,35 @@
 # openclaw-skills 🧩 — Parad0x Labs skills for OpenClaw & every *claw agent
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
-![Skills: 6 modules + vault appliance](https://img.shields.io/badge/skills-6_modules_+_vault-cyan?style=flat-square)
-![Format: OpenClaw SKILL.md](https://img.shields.io/badge/format-OpenClaw_SKILL.md-white?style=flat-square)
+![Skills: 7 modules + vault appliance](https://img.shields.io/badge/skills-7_modules_+_vault-cyan?style=flat-square)
+![Format: OpenClaw SKILL.md + MCP](https://img.shields.io/badge/format-OpenClaw_SKILL.md_+_MCP-white?style=flat-square)
 
-One home for Parad0x Labs' agent skills — payments, context compression, and
-workspace guardrails — for **OpenClaw and every *claw-family runtime** that
-speaks the same skill format.
+One home for Parad0x Labs' agent skills — payments, context compression, the
+.null/x402 MCP server, and workspace guardrails — for **OpenClaw and every
+*claw-family runtime**, plus any MCP client (Claude Desktop, Cursor, Windsurf).
+
+## 🚀 The full agent loop — install it
+
+Give your agent **a name, a payment endpoint, and the ability to pay and get
+paid**, on Solana. Everything below is built and verified; `null-mcp` is on npm
+today, the rest publish from this repo (tracked in [`PUBLISH_RUNBOOK.md`](./PUBLISH_RUNBOOK.md)).
+
+```bash
+# 1. .null domains + publishing (register a name, set its x402 endpoint, publish a page)
+npx @parad0x_labs/null-mcp                      # MCP server — resolve / register / publish / bid
+
+# 2. the x402 + receipts MCP server (quote, anchor, nullifier, stack status)
+npx @parad0x_labs/mcp-server                    # → skills/mcp-server
+
+# 3. OpenClaw payment plugins (drop into an OpenClaw agent)
+#    skills/x402-pay  — your agent pays x402 endpoints
+#    skills/x402-gate — charge other agents for your skill/API
+#    skills/context-capsule — keep long paid sessions cheap   (npm i @parad0x_labs/openclaw-context-capsule)
+```
+
+Then walk the whole thing end to end: **[The Web0 agent loop →](./docs/WEB0_AGENT_LOOP.md)**
+(register `myagent.null` → publish a page → put your x402 endpoint on-chain →
+other agents pay you — every step labeled with its real, verified status).
 
 ## The catalog
 
@@ -15,6 +38,7 @@ speaks the same skill format.
 | [`x402-pay`](./skills/x402-pay) | Your agent **pays** x402-gated APIs/agents in USDC on Solana — BYO signer, never holds a key, devnet-default, hard spend cap | ✅ works against any x402 endpoint | `x402-gate` (the selling side) | from source — npm publish pending |
 | [`x402-gate`](./skills/x402-gate) | **Charge** other agents per call — mint a 402 challenge, verify (optionally on-chain-confirmed), serve; funds land in your own wallet | ✅ any x402 client can pay it | `x402-pay` (the buying side) | from source — npm publish pending |
 | [`context-capsule`](./skills/context-capsule) | Compresses long session history before the model call (99.3% token savings / 90% recovery, measured by the [public bench](https://github.com/Parad0x-Labs/dna-x402/tree/main/packages/context-capsule)) — no network, no chain | ✅ fully self-contained | everything — orthogonal | `npm i @parad0x_labs/openclaw-context-capsule` |
+| [`mcp-server`](./skills/mcp-server) | **MCP server** for any MCP client (Claude Desktop/Cursor/Windsurf): x402 quote, receipt anchoring, single-use nullifier checks, agent-identity lookup, live mainnet stack status. Read-only by default; writes need an opt-in keypair + per-call confirm | ✅ standalone MCP server | pairs with `null-mcp` for the full loop | from source — npm publish pending |
 | [`liquefy-openclaw`](./skills/liquefy-openclaw) | Skill pack for the vault appliance: scan/pack flows, guarded runs, context gate, replay blocking, restore | needs the vault appliance below | vault appliance | copy skill dir / ClawHub |
 | [`liquefy_archive`](./skills/liquefy_archive) | One-click compression, redaction & vault archival of OpenClaw workspaces | needs the vault appliance below | vault appliance | skill.json install |
 | [`liquefy_token_guard`](./skills/liquefy_token_guard) | Token usage scan, waste audit, and budget guard for agent workspaces | needs the vault appliance below | vault appliance | skill.json install |
@@ -72,11 +96,15 @@ skills:
   x402-pay: pay x402-gated APIs on Solana (BYO signer, capped, devnet-default)
   x402-gate: charge other agents per call (no custody, on-chain verify option)
   context-capsule: compress long session history (no network, no chain)
+  mcp-server: MCP server — x402 quote / receipt anchor / nullifier / stack status (any MCP client)
   liquefy-openclaw: guardrail flows for the vault appliance
   liquefy_archive: one-click workspace vaulting
   liquefy_token_guard: token waste audit + budgets
 resident_module: vault appliance (Python, repo root — trace vaults, policy, flight recorder)
 contract: skills are self-contained — no cross-skill imports, path-filtered CI
+agent_loop: docs/WEB0_AGENT_LOOP.md (name + x402 endpoint + get paid); PUBLISH_RUNBOOK.md
+companions:
+  null-mcp: "@parad0x_labs/null-mcp — .null domains MCP (canonical: web0-internal)"
 entrypoints:
   catalog: ./README.md
   skills: ./skills/
