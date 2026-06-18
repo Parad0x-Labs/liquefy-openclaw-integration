@@ -14,8 +14,8 @@
 import { createPrivateKey, sign as edSign } from "node:crypto";
 import { Keypair } from "@solana/web3.js";
 import { buildPaymentHeader } from "../../skills/x402-pay/src/client";
-import { makeRequirement, verifyPaymentStructure } from "../../skills/x402-gate/src/gate";
-import { issueNonce, verifyNonce, verifyPayerSignature } from "../../skills/x402-gate/src/auth";
+import { makeRequirement, verifyPaymentStructure, receiptHashFor } from "../../skills/x402-gate/src/gate";
+import { issueNonce, verifyNonce, verifyPayerSignature, issueCapability, verifyCapability } from "../../skills/x402-gate/src/auth";
 
 let fail = 0;
 const assert = (name: string, ok: boolean, extra?: string) => {
@@ -68,5 +68,21 @@ const attacker = Keypair.generate();
 const attackerSig = signMessage(attacker.secretKey.slice(0, 32), nonce);
 assert("observer/attacker signature rejected (presenter binding)", verifyPayerSignature(payer.publicKey.toBase58(), nonce, attackerSig) === false);
 
-console.log(`\n${fail === 0 ? "WIRE + AUTH OK" : "FAILED"} — ${fail} failure(s)`);
+// --- 3. portable capability receipts (pay-once-reuse) ---
+const cap = issueCapability(payer.publicKey.toBase58(), requirement.resource, 3600, secret, now);
+assert("capability verifies for the payer+resource", verifyCapability(cap, payer.publicKey.toBase58(), requirement.resource, secret, now).ok === true);
+assert("capability rejected after expiry", verifyCapability(cap, payer.publicKey.toBase58(), requirement.resource, secret, now + 3601).ok === false);
+assert("capability rejected for a different payer", verifyCapability(cap, attacker.publicKey.toBase58(), requirement.resource, secret, now).ok === false);
+assert("capability rejected for a different resource", verifyCapability(cap, payer.publicKey.toBase58(), "/other", secret, now).ok === false);
+assert("capability rejected with wrong secret", verifyCapability(cap, payer.publicKey.toBase58(), requirement.resource, "other-secret", now).ok === false);
+
+// --- 4. per-challenge receipt-hash uniqueness (seed = nonce) ---
+const reqA = { ...requirement, extra: { ...requirement.extra, nullifierSeed: "nonceA" } };
+const reqB = { ...requirement, extra: { ...requirement.extra, nullifierSeed: "nonceB" } };
+assert(
+  "receipt hash is unique per nullifierSeed (per challenge)",
+  receiptHashFor(payer.publicKey.toBase58(), reqA) !== receiptHashFor(payer.publicKey.toBase58(), reqB),
+);
+
+console.log(`\n${fail === 0 ? "WIRE + AUTH + CAPABILITY OK" : "FAILED"} — ${fail} failure(s)`);
 process.exit(fail === 0 ? 0 : 1);

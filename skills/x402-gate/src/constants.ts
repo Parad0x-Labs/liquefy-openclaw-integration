@@ -17,11 +17,6 @@ export const NULL_TOKEN = "8EeDdvCRmFAzVD4takkBrNNwkeUTUQh4MscRK5Fzpump";
 export const X402_VERSION = 1;
 export const MEMO_PREFIX = "null-miner-v1";
 
-export const RECEIPT_ANCHOR_PROGRAM_ID: Record<SolanaNetwork, string | null> = {
-  "solana-mainnet": "6HSRGivdYR5D7yTDy1TFMCM8h3LzXxRtKU1RA3RnCMRN",
-  "solana-devnet": null,
-};
-
 export const DEFAULT_RPC: Record<SolanaNetwork, string> = {
   "solana-mainnet": "https://api.mainnet-beta.solana.com",
   "solana-devnet": "https://api.devnet.solana.com",

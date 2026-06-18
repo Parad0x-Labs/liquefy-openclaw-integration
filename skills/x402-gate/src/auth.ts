@@ -67,6 +67,43 @@ export function verifyNonce(
   return { ok: true };
 }
 
+/**
+ * Portable capability receipt — the "pay once, reuse within scope" token.
+ *
+ * After a verified payment, the gate issues a self-verifying HMAC token bound to
+ * (payer, resource, expiry). The buyer re-presents it on later calls to the same
+ * resource and is served WITHOUT a new payment, until it expires. Reuse still
+ * requires presenter-auth (a payer-key signature over a fresh nonce), so a
+ * stolen token is useless to an observer. Stateless: no server storage, reuses
+ * the same challengeSecret as the nonce.
+ */
+export function issueCapability(payerAddress: string, resource: string, scopeSec: number, secret: string, nowSec: number): string {
+  const exp = nowSec + scopeSec;
+  return `${exp}.${mac(secret, `cap|${payerAddress}|${resource}|${exp}`)}`;
+}
+
+/** Verify a capability token for (payerAddress, resource): MAC matches + unexpired. */
+export function verifyCapability(
+  token: string | undefined,
+  payerAddress: string,
+  resource: string,
+  secret: string,
+  nowSec: number,
+): { ok: boolean; reason?: string } {
+  if (!token) return { ok: false, reason: "missing capability" };
+  const parts = token.split(".");
+  if (parts.length !== 2) return { ok: false, reason: "malformed capability" };
+  const [expStr, gotMac] = parts;
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp)) return { ok: false, reason: "bad capability expiry" };
+  const want = mac(secret, `cap|${payerAddress}|${resource}|${expStr}`);
+  const a = Buffer.from(gotMac);
+  const b = Buffer.from(want);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return { ok: false, reason: "capability MAC mismatch" };
+  if (nowSec > exp) return { ok: false, reason: "capability expired" };
+  return { ok: true };
+}
+
 /** Verify an ed25519 signature by `payerAddress` (base58 Solana pubkey) over `message`.
  *  `sigBase64` is the 64-byte signature, base64-encoded. */
 export function verifyPayerSignature(payerAddress: string, message: string, sigBase64: string): boolean {

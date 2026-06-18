@@ -24,7 +24,7 @@
       },
       "requireOnChain": {
         "type": "boolean",
-        "description": "Accept a payment only after its transaction is confirmed settled on Solana (revenue-grade). Default: true. Set false for a structural-only check."
+        "description": "Accept a payment only after its transaction is confirmed settled on Solana (revenue-grade). Default: true. Setting false runs only the structural/presenter checks and does NOT verify the payment settled on-chain — a caller can pass the gate without actually paying (the tx signature is caller-supplied and never checked against the chain). Testing only; never set false for real paid content on mainnet."
       },
       "dedupe": {
         "type": "boolean",
@@ -32,15 +32,20 @@
       },
       "replayStorePath": {
         "type": "string",
-        "description": "File path for a restart-durable single-instance replay store. Omit for in-memory (per-process). For multi-instance, back replay with your own durable store and set dedupe=false."
+        "description": "File path for a restart-durable single-instance replay store. REQUIRED on mainnet when dedupe=true — the gate refuses to run with in-memory dedupe on mainnet (replay reopens on restart). For multi-instance, back replay with your own durable store and set dedupe=false."
       },
       "requirePresenterAuth": {
         "type": "boolean",
-        "description": "Require the caller to sign the gate-issued nonce with the payer key, so an observer of the on-chain payment can't replay it for free access. Default: true. Needs an x402 client that signs the challenge nonce."
+        "description": "Require the caller to sign the gate-issued nonce with the payer key, so an observer of the on-chain payment can't replay it for free access. Default: true, and FORCED ON for solana-mainnet (cannot be disabled). Needs an x402 client that signs the challenge nonce."
       },
       "challengeSecret": {
         "type": "string",
-        "description": "Secret used to MAC presenter-auth nonces. Omit for an ephemeral per-process secret (single instance). Set a shared value to verify nonces across instances/restarts."
+        "description": "Secret used to MAC presenter-auth nonces and capability tokens. REQUIRED on mainnet (presenter-auth nonces must verify across restarts/instances). Omit only on devnet for an ephemeral per-process secret."
+      },
+      "receiptScopeSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "description": "If > 0, a verified payment returns a capability token the payer can re-present to reuse this resource WITHOUT paying again, until it expires (seconds). 'Pay once, reuse within scope' — a subscription/credit model. Default: 0 (off; pay per call)."
       },
       "rpcUrl": {
         "type": "string",

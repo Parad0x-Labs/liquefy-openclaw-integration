@@ -1,13 +1,14 @@
 {
   "name": "@parad0x_labs/openclaw-x402-pay",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Self-custody x402 payments for OpenClaw agents on Solana mainnet. Your agent pays for x402-gated APIs, data, and other agents — you bring your own signer, so the skill never holds a private key — with a hard spend cap. Set allowMainnet=false to restrict to devnet.",
   "type": "module",
   "main": "./src/index.ts",
   "files": [
     "src/",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "keywords": [
     "openclaw",
@@ -33,11 +34,8 @@
     }
   },
   "dependencies": {
-    "@solana/web3.js": "^1.95.0",
-    "@solana/spl-token": "^0.4.0"
-  },
-  "overrides": {
-    "uuid": "^11.1.1"
+    "@solana/web3.js": "1.98.4",
+    "@solana/spl-token": "0.4.14"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

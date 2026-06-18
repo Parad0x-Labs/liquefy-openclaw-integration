@@ -35,7 +35,7 @@ function sha256Hex(data: string): string {
 export function receiptHashFor(payer: string, req: X402PaymentRequirement): string {
   return sha256Hex(
     [
-      req.memoPrefix,
+      MEMO_PREFIX, // pinned locally, never the (untrusted) req.memoPrefix
       payer,
       req.payTo,
       req.maxAmountRequired,

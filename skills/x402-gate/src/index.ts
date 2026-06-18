@@ -5,33 +5,38 @@
  *   - x402_challenge: mint an HTTP 402 challenge to send to an unpaid caller.
  *   - x402_verify:    verify a submitted X-Payment header (optionally on-chain).
  *
- * Trust model (v1.0.0):
+ * Trust model (v1.1.0):
  *   - NO CUSTODY. `recipientAddress` is YOUR public wallet; funds settle straight
  *     to it on-chain. This skill holds no keys and signs nothing.
- *   - Stateless. Both tools reconstruct the same requirement from config +
- *     resource, so receipt hashes match the paying side with no shared state.
- *   - Revenue-grade gating: set requireOnChain=true so a payment is accepted only
- *     after the transaction is confirmed on Solana (not just a well-formed header).
- *   - Replay-guarded: a verified payment is single-use (config.dedupe, default on).
- *     In-memory by default; set replayStorePath for restart-durable single-instance,
- *     or implement a ReplayStore (Redis/DB) for multi-instance.
+ *   - Revenue-grade gating: requireOnChain=true (default) accepts a payment only
+ *     after its Solana tx is confirmed settled (real transfer, not a header).
  *   - Presenter-bound: the caller signs the gate-issued nonce with the payer key
- *     (config.requirePresenterAuth, default on), so an observer of the public
- *     on-chain payment cannot replay it to steal access.
+ *     (mandatory on mainnet) so an observer of the public on-chain payment can't
+ *     replay it. The nonce also seeds the receipt hash (unique per challenge).
+ *   - Replay-guarded: a verified payment is single-use. Mainnet REQUIRES a durable
+ *     store (replayStorePath) — the gate refuses to serve with in-memory dedupe.
+ *   - Portable receipts: with receiptScopeSeconds>0 the gate issues a capability
+ *     token so the payer can reuse access within that window without re-paying.
  *
- * Non-custodial: funds settle straight to your own wallet; the skill holds no
- * keys and signs nothing.
+ * Non-custodial: funds settle straight to your own wallet; the skill holds no keys.
  */
 
 // Type-only: resolved from the host OpenClaw runtime at load time.
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { Connection } from "@solana/web3.js";
 
-import { DEFAULT_RPC, type SolanaNetwork } from "./constants";
+import { DEFAULT_RPC, atomicToUsdc, type SolanaNetwork } from "./constants";
 import { makeChallenge, verifyPaymentStructure, decodePaymentHeader } from "./gate";
 import { confirmOnChain } from "./onchain";
 import { InMemoryReplayStore, FileReplayStore, type ReplayStore } from "./replay";
-import { resolveSecret, issueNonce, verifyNonce, verifyPayerSignature } from "./auth";
+import {
+  resolveSecret,
+  issueNonce,
+  verifyNonce,
+  verifyPayerSignature,
+  issueCapability,
+  verifyCapability,
+} from "./auth";
 
 export * from "./constants";
 export * from "./types";
@@ -47,6 +52,7 @@ interface GateConfig {
   requireOnChain: boolean;
   dedupe: boolean;
   requirePresenterAuth: boolean;
+  receiptScopeSeconds: number;
   challengeSecret?: string;
   replayStorePath?: string;
   rpcUrl?: string;
@@ -54,13 +60,17 @@ interface GateConfig {
 
 function readConfig(raw: Record<string, unknown> | undefined): GateConfig {
   const c = raw ?? {};
+  const network: SolanaNetwork = c.network === "solana-devnet" ? "solana-devnet" : "solana-mainnet";
   return {
     recipientAddress: typeof c.recipientAddress === "string" ? c.recipientAddress : "",
     priceUsdc: typeof c.priceUsdc === "number" ? c.priceUsdc : 0.01,
-    network: c.network === "solana-devnet" ? "solana-devnet" : "solana-mainnet",
+    network,
     requireOnChain: c.requireOnChain !== false,
     dedupe: c.dedupe !== false,
-    requirePresenterAuth: c.requirePresenterAuth !== false,
+    // Presenter-auth is MANDATORY on mainnet (cannot be disabled); optional on devnet.
+    requirePresenterAuth: network === "solana-mainnet" ? true : c.requirePresenterAuth !== false,
+    receiptScopeSeconds:
+      typeof c.receiptScopeSeconds === "number" && c.receiptScopeSeconds > 0 ? c.receiptScopeSeconds : 0,
     challengeSecret: typeof c.challengeSecret === "string" ? c.challengeSecret : undefined,
     replayStorePath: typeof c.replayStorePath === "string" ? c.replayStorePath : undefined,
     rpcUrl: typeof c.rpcUrl === "string" ? c.rpcUrl : undefined,
@@ -72,8 +82,8 @@ export default definePluginEntry({
   name: "x402 Gate",
   description:
     "Charge other agents for your skill or API with x402 micropayments on Solana. " +
-    "Mint a 402 challenge, verify the payment (optionally confirmed on-chain), then " +
-    "serve. Funds go to your own wallet address — the skill holds no keys.",
+    "Mint a 402 challenge, verify the payment (confirmed on-chain), then serve. " +
+    "Funds go to your own wallet address — the skill holds no keys.",
   register(api: {
     registerTool: (tool: {
       name: string;
@@ -88,16 +98,26 @@ export default definePluginEntry({
     const replayStore: ReplayStore = config.replayStorePath
       ? new FileReplayStore(config.replayStorePath)
       : new InMemoryReplayStore();
-    if (config.network === "solana-mainnet" && config.dedupe && !config.replayStorePath) {
-      console.warn(
-        "[x402-gate] dedupe is in-memory (per-process) — replay reopens on restart/extra instances. " +
-          "Set replayStorePath (single instance) or a durable ReplayStore (multi-instance).",
-      );
+
+    // Fail-closed on unsafe mainnet config: surface the error from every tool call
+    // (don't throw at load — that could crash the host — and don't silently degrade).
+    let configError: string | null = null;
+    if (config.network === "solana-mainnet") {
+      if (config.dedupe && !config.replayStorePath) {
+        configError =
+          "x402-gate refuses to run on mainnet with in-memory dedupe (replay reopens on " +
+          "restart / across instances). Set replayStorePath for a durable store, or set " +
+          "dedupe=false and enforce replay with your own durable store.";
+      } else if (config.requirePresenterAuth && !config.challengeSecret) {
+        configError =
+          "x402-gate requires challengeSecret on mainnet (presenter-auth nonces must verify " +
+          "across restarts/instances). Set challengeSecret in config.";
+      }
     }
-    if (config.network === "solana-mainnet" && config.requirePresenterAuth && !config.challengeSecret) {
+    if (config.network === "solana-mainnet" && !config.requireOnChain) {
       console.warn(
-        "[x402-gate] challengeSecret not set — using an ephemeral per-process secret; " +
-          "presenter-auth nonces won't verify across instances/restarts. Set challengeSecret to share it.",
+        "[x402-gate] requireOnChain=false on solana-mainnet — payments are NOT confirmed on-chain; " +
+          "a caller can pass the gate without paying. Never use for real paid content.",
       );
     }
 
@@ -112,6 +132,7 @@ export default definePluginEntry({
         description: { type: "string", description: "Human-readable description" },
       },
       async handler(params: Record<string, unknown>) {
+        if (configError) return { error: configError };
         if (!config.recipientAddress) {
           return { error: "gate not configured: set recipientAddress (your wallet) in plugin config" };
         }
@@ -125,8 +146,11 @@ export default definePluginEntry({
             description: params.description ? String(params.description) : undefined,
             network: config.network,
           });
-          // Presenter-binding nonce: the caller signs this with the payer key.
-          body.nonce = issueNonce(resource, secret, Math.floor(Date.now() / 1000));
+          // Presenter-binding nonce — the caller signs it with the payer key. The
+          // same nonce seeds the receipt hash, making it unique per challenge.
+          const nonce = issueNonce(resource, secret, Math.floor(Date.now() / 1000));
+          body.nonce = nonce;
+          body.accepts[0].extra = { ...body.accepts[0].extra, nullifierSeed: nonce };
           return { status, body };
         } catch (e) {
           return { error: e instanceof Error ? e.message : String(e) };
@@ -137,65 +161,118 @@ export default definePluginEntry({
     api.registerTool({
       name: "x402_verify",
       description:
-        "Verify a submitted X-Payment header for a resource. Returns whether the " +
-        "payment is valid and the receipt hash. With requireOnChain=true the " +
-        "payment must also be confirmed settled on Solana before it is accepted.",
+        "Verify a submitted X-Payment header for a resource. With requireOnChain=true " +
+        "the payment must be confirmed settled on Solana. If the caller presents a " +
+        "capability token from a prior payment, access is reused within its scope.",
       parameters: {
         header: { type: "string", description: "The base64 X-Payment header the caller sent" },
         resource: { type: "string", description: "The resource being accessed (must match the challenge)" },
         priceUsdc: { type: "number", description: "Override the default price (USDC)" },
       },
       async handler(params: Record<string, unknown>) {
-        if (!config.recipientAddress) {
-          return { valid: false, error: "gate not configured: set recipientAddress in plugin config" };
-        }
-        const resource = String(params.resource ?? "");
-        const header = params.header == null ? null : String(params.header);
+        try {
+          if (configError) return { valid: false, error: configError };
+          if (!config.recipientAddress) {
+            return { valid: false, error: "gate not configured: set recipientAddress in plugin config" };
+          }
+          const resource = String(params.resource ?? "");
+          const header = params.header == null ? null : String(params.header);
+          if (!header) return { valid: false, error: "missing X-Payment header" };
 
-        const { requirement } = makeChallenge({
-          priceUsdc: typeof params.priceUsdc === "number" ? params.priceUsdc : config.priceUsdc,
-          recipientAddress: config.recipientAddress,
-          resource,
-          network: config.network,
-        });
+          let proof;
+          try {
+            proof = decodePaymentHeader(header);
+          } catch (e) {
+            return { valid: false, error: e instanceof Error ? e.message : String(e) };
+          }
+          if (!proof.payerAddress) return { valid: false, error: "proof missing payerAddress" };
 
-        const structural = verifyPaymentStructure(header, requirement);
-        if (!structural.valid) return structural;
-
-        // Proof-of-presenter: the caller must prove control of the paying key by
-        // signing the gate-issued nonce. Blocks replay of an observed public proof.
-        if (config.requirePresenterAuth) {
-          const proof = decodePaymentHeader(header as string);
           const now = Math.floor(Date.now() / 1000);
-          const n = verifyNonce(proof.nonce, resource, secret, now);
-          if (!n.ok) return { valid: false, error: `presenter auth failed: ${n.reason}` };
-          if (!proof.payerSig || !verifyPayerSignature(proof.payerAddress, proof.nonce as string, proof.payerSig)) {
+
+          // Presenter-auth: prove control of the paying key by signing the gate's
+          // nonce. Mandatory on mainnet, and ALWAYS required for capability reuse
+          // (the token's only guard). Blocks replay of an observed public proof.
+          const needAuth = config.requirePresenterAuth || !!proof.capability;
+          if (needAuth) {
+            const n = verifyNonce(proof.nonce, resource, secret, now);
+            if (!n.ok) return { valid: false, error: `presenter auth failed: ${n.reason}` };
+            if (!proof.payerSig || !verifyPayerSignature(proof.payerAddress, proof.nonce as string, proof.payerSig)) {
+              return {
+                valid: false,
+                error: "presenter auth failed: payer signature invalid (presenter does not control the paying key)",
+              };
+            }
+          }
+
+          // Capability reuse — no new payment. The token is bound to (payer, resource);
+          // presenter-auth above proves the caller is that payer. Consume the nonce so
+          // a captured reuse bundle can't be replayed within its TTL.
+          if (proof.capability) {
+            const cap = verifyCapability(proof.capability, proof.payerAddress, resource, secret, now);
+            if (!cap.ok) return { valid: false, error: `capability invalid: ${cap.reason}` };
+            if (!replayStore.consume(`nonce:${proof.nonce}`)) {
+              return { valid: false, error: "nonce already used" };
+            }
             return {
-              valid: false,
-              error: "presenter auth failed: payer signature invalid (presenter does not control the paying key)",
+              valid: true,
+              payerAddress: proof.payerAddress,
+              amountAtomic: 0,
+              amountUsdc: 0,
+              receiptHash: "",
+              resource,
+              onChainVerified: false,
+              signature: "",
+              reusedCapability: true,
             };
           }
-        }
 
-        if (!config.requireOnChain) return structural;
+          // Payment path. Reconstruct the requirement, binding the receipt hash to
+          // the gate-issued nonce (used as the nullifierSeed) so it's unique per challenge.
+          const { requirement } = makeChallenge({
+            priceUsdc: typeof params.priceUsdc === "number" ? params.priceUsdc : config.priceUsdc,
+            recipientAddress: config.recipientAddress,
+            resource,
+            network: config.network,
+          });
+          if (proof.nonce) requirement.extra = { ...requirement.extra, nullifierSeed: proof.nonce };
 
-        // Revenue-grade: confirm the payment actually settled.
-        const rpcUrl = config.rpcUrl ?? DEFAULT_RPC[config.network];
-        const connection = new Connection(rpcUrl, "confirmed");
-        const chain = await confirmOnChain(connection, structural.signature, {
-          receiptHash: structural.receiptHash,
-          payTo: requirement.payTo,
-          asset: requirement.asset,
-          amountAtomic: requirement.maxAmountRequired,
-        });
-        if (!chain.confirmed) {
-          return { valid: false, error: `on-chain confirmation failed: ${chain.reason}` };
+          const structural = verifyPaymentStructure(header, requirement);
+          if (!structural.valid) return structural;
+
+          if (!config.requireOnChain) return structural;
+
+          const rpcUrl = config.rpcUrl ?? DEFAULT_RPC[config.network];
+          const connection = new Connection(rpcUrl, "confirmed");
+          const chain = await confirmOnChain(connection, structural.signature, {
+            receiptHash: structural.receiptHash,
+            payTo: requirement.payTo,
+            asset: requirement.asset,
+            amountAtomic: requirement.maxAmountRequired,
+          });
+          if (!chain.confirmed) {
+            return { valid: false, error: `on-chain confirmation failed: ${chain.reason}` };
+          }
+          // Replay guard: a settled payment may only be redeemed once.
+          if (config.dedupe && !replayStore.consume(structural.signature)) {
+            return { valid: false, error: "payment already used (replay)" };
+          }
+
+          // Trust the on-chain delta for the reported amount, not the caller header.
+          const paidAtomic = Number(chain.receivedAtomic ?? structural.amountAtomic);
+          const result: Record<string, unknown> = {
+            ...structural,
+            amountAtomic: paidAtomic,
+            amountUsdc: atomicToUsdc(paidAtomic),
+            onChainVerified: true,
+          };
+          // Portable capability: let the payer reuse this access within the scope.
+          if (config.receiptScopeSeconds > 0) {
+            result.capability = issueCapability(proof.payerAddress, resource, config.receiptScopeSeconds, secret, now);
+          }
+          return result;
+        } catch (e) {
+          return { valid: false, error: `x402_verify internal error: ${e instanceof Error ? e.message : String(e)}` };
         }
-        // Replay guard: a settled payment may only be redeemed once.
-        if (config.dedupe && !replayStore.consume(structural.signature)) {
-          return { valid: false, error: "payment already used (replay)" };
-        }
-        return { ...structural, onChainVerified: true };
       },
     });
   },

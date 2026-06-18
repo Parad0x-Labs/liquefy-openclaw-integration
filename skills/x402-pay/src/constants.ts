@@ -27,12 +27,6 @@ export const X402_VERSION = 1;
 /** Memo prefix stamped on payments */
 export const MEMO_PREFIX = "null-miner-v1";
 
-/** receipt_anchor program (deployed on mainnet) */
-export const RECEIPT_ANCHOR_PROGRAM_ID: Record<SolanaNetwork, string | null> = {
-  "solana-mainnet": "6HSRGivdYR5D7yTDy1TFMCM8h3LzXxRtKU1RA3RnCMRN",
-  "solana-devnet": null, // devnet anchor program pending
-};
-
 /** Default public RPC endpoints (override in config for a private RPC) */
 export const DEFAULT_RPC: Record<SolanaNetwork, string> = {
   "solana-mainnet": "https://api.mainnet-beta.solana.com",

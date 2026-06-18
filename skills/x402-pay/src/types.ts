@@ -70,6 +70,14 @@ export interface X402PayResult {
   payTo?: string;
   network?: SolanaNetwork;
   error?: string;
+  /** Capability token returned by the gate — reuse this resource within its scope
+   *  without paying again (the client also caches it automatically). */
+  capability?: string;
+  /** True when access was served by reusing a cached capability (no new payment). */
+  reusedCapability?: boolean;
+  /** True when the payment's on-chain confirmation was ambiguous: the tx may have
+   *  landed (see paymentSignature). Do NOT retry-pay without checking the signature. */
+  pending?: boolean;
 }
 
 export interface X402PayConfig {

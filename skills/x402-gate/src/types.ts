@@ -59,6 +59,9 @@ export interface X402PaymentProof {
   /** ed25519 signature (base64) by the payer key over the nonce — proves the
    *  presenter controls the paying wallet. */
   payerSig?: string;
+  /** A previously-issued capability token, presented to reuse access within its
+   *  scope WITHOUT a new payment (still requires presenter-auth). */
+  capability?: string;
 }
 
 /** Result of verifying an incoming payment. */
@@ -73,5 +76,9 @@ export type VerifyResult =
       /** True only if the on-chain tx was confirmed; false = header-only check */
       onChainVerified: boolean;
       signature: string;
+      /** Capability token to reuse this access within its scope (no re-payment). */
+      capability?: string;
+      /** True when this verify was satisfied by reusing a capability (no new payment). */
+      reusedCapability?: boolean;
     }
   | { valid: false; error: string };

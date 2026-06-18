@@ -25,6 +25,7 @@ import {
 } from "@solana/spl-token";
 import {
   MEMO_PROGRAM_ID,
+  MEMO_PREFIX,
   USDC_DECIMALS,
   atomicToUsdc,
   DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS,
@@ -45,7 +46,7 @@ function sha256Hex(data: string): string {
 export function receiptHashFor(payer: string, req: X402PaymentRequirement): string {
   return sha256Hex(
     [
-      req.memoPrefix,
+      MEMO_PREFIX, // pinned locally, never the (untrusted) req.memoPrefix
       payer,
       req.payTo,
       req.maxAmountRequired,
@@ -63,6 +64,9 @@ export interface UnsignedPayment {
   receiptHash: string;
   amountUsdc: number;
   payTo: string;
+  /** Blockhash + height the tx is bound to — used to confirm within the window. */
+  blockhash: string;
+  lastValidBlockHeight: number;
 }
 
 /**
@@ -88,7 +92,7 @@ export async function buildUnsignedPayment(
   const memoIx = new TransactionInstruction({
     keys: [],
     programId: new PublicKey(MEMO_PROGRAM_ID),
-    data: Buffer.from(`${req.memoPrefix}:${receiptHash}`, "utf8"),
+    data: Buffer.from(`${MEMO_PREFIX}:${receiptHash}`, "utf8"),
   });
 
   const { blockhash, lastValidBlockHeight } =
@@ -128,37 +132,71 @@ export async function buildUnsignedPayment(
     receiptHash,
     amountUsdc: atomicToUsdc(Number(amountAtomic)),
     payTo: req.payTo,
+    blockhash,
+    lastValidBlockHeight,
   };
 }
 
 /**
- * Broadcast an already-signed transaction. Signing happened in the owner's
- * wallet; this only submits the bytes and waits for confirmation.
+ * Broadcast an already-signed transaction and confirm it within its blockhash
+ * window. Confirmation is bound to {blockhash, lastValidBlockHeight} so it fails
+ * deterministically on expiry rather than a blind timeout.
+ *
+ * Idempotency: an on-chain execution error is a CLEAN failure (no funds moved →
+ * safe to retry). But an *ambiguous* outcome (the confirm RPC threw/timed out
+ * after the tx may already have landed) returns status "pending" WITH the
+ * signature — never a clean error — so a naive caller retry can't build and pay a
+ * second transaction for the same resource.
  */
 export async function broadcastSigned(
   connection: Connection,
   signedTxBase64: string,
-): Promise<string> {
+  blockhash: string,
+  lastValidBlockHeight: number,
+): Promise<{ signature: string; status: "confirmed" | "pending" }> {
   const raw = Buffer.from(signedTxBase64, "base64");
   const signature = await connection.sendRawTransaction(raw, {
     skipPreflight: false,
     preflightCommitment: "confirmed",
   });
-  await connection.confirmTransaction(signature, "confirmed");
-  return signature;
+
+  let res;
+  try {
+    res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+  } catch {
+    // Ambiguous (timeout / blockhash window / RPC hiccup): the tx MAY have landed.
+    // Re-poll its status before deciding — do not report a clean (retryable) failure.
+    const s = (await connection.getSignatureStatus(signature, { searchTransactionHistory: true })).value;
+    if (s?.err) throw new Error(`transaction failed on-chain: ${JSON.stringify(s.err)}`);
+    if (s && (s.confirmationStatus === "confirmed" || s.confirmationStatus === "finalized")) {
+      return { signature, status: "confirmed" };
+    }
+    return { signature, status: "pending" };
+  }
+  if (res.value.err) {
+    // Landed but execution failed → no funds moved → safe clean failure.
+    throw new Error(`transaction failed on-chain: ${JSON.stringify(res.value.err)}`);
+  }
+  return { signature, status: "confirmed" };
 }
 
 /**
  * Full BYO-signer round: build → owner signs → broadcast.
- * Returns the payment signature and receipt hash.
+ * status "pending" means confirmation was ambiguous — the caller MUST surface the
+ * signature and must NOT retry-pay without checking it first.
  */
 export async function payWithSigner(
   connection: Connection,
   signer: X402Signer,
   req: X402PaymentRequirement,
-): Promise<{ signature: string; receiptHash: string; amountUsdc: number }> {
+): Promise<{ signature: string; receiptHash: string; amountUsdc: number; status: "confirmed" | "pending" }> {
   const unsigned = await buildUnsignedPayment(connection, signer.publicKey, req);
   const signedTxBase64 = await signer.signTransaction(unsigned.txBase64);
-  const signature = await broadcastSigned(connection, signedTxBase64);
-  return { signature, receiptHash: unsigned.receiptHash, amountUsdc: unsigned.amountUsdc };
+  const { signature, status } = await broadcastSigned(
+    connection,
+    signedTxBase64,
+    unsigned.blockhash,
+    unsigned.lastValidBlockHeight,
+  );
+  return { signature, receiptHash: unsigned.receiptHash, amountUsdc: unsigned.amountUsdc, status };
 }

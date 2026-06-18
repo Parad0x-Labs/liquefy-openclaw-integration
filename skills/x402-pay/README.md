@@ -6,7 +6,8 @@ Give your agent one tool — `pay_x402` — that fetches an x402-gated URL and, 
 answers HTTP **402 Payment Required**, pays for it on Solana and returns the
 resource. Pairs with [`x402-gate`](../x402-gate)
 (the charging side) to form the full agent-to-agent payment loop, settling in
-**USDC on Solana mainnet** with receipts anchored on-chain.
+**USDC on Solana mainnet**. Each payment stamps its receipt hash on-chain in the
+transaction's SPL memo, so every settlement is publicly auditable.
 
 ## Trust model — read this first
 
@@ -18,7 +19,16 @@ resource. Pairs with [`x402-gate`](../x402-gate)
 - **Hard spend cap.** `maxAmountUsdc` is enforced *before any transaction is
   built*. A 402 demanding more is refused.
 - **Minimal network surface.** Talks only to your configured Solana RPC and the
-  target URL. No telemetry, no third-party calls.
+  target URL. No telemetry, no third-party calls. Mainnet requires an explicit
+  `rpcUrl` (the public RPC is a third-party observer and unreliable for payments).
+- **Cumulative cap.** `maxTotalUsdc` bounds total spend across the process — not
+  just per payment — so a malicious endpoint can't drain the wallet one capped
+  payment at a time. Finite default; raise it via config.
+- **No double-pay.** If a confirmation is ambiguous, the result is returned as
+  `pending` with the signature — never a clean error — so a retry can't pay twice.
+- **Pay once, reuse.** When the gate issues a capability receipt, the client
+  caches it and reuses access to that resource within its scope without paying
+  again (presenter-bound, so a stolen token is useless to anyone else).
 
 > **Non-custodial and spend-capped.** Your agent signs with its own wallet; no
 > single payment exceeds the cap you set.

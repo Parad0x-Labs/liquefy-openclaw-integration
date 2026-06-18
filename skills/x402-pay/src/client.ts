@@ -21,11 +21,21 @@ import type {
 } from "./types";
 
 /** Cumulative USDC spent by this process — bounds a malicious endpoint draining
- *  the wallet one capped payment at a time. Reset by restart or resetSpend(). */
+ *  the wallet one capped payment at a time. Reset only by restarting the process. */
 let totalSpentUsdc = 0;
-export function resetSpend(): void {
-  totalSpentUsdc = 0;
+
+/** Capability tokens held from prior payments, keyed by payer|resource, so the
+ *  same resource can be reused within its scope without paying again. */
+interface CachedCapability {
+  token: string;
+  exp: number;
 }
+const capabilityStore = new Map<string, CachedCapability>();
+const capKey = (payer: string, resource: string): string => `${payer}|${resource}`;
+const capExp = (token: string): number => {
+  const n = Number(token.split(".")[0]);
+  return Number.isFinite(n) ? n : 0;
+};
 
 /** Parse + minimally validate a 402 response body into a challenge. */
 export function parseChallenge(body: string): X402Challenge {
@@ -92,6 +102,7 @@ export function buildPaymentHeader(opts: {
   resource: string;
   nonce?: string;
   payerSig?: string;
+  capability?: string;
 }): string {
   return Buffer.from(JSON.stringify(opts), "utf8").toString("base64");
 }
@@ -123,6 +134,34 @@ export async function fetchWithX402(
   const challenge = parseChallenge(await first.text());
   const req = selectRequirement(challenge, config);
   const network: SolanaNetwork = req.network;
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  // Presenter auth needs message signing — confirm we can BEFORE spending anything.
+  if (challenge.nonce && !signer.signMessage) {
+    throw new Error("x402: gate requires presenter auth (a signed nonce) but the signer has no signMessage");
+  }
+
+  // Capability reuse: if we hold a live capability for this resource, present it
+  // (signing the fresh nonce to prove the key) and skip payment entirely.
+  const ckey = capKey(signer.publicKey, req.resource);
+  const cached = capabilityStore.get(ckey);
+  if (cached && cached.exp > nowSec + 5 && challenge.nonce && signer.signMessage) {
+    const reuseSig = await signer.signMessage(challenge.nonce);
+    const reuseHeader = buildPaymentHeader({
+      signature: "",
+      payerAddress: signer.publicKey,
+      amount: "0",
+      resource: req.resource,
+      nonce: challenge.nonce,
+      payerSig: reuseSig,
+      capability: cached.token,
+    });
+    const reuse = await fetch(url, { ...init, headers: { ...(init?.headers ?? {}), "X-Payment": reuseHeader } });
+    if (reuse.ok) {
+      return { ok: true, status: reuse.status, body: await reuse.text(), payTo: req.payTo, network, reusedCapability: true };
+    }
+    capabilityStore.delete(ckey); // rejected / expired — fall through to a fresh payment
+  }
 
   // Cumulative spend rail — bound total spend across this process, not just per call.
   const reqUsdc = atomicToUsdc(Number(req.maxAmountRequired));
@@ -131,20 +170,29 @@ export async function fetchWithX402(
       `x402: refusing to pay — cumulative cap reached (${totalSpentUsdc} + ${reqUsdc} > ${config.maxTotalUsdc} USDC)`,
     );
   }
-  // If the gate requires presenter auth, confirm we CAN sign the nonce BEFORE we
-  // spend anything — otherwise we'd pay and then be unable to redeem it.
-  if (challenge.nonce && !signer.signMessage) {
-    throw new Error("x402: gate requires presenter auth (a signed nonce) but the signer has no signMessage");
+  if (network === "solana-mainnet" && !config.rpcUrl) {
+    throw new Error(
+      "x402: mainnet requires an explicit rpcUrl in config — the public RPC is a third-party observer and unreliable for real payments.",
+    );
   }
 
   const rpcUrl = config.rpcUrl ?? DEFAULT_RPC[network];
   const connection = new Connection(rpcUrl, "confirmed");
 
-  const { signature, receiptHash, amountUsdc } = await payWithSigner(
-    connection,
-    signer,
-    req,
-  );
+  const { signature, receiptHash, amountUsdc, status } = await payWithSigner(connection, signer, req);
+
+  // Ambiguous confirmation — the tx MAY have landed. Surface the signature; do NOT
+  // report a clean retryable failure (a naive retry would pay a second time).
+  if (status !== "confirmed") {
+    return {
+      ok: false,
+      status: 0,
+      error: `x402: payment pending on-chain confirmation — verify signature ${signature} before any retry (do not re-pay)`,
+      paymentSignature: signature,
+      network,
+      pending: true,
+    };
+  }
   totalSpentUsdc += reqUsdc;
 
   // Presenter binding: sign the gate-issued nonce with the payer key so an
@@ -170,6 +218,11 @@ export async function fetchWithX402(
     headers: { ...(init?.headers ?? {}), "X-Payment": header },
   });
 
+  // Cache any capability the gate issued (the seller echoes x402_verify's
+  // `capability` in the X-Payment-Capability response header) for later reuse.
+  const capToken = retried.headers.get("X-Payment-Capability");
+  if (capToken) capabilityStore.set(ckey, { token: capToken, exp: capExp(capToken) });
+
   return {
     ok: retried.ok,
     status: retried.status,
@@ -179,5 +232,6 @@ export async function fetchWithX402(
     amountUsdc,
     payTo: req.payTo,
     network,
+    capability: capToken ?? undefined,
   };
 }

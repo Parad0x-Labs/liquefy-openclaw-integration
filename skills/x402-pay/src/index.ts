@@ -54,12 +54,14 @@ function readBool(v: unknown, dflt: boolean): boolean {
 
 function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
   const cfg = raw ?? {};
+  const maxAmountUsdc = typeof cfg.maxAmountUsdc === "number" ? cfg.maxAmountUsdc : DEFAULT_MAX_USDC;
   return {
-    maxAmountUsdc:
-      typeof cfg.maxAmountUsdc === "number" ? cfg.maxAmountUsdc : DEFAULT_MAX_USDC,
+    maxAmountUsdc,
     // Mainnet-default (zero-friction). Only an explicit false / "false" disables it.
     allowMainnet: readBool(cfg.allowMainnet, true),
-    maxTotalUsdc: typeof cfg.maxTotalUsdc === "number" ? cfg.maxTotalUsdc : undefined,
+    // Generous-but-FINITE default so a runaway or malicious endpoint can't drain
+    // the wallet one capped payment at a time. Not off by default; raise via config.
+    maxTotalUsdc: typeof cfg.maxTotalUsdc === "number" ? cfg.maxTotalUsdc : maxAmountUsdc * 100,
     allowedRecipients: Array.isArray(cfg.allowedRecipients)
       ? cfg.allowedRecipients.filter((x): x is string => typeof x === "string")
       : undefined,

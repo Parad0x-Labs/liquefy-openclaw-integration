@@ -20,7 +20,7 @@
       "maxTotalUsdc": {
         "type": "number",
         "minimum": 0,
-        "description": "Optional cumulative spend cap across this process's lifetime. Bounds a malicious endpoint that tries to drain the wallet one under-cap payment at a time."
+        "description": "Cumulative spend cap across this process's lifetime — bounds a malicious endpoint that tries to drain the wallet one under-cap payment at a time. Default: 100x maxAmountUsdc (finite, not off). Raise for higher-volume agents."
       },
       "allowedRecipients": {
         "type": "array",
@@ -29,7 +29,7 @@
       },
       "rpcUrl": {
         "type": "string",
-        "description": "Optional Solana RPC URL override (use a private RPC in production). Defaults to the public endpoint for the selected network."
+        "description": "Solana RPC URL. REQUIRED on solana-mainnet (the public RPC is a third-party observer and unreliable for real payments). Optional on devnet (defaults to the public devnet endpoint)."
       }
     }
   }
