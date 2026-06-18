@@ -14,6 +14,9 @@
  * server code with config.dedupe=false on the tool.
  */
 
+import { existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
 export interface ReplayStore {
   /** Record `key`. Returns true if newly recorded (allow), false if already seen (reject). */
   consume(key: string): boolean | Promise<boolean>;
@@ -33,6 +36,30 @@ export class InMemoryReplayStore implements ReplayStore {
       const oldest = this.seen.values().next().value;
       if (oldest !== undefined) this.seen.delete(oldest);
     }
+    return true;
+  }
+}
+
+/** Durable single-instance store: consumed keys are appended to a file and
+ *  reloaded on startup, so a restart does not reopen replay. For MULTI-instance
+ *  deployments implement ReplayStore over a shared backend (Redis SETNX / a DB
+ *  unique constraint) instead. No eviction — a consumed payment stays consumed. */
+export class FileReplayStore implements ReplayStore {
+  private seen = new Set<string>();
+  constructor(private path: string) {
+    if (existsSync(path)) {
+      for (const line of readFileSync(path, "utf8").split("\n")) {
+        const k = line.trim();
+        if (k) this.seen.add(k);
+      }
+    } else {
+      mkdirSync(dirname(path), { recursive: true });
+    }
+  }
+  consume(key: string): boolean {
+    if (!key || this.seen.has(key)) return false;
+    this.seen.add(key);
+    appendFileSync(this.path, key + "\n");
     return true;
   }
 }

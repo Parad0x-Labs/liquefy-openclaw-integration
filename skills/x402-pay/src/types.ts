@@ -33,6 +33,8 @@ export interface X402PaymentRequirement {
 export interface X402Challenge {
   x402Version: number;
   accepts: X402PaymentRequirement[];
+  /** Presenter-auth nonce the payer must sign (set by gates that require it). */
+  nonce?: string;
 }
 
 /** A signer the agent owner controls. The skill NEVER holds the private key —
@@ -46,6 +48,12 @@ export interface X402Signer {
    * The transaction is NOT broadcast here — the skill broadcasts after signing.
    */
   signTransaction: (txBase64: string) => Promise<string>;
+  /**
+   * Sign an arbitrary UTF-8 message with the wallet key, returning a base64
+   * ed25519 signature. Required only for gates that use presenter-auth (they
+   * issue a nonce the payer must sign to prove key control).
+   */
+  signMessage?: (message: string) => Promise<string>;
 }
 
 /** Result of a completed x402 payment + resource fetch. */
@@ -65,10 +73,15 @@ export interface X402PayResult {
 }
 
 export interface X402PayConfig {
-  /** Hard cap — refuse any challenge above this many USDC. Required safety rail. */
+  /** Hard per-payment cap — refuse any single challenge above this many USDC. */
   maxAmountUsdc: number;
-  /** Must be true to allow real-money mainnet payments. Default false. */
+  /** Allow real-money mainnet payments. Default true (mainnet-default). */
   allowMainnet: boolean;
+  /** Optional cumulative cap across this process's lifetime (defense vs a
+   *  malicious endpoint draining the wallet one capped payment at a time). */
+  maxTotalUsdc?: number;
+  /** Optional recipient allowlist — if set, refuse to pay any payTo not listed. */
+  allowedRecipients?: string[];
   /** Optional private RPC URL override */
   rpcUrl?: string;
 }

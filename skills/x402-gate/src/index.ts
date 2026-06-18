@@ -12,8 +12,12 @@
  *     resource, so receipt hashes match the paying side with no shared state.
  *   - Revenue-grade gating: set requireOnChain=true so a payment is accepted only
  *     after the transaction is confirmed on Solana (not just a well-formed header).
- *   - Replay-guarded: a verified payment is single-use (config.dedupe, default on;
- *     in-memory by default — back it with a durable ReplayStore for multi-instance).
+ *   - Replay-guarded: a verified payment is single-use (config.dedupe, default on).
+ *     In-memory by default; set replayStorePath for restart-durable single-instance,
+ *     or implement a ReplayStore (Redis/DB) for multi-instance.
+ *   - Presenter-bound: the caller signs the gate-issued nonce with the payer key
+ *     (config.requirePresenterAuth, default on), so an observer of the public
+ *     on-chain payment cannot replay it to steal access.
  *
  * Non-custodial: funds settle straight to your own wallet; the skill holds no
  * keys and signs nothing.
@@ -24,19 +28,17 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { Connection } from "@solana/web3.js";
 
 import { DEFAULT_RPC, type SolanaNetwork } from "./constants";
-import { makeChallenge, verifyPaymentStructure } from "./gate";
+import { makeChallenge, verifyPaymentStructure, decodePaymentHeader } from "./gate";
 import { confirmOnChain } from "./onchain";
-import { InMemoryReplayStore } from "./replay";
+import { InMemoryReplayStore, FileReplayStore, type ReplayStore } from "./replay";
+import { resolveSecret, issueNonce, verifyNonce, verifyPayerSignature } from "./auth";
 
 export * from "./constants";
 export * from "./types";
 export * from "./gate";
 export * from "./onchain";
 export * from "./replay";
-
-/** Process-level replay store used when config.dedupe is on (single-instance;
- *  see replay.ts for the durable multi-instance path). */
-const replayStore = new InMemoryReplayStore();
+export * from "./auth";
 
 interface GateConfig {
   recipientAddress: string;
@@ -44,6 +46,9 @@ interface GateConfig {
   network: SolanaNetwork;
   requireOnChain: boolean;
   dedupe: boolean;
+  requirePresenterAuth: boolean;
+  challengeSecret?: string;
+  replayStorePath?: string;
   rpcUrl?: string;
 }
 
@@ -55,6 +60,9 @@ function readConfig(raw: Record<string, unknown> | undefined): GateConfig {
     network: c.network === "solana-devnet" ? "solana-devnet" : "solana-mainnet",
     requireOnChain: c.requireOnChain !== false,
     dedupe: c.dedupe !== false,
+    requirePresenterAuth: c.requirePresenterAuth !== false,
+    challengeSecret: typeof c.challengeSecret === "string" ? c.challengeSecret : undefined,
+    replayStorePath: typeof c.replayStorePath === "string" ? c.replayStorePath : undefined,
     rpcUrl: typeof c.rpcUrl === "string" ? c.rpcUrl : undefined,
   };
 }
@@ -76,6 +84,22 @@ export default definePluginEntry({
     config?: Record<string, unknown>;
   }) {
     const config = readConfig(api.config);
+    const secret = resolveSecret(config.challengeSecret);
+    const replayStore: ReplayStore = config.replayStorePath
+      ? new FileReplayStore(config.replayStorePath)
+      : new InMemoryReplayStore();
+    if (config.network === "solana-mainnet" && config.dedupe && !config.replayStorePath) {
+      console.warn(
+        "[x402-gate] dedupe is in-memory (per-process) — replay reopens on restart/extra instances. " +
+          "Set replayStorePath (single instance) or a durable ReplayStore (multi-instance).",
+      );
+    }
+    if (config.network === "solana-mainnet" && config.requirePresenterAuth && !config.challengeSecret) {
+      console.warn(
+        "[x402-gate] challengeSecret not set — using an ephemeral per-process secret; " +
+          "presenter-auth nonces won't verify across instances/restarts. Set challengeSecret to share it.",
+      );
+    }
 
     api.registerTool({
       name: "x402_challenge",
@@ -101,6 +125,8 @@ export default definePluginEntry({
             description: params.description ? String(params.description) : undefined,
             network: config.network,
           });
+          // Presenter-binding nonce: the caller signs this with the payer key.
+          body.nonce = issueNonce(resource, secret, Math.floor(Date.now() / 1000));
           return { status, body };
         } catch (e) {
           return { error: e instanceof Error ? e.message : String(e) };
@@ -135,6 +161,21 @@ export default definePluginEntry({
 
         const structural = verifyPaymentStructure(header, requirement);
         if (!structural.valid) return structural;
+
+        // Proof-of-presenter: the caller must prove control of the paying key by
+        // signing the gate-issued nonce. Blocks replay of an observed public proof.
+        if (config.requirePresenterAuth) {
+          const proof = decodePaymentHeader(header as string);
+          const now = Math.floor(Date.now() / 1000);
+          const n = verifyNonce(proof.nonce, resource, secret, now);
+          if (!n.ok) return { valid: false, error: `presenter auth failed: ${n.reason}` };
+          if (!proof.payerSig || !verifyPayerSignature(proof.payerAddress, proof.nonce as string, proof.payerSig)) {
+            return {
+              valid: false,
+              error: "presenter auth failed: payer signature invalid (presenter does not control the paying key)",
+            };
+          }
+        }
 
         if (!config.requireOnChain) return structural;
 

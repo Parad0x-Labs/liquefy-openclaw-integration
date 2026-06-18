@@ -28,7 +28,19 @@
       },
       "dedupe": {
         "type": "boolean",
-        "description": "Reject a settled payment that has already been redeemed (single-use). Default: true (in-memory, single process). Set false if you enforce replay protection with your own durable store."
+        "description": "Reject a settled payment that has already been redeemed (single-use). Default: true. In-memory unless replayStorePath is set."
+      },
+      "replayStorePath": {
+        "type": "string",
+        "description": "File path for a restart-durable single-instance replay store. Omit for in-memory (per-process). For multi-instance, back replay with your own durable store and set dedupe=false."
+      },
+      "requirePresenterAuth": {
+        "type": "boolean",
+        "description": "Require the caller to sign the gate-issued nonce with the payer key, so an observer of the on-chain payment can't replay it for free access. Default: true. Needs an x402 client that signs the challenge nonce."
+      },
+      "challengeSecret": {
+        "type": "string",
+        "description": "Secret used to MAC presenter-auth nonces. Omit for an ephemeral per-process secret (single instance). Set a shared value to verify nonces across instances/restarts."
       },
       "rpcUrl": {
         "type": "string",

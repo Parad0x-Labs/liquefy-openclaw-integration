@@ -20,6 +20,13 @@ import type {
   X402Signer,
 } from "./types";
 
+/** Cumulative USDC spent by this process — bounds a malicious endpoint draining
+ *  the wallet one capped payment at a time. Reset by restart or resetSpend(). */
+let totalSpentUsdc = 0;
+export function resetSpend(): void {
+  totalSpentUsdc = 0;
+}
+
 /** Parse + minimally validate a 402 response body into a challenge. */
 export function parseChallenge(body: string): X402Challenge {
   let parsed: unknown;
@@ -61,6 +68,10 @@ export function selectRequirement(
       reasons.push(`refusing non-USDC asset ${req.asset}`);
       continue;
     }
+    if (config.allowedRecipients && config.allowedRecipients.length > 0 && !config.allowedRecipients.includes(req.payTo)) {
+      reasons.push(`recipient ${req.payTo} not in allowedRecipients`);
+      continue;
+    }
     const usdc = atomicToUsdc(Number(req.maxAmountRequired));
     if (usdc > config.maxAmountUsdc) {
       reasons.push(`${usdc} USDC exceeds maxAmountUsdc cap of ${config.maxAmountUsdc}`);
@@ -79,6 +90,8 @@ export function buildPaymentHeader(opts: {
   payerAddress: string;
   amount: string;
   resource: string;
+  nonce?: string;
+  payerSig?: string;
 }): string {
   return Buffer.from(JSON.stringify(opts), "utf8").toString("base64");
 }
@@ -111,6 +124,19 @@ export async function fetchWithX402(
   const req = selectRequirement(challenge, config);
   const network: SolanaNetwork = req.network;
 
+  // Cumulative spend rail — bound total spend across this process, not just per call.
+  const reqUsdc = atomicToUsdc(Number(req.maxAmountRequired));
+  if (config.maxTotalUsdc !== undefined && totalSpentUsdc + reqUsdc > config.maxTotalUsdc) {
+    throw new Error(
+      `x402: refusing to pay — cumulative cap reached (${totalSpentUsdc} + ${reqUsdc} > ${config.maxTotalUsdc} USDC)`,
+    );
+  }
+  // If the gate requires presenter auth, confirm we CAN sign the nonce BEFORE we
+  // spend anything — otherwise we'd pay and then be unable to redeem it.
+  if (challenge.nonce && !signer.signMessage) {
+    throw new Error("x402: gate requires presenter auth (a signed nonce) but the signer has no signMessage");
+  }
+
   const rpcUrl = config.rpcUrl ?? DEFAULT_RPC[network];
   const connection = new Connection(rpcUrl, "confirmed");
 
@@ -119,12 +145,24 @@ export async function fetchWithX402(
     signer,
     req,
   );
+  totalSpentUsdc += reqUsdc;
+
+  // Presenter binding: sign the gate-issued nonce with the payer key so an
+  // observer of the on-chain payment can't replay this proof for free access.
+  let nonce: string | undefined;
+  let payerSig: string | undefined;
+  if (challenge.nonce) {
+    nonce = challenge.nonce;
+    payerSig = await signer.signMessage!(challenge.nonce);
+  }
 
   const header = buildPaymentHeader({
     signature,
     payerAddress: signer.publicKey,
     amount: req.maxAmountRequired,
     resource: req.resource,
+    nonce,
+    payerSig,
   });
 
   const retried = await fetch(url, {

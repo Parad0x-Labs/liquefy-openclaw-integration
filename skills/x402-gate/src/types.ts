@@ -24,6 +24,8 @@ export interface X402PaymentRequirement {
 export interface X402Challenge {
   x402Version: number;
   accepts: X402PaymentRequirement[];
+  /** Single-use nonce the caller must sign with the payer key (presenter binding). */
+  nonce?: string;
 }
 
 /** Options for minting a challenge. */
@@ -52,6 +54,11 @@ export interface X402PaymentProof {
   payerAddress: string;
   amount: string; // atomic USDC
   resource: string;
+  /** The challenge nonce, echoed back. */
+  nonce?: string;
+  /** ed25519 signature (base64) by the payer key over the nonce — proves the
+   *  presenter controls the paying wallet. */
+  payerSig?: string;
 }
 
 /** Result of verifying an incoming payment. */

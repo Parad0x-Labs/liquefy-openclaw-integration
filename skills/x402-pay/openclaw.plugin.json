@@ -17,6 +17,16 @@
         "type": "boolean",
         "description": "Authorize real-money payments on solana-mainnet. Default: true. Set false to restrict to devnet."
       },
+      "maxTotalUsdc": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Optional cumulative spend cap across this process's lifetime. Bounds a malicious endpoint that tries to drain the wallet one under-cap payment at a time."
+      },
+      "allowedRecipients": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Optional allowlist of recipient (payTo) addresses. If set, the skill refuses to pay any 402 whose recipient is not listed."
+      },
       "rpcUrl": {
         "type": "string",
         "description": "Optional Solana RPC URL override (use a private RPC in production). Defaults to the public endpoint for the selected network."

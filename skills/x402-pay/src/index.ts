@@ -42,12 +42,27 @@ export function setX402Signer(signer: X402Signer): void {
   activeSigner = signer;
 }
 
+/** Parse a config boolean robustly — only a real boolean or the strings
+ *  "true"/"false" count; anything else falls back to the default (so junk like
+ *  0/null/"" can't silently flip a safety flag). */
+function readBool(v: unknown, dflt: boolean): boolean {
+  if (typeof v === "boolean") return v;
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return dflt;
+}
+
 function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
   const cfg = raw ?? {};
   return {
     maxAmountUsdc:
       typeof cfg.maxAmountUsdc === "number" ? cfg.maxAmountUsdc : DEFAULT_MAX_USDC,
-    allowMainnet: cfg.allowMainnet !== false,
+    // Mainnet-default (zero-friction). Only an explicit false / "false" disables it.
+    allowMainnet: readBool(cfg.allowMainnet, true),
+    maxTotalUsdc: typeof cfg.maxTotalUsdc === "number" ? cfg.maxTotalUsdc : undefined,
+    allowedRecipients: Array.isArray(cfg.allowedRecipients)
+      ? cfg.allowedRecipients.filter((x): x is string => typeof x === "string")
+      : undefined,
     rpcUrl: typeof cfg.rpcUrl === "string" ? cfg.rpcUrl : undefined,
   };
 }
