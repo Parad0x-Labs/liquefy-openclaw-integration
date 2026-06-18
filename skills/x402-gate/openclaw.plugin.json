@@ -26,6 +26,10 @@
         "type": "boolean",
         "description": "Accept a payment only after its transaction is confirmed settled on Solana (revenue-grade). Default: true. Set false for a structural-only check."
       },
+      "dedupe": {
+        "type": "boolean",
+        "description": "Reject a settled payment that has already been redeemed (single-use). Default: true (in-memory, single process). Set false if you enforce replay protection with your own durable store."
+      },
       "rpcUrl": {
         "type": "string",
         "description": "Optional Solana RPC URL override for on-chain confirmation."

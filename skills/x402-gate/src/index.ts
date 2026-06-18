@@ -12,6 +12,8 @@
  *     resource, so receipt hashes match the paying side with no shared state.
  *   - Revenue-grade gating: set requireOnChain=true so a payment is accepted only
  *     after the transaction is confirmed on Solana (not just a well-formed header).
+ *   - Replay-guarded: a verified payment is single-use (config.dedupe, default on;
+ *     in-memory by default — back it with a durable ReplayStore for multi-instance).
  *
  * Non-custodial: funds settle straight to your own wallet; the skill holds no
  * keys and signs nothing.
@@ -24,17 +26,24 @@ import { Connection } from "@solana/web3.js";
 import { DEFAULT_RPC, type SolanaNetwork } from "./constants";
 import { makeChallenge, verifyPaymentStructure } from "./gate";
 import { confirmOnChain } from "./onchain";
+import { InMemoryReplayStore } from "./replay";
 
 export * from "./constants";
 export * from "./types";
 export * from "./gate";
 export * from "./onchain";
+export * from "./replay";
+
+/** Process-level replay store used when config.dedupe is on (single-instance;
+ *  see replay.ts for the durable multi-instance path). */
+const replayStore = new InMemoryReplayStore();
 
 interface GateConfig {
   recipientAddress: string;
   priceUsdc: number;
   network: SolanaNetwork;
   requireOnChain: boolean;
+  dedupe: boolean;
   rpcUrl?: string;
 }
 
@@ -45,6 +54,7 @@ function readConfig(raw: Record<string, unknown> | undefined): GateConfig {
     priceUsdc: typeof c.priceUsdc === "number" ? c.priceUsdc : 0.01,
     network: c.network === "solana-devnet" ? "solana-devnet" : "solana-mainnet",
     requireOnChain: c.requireOnChain !== false,
+    dedupe: c.dedupe !== false,
     rpcUrl: typeof c.rpcUrl === "string" ? c.rpcUrl : undefined,
   };
 }
@@ -139,6 +149,10 @@ export default definePluginEntry({
         });
         if (!chain.confirmed) {
           return { valid: false, error: `on-chain confirmation failed: ${chain.reason}` };
+        }
+        // Replay guard: a settled payment may only be redeemed once.
+        if (config.dedupe && !replayStore.consume(structural.signature)) {
+          return { valid: false, error: "payment already used (replay)" };
         }
         return { ...structural, onChainVerified: true };
       },
