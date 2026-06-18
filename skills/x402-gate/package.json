@@ -36,6 +36,9 @@
   "dependencies": {
     "@solana/web3.js": "1.98.4"
   },
+  "peerDependencies": {
+    "openclaw": ">=1.0.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"

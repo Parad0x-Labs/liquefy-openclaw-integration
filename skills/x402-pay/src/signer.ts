@@ -160,17 +160,18 @@ export async function broadcastSigned(
     preflightCommitment: "confirmed",
   });
 
+  // Confirm at FINALIZED — same commitment the gate verifies at — so when the
+  // payer presents the proof the gate's on-chain check passes on the first try
+  // (no confirmed-but-not-yet-finalized window that would reject a real payment).
   let res;
   try {
-    res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+    res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "finalized");
   } catch {
     // Ambiguous (timeout / blockhash window / RPC hiccup): the tx MAY have landed.
     // Re-poll its status before deciding — do not report a clean (retryable) failure.
     const s = (await connection.getSignatureStatus(signature, { searchTransactionHistory: true })).value;
     if (s?.err) throw new Error(`transaction failed on-chain: ${JSON.stringify(s.err)}`);
-    if (s && (s.confirmationStatus === "confirmed" || s.confirmationStatus === "finalized")) {
-      return { signature, status: "confirmed" };
-    }
+    if (s?.confirmationStatus === "finalized") return { signature, status: "confirmed" };
     return { signature, status: "pending" };
   }
   if (res.value.err) {

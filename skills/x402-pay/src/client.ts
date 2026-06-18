@@ -60,6 +60,11 @@ export function selectRequirement(
   challenge: X402Challenge,
   config: X402PayConfig,
 ): X402PaymentRequirement {
+  // The cap must be a finite positive number — a NaN/Infinity cap would make the
+  // `usdc > cap` check below always false and silently authorize any amount.
+  if (!Number.isFinite(config.maxAmountUsdc) || config.maxAmountUsdc <= 0) {
+    throw new Error("x402: invalid maxAmountUsdc cap (must be a finite positive number) — refusing to pay");
+  }
   const reasons: string[] = [];
 
   for (const req of challenge.accepts) {

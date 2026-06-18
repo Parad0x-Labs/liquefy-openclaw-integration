@@ -21,7 +21,8 @@
  * Non-custodial: funds settle straight to your own wallet; the skill holds no keys.
  */
 
-// Type-only: resolved from the host OpenClaw runtime at load time.
+// Provided by the host OpenClaw runtime at load time (declared as a peer
+// dependency). definePluginEntry is a runtime value, not a type-only import.
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { Connection } from "@solana/web3.js";
 
@@ -103,22 +104,23 @@ export default definePluginEntry({
     // (don't throw at load — that could crash the host — and don't silently degrade).
     let configError: string | null = null;
     if (config.network === "solana-mainnet") {
-      if (config.dedupe && !config.replayStorePath) {
+      if (!config.requireOnChain) {
         configError =
-          "x402-gate refuses to run on mainnet with in-memory dedupe (replay reopens on " +
-          "restart / across instances). Set replayStorePath for a durable store, or set " +
-          "dedupe=false and enforce replay with your own durable store.";
+          "x402-gate refuses requireOnChain=false on mainnet — that serves paid content without " +
+          "verifying the payment settled on-chain. Set requireOnChain=true (header-only mode is devnet/testing only).";
+      } else if (config.dedupe && !config.replayStorePath) {
+        configError =
+          "x402-gate refuses in-memory dedupe on mainnet (replay reopens on restart / across instances). " +
+          "Set replayStorePath for a durable store, or dedupe=false and enforce replay with your own durable store.";
       } else if (config.requirePresenterAuth && !config.challengeSecret) {
         configError =
-          "x402-gate requires challengeSecret on mainnet (presenter-auth nonces must verify " +
-          "across restarts/instances). Set challengeSecret in config.";
+          "x402-gate requires challengeSecret on mainnet (presenter-auth nonces must verify across " +
+          "restarts/instances). Set challengeSecret in config.";
+      } else if (config.receiptScopeSeconds > 0 && !config.replayStorePath) {
+        configError =
+          "x402-gate requires replayStorePath on mainnet when receiptScopeSeconds>0 — capability-reuse " +
+          "nonce dedupe must be durable. Set replayStorePath.";
       }
-    }
-    if (config.network === "solana-mainnet" && !config.requireOnChain) {
-      console.warn(
-        "[x402-gate] requireOnChain=false on solana-mainnet — payments are NOT confirmed on-chain; " +
-          "a caller can pass the gate without paying. Never use for real paid content.",
-      );
     }
 
     api.registerTool({

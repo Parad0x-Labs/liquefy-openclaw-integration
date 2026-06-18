@@ -19,8 +19,9 @@
  * single payment can exceed the configured USDC cap.
  */
 
-// Type-only import: resolved from the host OpenClaw runtime at load time, same
-// pattern as @parad0x_labs/openclaw-context-capsule. No build-time dependency.
+// Provided by the host OpenClaw runtime at load time (declared as a peer
+// dependency), same pattern as @parad0x_labs/openclaw-context-capsule.
+// definePluginEntry is a runtime value, not a type-only import.
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 import { fetchWithX402 } from "./client";
@@ -42,26 +43,36 @@ export function setX402Signer(signer: X402Signer): void {
   activeSigner = signer;
 }
 
-/** Parse a config boolean robustly — only a real boolean or the strings
- *  "true"/"false" count; anything else falls back to the default (so junk like
- *  0/null/"" can't silently flip a safety flag). */
+/** Parse a config boolean robustly — a real boolean or common true/false strings
+ *  (case-insensitive). Unrecognized junk falls back to the default, but explicit
+ *  disable words ("false"/"no"/"off"/"0") are always honored so an operator who
+ *  meant to turn a safety flag OFF never silently keeps it on. */
 function readBool(v: unknown, dflt: boolean): boolean {
   if (typeof v === "boolean") return v;
-  if (v === "true") return true;
-  if (v === "false") return false;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "yes" || s === "on" || s === "1") return true;
+    if (s === "false" || s === "no" || s === "off" || s === "0") return false;
+  }
   return dflt;
+}
+
+/** A finite, positive number or undefined — NaN/Infinity/±junk never pass, so a
+ *  malformed value can't silently disable a spend cap on a real-money wallet. */
+function finitePositive(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
 function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
   const cfg = raw ?? {};
-  const maxAmountUsdc = typeof cfg.maxAmountUsdc === "number" ? cfg.maxAmountUsdc : DEFAULT_MAX_USDC;
+  const maxAmountUsdc = finitePositive(cfg.maxAmountUsdc) ?? DEFAULT_MAX_USDC;
   return {
     maxAmountUsdc,
-    // Mainnet-default (zero-friction). Only an explicit false / "false" disables it.
+    // Mainnet-default (zero-friction). Only an explicit false/no/off/0 disables it.
     allowMainnet: readBool(cfg.allowMainnet, true),
     // Generous-but-FINITE default so a runaway or malicious endpoint can't drain
     // the wallet one capped payment at a time. Not off by default; raise via config.
-    maxTotalUsdc: typeof cfg.maxTotalUsdc === "number" ? cfg.maxTotalUsdc : maxAmountUsdc * 100,
+    maxTotalUsdc: finitePositive(cfg.maxTotalUsdc) ?? maxAmountUsdc * 100,
     allowedRecipients: Array.isArray(cfg.allowedRecipients)
       ? cfg.allowedRecipients.filter((x): x is string => typeof x === "string")
       : undefined,

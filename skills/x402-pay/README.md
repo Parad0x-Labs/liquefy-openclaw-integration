@@ -74,8 +74,9 @@ pay_x402({ url: "https://api.example.com/premium" })
     "entries": {
       "x402-pay": {
         "maxAmountUsdc": 0.50,     // refuse any single payment above this
+        "maxTotalUsdc": 50,         // cumulative cap this process (default: 100x per-payment)
         "allowMainnet": true,       // mainnet (default); false restricts to devnet
-        "rpcUrl": "https://..."     // optional private RPC (recommended)
+        "rpcUrl": "https://..."     // REQUIRED on mainnet (a private RPC)
       }
     }
   }
@@ -85,8 +86,10 @@ pay_x402({ url: "https://api.example.com/premium" })
 | Key | Default | Description |
 |---|---|---|
 | `maxAmountUsdc` | `1.0` | Hard per-payment USDC cap, enforced before building any tx |
+| `maxTotalUsdc` | `100 × maxAmountUsdc` | Cumulative cap across the process (finite; raise for volume) |
 | `allowMainnet` | `true` | Mainnet (real-money). Set `false` to restrict to devnet |
-| `rpcUrl` | public RPC | Optional Solana RPC override |
+| `allowedRecipients` | — | Optional `payTo` allowlist; if set, any other recipient is refused |
+| `rpcUrl` | — | Solana RPC. **Required on mainnet**; optional on devnet |
 
 ## How a payment flows
 

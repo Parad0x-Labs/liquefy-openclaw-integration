@@ -91,6 +91,10 @@ export function makeChallenge(opts: ChallengeOptions): {
 
 /** Decode the base64 X-Payment header into a proof object. */
 export function decodePaymentHeader(header: string): X402PaymentProof {
+  // Bound the unauthenticated input before decode/parse (DoS guard).
+  if (header.length > 8192) {
+    throw new Error("x402: X-Payment header too large");
+  }
   let json: string;
   try {
     json = Buffer.from(header, "base64").toString("utf8");
