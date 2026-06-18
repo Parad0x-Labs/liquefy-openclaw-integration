@@ -14,7 +14,7 @@
  * confirmOnChain() below mirrors skills/x402-gate/src/onchain.ts exactly.
  *
  * Run:
- *   cd scripts/x402-smoke && npm install && node devnet-smoke.mjs
+ *   cd scripts/x402-smoke && npm install --ignore-scripts && node devnet-smoke.mjs
  */
 
 import { createHash } from "node:crypto";
@@ -30,7 +30,7 @@ import {
 } from "@solana/spl-token";
 
 const RPC = process.env.SOLANA_DEVNET_RPC_URL || "https://api.devnet.solana.com";
-const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gq7ZNgPgvNXm4VuMcUiNeAg2gZh2sZjEDLpZ");
+const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const MEMO_PREFIX = "null-miner-v1";
 const DECIMALS = 6;
 
@@ -64,7 +64,9 @@ async function confirmOnChain(conn, signature, expect) {
   return { confirmed: true, slot: tx.slot, receivedAtomic: delta.toString() };
 }
 
-// mirrors signer.ts buildUnsignedPayment (transfer + memo), then signs+sends
+// mirrors signer.ts buildUnsignedPayment (transfer + memo), then signs+sends.
+// Preflight at "confirmed" so a freshly-created mint is visible to simulation;
+// finalization is awaited separately (waitFinalized) before verification.
 async function payReal(conn, payer, mint, req, amountAtomic) {
   const payToPk = new PublicKey(req.payTo);
   const payerAta = getAssociatedTokenAddressSync(mint, payer.publicKey);
@@ -75,7 +77,7 @@ async function payReal(conn, payer, mint, req, amountAtomic) {
     createTransferCheckedInstruction(payerAta, mint, payToAta, payer.publicKey, BigInt(amountAtomic), DECIMALS),
     new TransactionInstruction({ keys: [], programId: MEMO_PROGRAM_ID, data: Buffer.from(`${req.memoPrefix}:${receiptHash}`, "utf8") }),
   );
-  return sendAndConfirmTransaction(conn, tx, [payer], { commitment: "finalized" });
+  return sendAndConfirmTransaction(conn, tx, [payer], { commitment: "confirmed" });
 }
 
 // forged: stamp the memo but transfer nothing
@@ -83,7 +85,15 @@ async function payMemoOnly(conn, payer, receiptHash) {
   const tx = new Transaction().add(
     new TransactionInstruction({ keys: [], programId: MEMO_PROGRAM_ID, data: Buffer.from(`${MEMO_PREFIX}:${receiptHash}`, "utf8") }),
   );
-  return sendAndConfirmTransaction(conn, tx, [payer], { commitment: "finalized" });
+  return sendAndConfirmTransaction(conn, tx, [payer], { commitment: "confirmed" });
+}
+
+// Wait until the tx is finalized so the finalized-commitment check can see it.
+async function waitFinalized(conn, sig, tries = 45) {
+  for (let i = 0; i < tries; i++) {
+    if (await conn.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "finalized" })) return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
 }
 
 // Funded payer: supply a devnet wallet via PAYER_KEYPAIR for a reliable run
@@ -133,23 +143,27 @@ async function main() {
   };
   const receiptHash = receiptHashFor(payer.publicKey.toBase58(), req);
   const expect = { receiptHash, payTo: req.payTo, asset: req.asset, amountAtomic: req.maxAmountRequired };
-  console.log(`\nprice ${priceAtomic} atomic (0.05), mint ${mint.toBase58()}\n`);
+  console.log(`\nprice ${priceAtomic} atomic (0.05), mint ${mint.toBase58()}`);
+  console.log("(waiting for each payment to finalize before verifying — ~10-40s each)\n");
 
   let pass = 0, fail = 0;
   const check = (name, ok, detail) => { (ok ? pass++ : fail++); console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}${detail ? " — " + detail : ""}`); };
 
   // TEST 1 — real payment accepted
   const sig1 = await payReal(conn, payer, mint, req, priceAtomic);
+  await waitFinalized(conn, sig1);
   const r1 = await confirmOnChain(conn, sig1, expect);
   check("real payment ACCEPTED", r1.confirmed === true, r1.confirmed ? `credited ${r1.receivedAtomic}` : r1.reason);
 
   // TEST 2 — forged memo-only rejected (the free-ride)
   const sig2 = await payMemoOnly(conn, payer, receiptHash);
+  await waitFinalized(conn, sig2);
   const r2 = await confirmOnChain(conn, sig2, expect);
   check("forged memo-only REJECTED", r2.confirmed === false, r2.reason);
 
   // TEST 3 — underpayment rejected
   const sig3 = await payReal(conn, payer, mint, req, "25000"); // half
+  await waitFinalized(conn, sig3);
   const r3 = await confirmOnChain(conn, sig3, expect);
   check("underpayment REJECTED", r3.confirmed === false, r3.reason);
 
