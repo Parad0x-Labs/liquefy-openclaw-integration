@@ -42,6 +42,14 @@ export const DEFAULT_RPC: Record<SolanaNetwork, string> = {
 /** Memo program (used to stamp the receipt hash on-chain alongside the transfer) */
 export const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 
+/** Priority fee (micro-lamports per compute unit) so a payment lands under
+ *  mainnet congestion. Override per-payment via requirement.extra.priorityFeeMicroLamports. */
+export const DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS = 50_000;
+
+/** Compute-unit cap for a payment tx (ATA-create + transfer + memo), so the
+ *  priority fee stays bounded and predictable. */
+export const PAYMENT_COMPUTE_UNIT_LIMIT = 60_000;
+
 /** USDC atomic-unit conversions */
 export function usdcToAtomic(usdc: number): number {
   return Math.round(usdc * 10 ** USDC_DECIMALS);

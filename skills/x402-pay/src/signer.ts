@@ -16,6 +16,7 @@ import {
   PublicKey,
   Transaction,
   TransactionInstruction,
+  ComputeBudgetProgram,
 } from "@solana/web3.js";
 import {
   createTransferCheckedInstruction,
@@ -26,6 +27,8 @@ import {
   MEMO_PROGRAM_ID,
   USDC_DECIMALS,
   atomicToUsdc,
+  DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS,
+  PAYMENT_COMPUTE_UNIT_LIMIT,
 } from "./constants";
 import type { X402PaymentRequirement, X402Signer } from "./types";
 
@@ -97,7 +100,15 @@ export async function buildUnsignedPayment(
     lastValidBlockHeight,
   });
 
+  const priorityFee =
+    typeof (req.extra as Record<string, unknown> | undefined)?.priorityFeeMicroLamports === "number"
+      ? Number((req.extra as Record<string, number>).priorityFeeMicroLamports)
+      : DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS;
+
   tx.add(
+    // priority fee + CU cap so the payment lands under mainnet congestion
+    ComputeBudgetProgram.setComputeUnitLimit({ units: PAYMENT_COMPUTE_UNIT_LIMIT }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFee }),
     // idempotent: no-op if the recipient already has a USDC account
     createAssociatedTokenAccountIdempotentInstruction(payerPk, payToAta, payToPk, usdcMint),
     createTransferCheckedInstruction(
