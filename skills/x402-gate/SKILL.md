@@ -30,12 +30,12 @@ verify the payment, then serve — funds settle straight to your own Solana wall
 - **Replay-resistant** — verification binds to a unique per-payment receipt hash
   carried in the on-chain memo.
 
-> **Public Beta** — non-custodial, **unaudited** (no external audit completed or scheduled).
+> **Non-custodial** — funds settle to your own wallet; the skill holds no keys.
 
 ## Pairs with
 
-`x402-pay` — the paying side. Together: the full agent-to-agent payment loop on
-the DNA x402 rail (live on Solana mainnet).
+`x402-pay` — the paying side. Together: the full agent-to-agent payment loop,
+settling in USDC on Solana mainnet.
 
 ## Source
 

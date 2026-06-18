@@ -9,14 +9,14 @@
  *     hardware signer, KMS). This plugin builds an UNSIGNED transaction, hands
  *     it to that signer, then broadcasts the signed bytes. It never holds,
  *     requests, or reads a private key.
- *   - DEVNET BY DEFAULT. Mainnet payments require config.allowMainnet = true.
+ *   - MAINNET BY DEFAULT. Set config.allowMainnet=false to restrict to devnet.
  *   - HARD SPEND CAP. config.maxAmountUsdc is enforced before any tx is built;
  *     a 402 demanding more is refused.
  *   - NETWORK: talks only to the configured Solana RPC and the target URL.
  *     No telemetry, no third-party endpoints.
  *
- * Status: Public Beta. Non-custodial, capped, unaudited (no external audit
- * completed or scheduled) — do not point it at large balances.
+ * Non-custodial and spend-capped: the agent signs with its own wallet, and no
+ * single payment can exceed the configured USDC cap.
  */
 
 // Type-only import: resolved from the host OpenClaw runtime at load time, same
@@ -47,7 +47,7 @@ function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
   return {
     maxAmountUsdc:
       typeof cfg.maxAmountUsdc === "number" ? cfg.maxAmountUsdc : DEFAULT_MAX_USDC,
-    allowMainnet: cfg.allowMainnet === true,
+    allowMainnet: cfg.allowMainnet !== false,
     rpcUrl: typeof cfg.rpcUrl === "string" ? cfg.rpcUrl : undefined,
   };
 }
@@ -56,9 +56,9 @@ export default definePluginEntry({
   id: "x402-pay",
   name: "x402 Pay",
   description:
-    "Let your agent pay for x402-gated APIs, data, and other agents on Solana. " +
-    "Bring your own signer — the skill never holds a private key. Devnet by " +
-    "default; mainnet is explicit opt-in with a hard USDC spend cap.",
+    "Let your agent pay for x402-gated APIs, data, and other agents on Solana " +
+    "mainnet. Bring your own signer — the skill never holds a private key — with " +
+    "a hard USDC spend cap. Set allowMainnet=false to restrict to devnet.",
   register(api: {
     registerTool: (tool: {
       name: string;
@@ -75,7 +75,7 @@ export default definePluginEntry({
       description:
         "Fetch a URL; if it returns HTTP 402, pay the demanded USDC on Solana " +
         "(within the configured cap and network) and return the resource. " +
-        "Refuses payments over the cap or on mainnet unless explicitly enabled.",
+        "Refuses any payment over the configured USDC cap.",
       parameters: {
         url: { type: "string", description: "The x402-gated resource URL to fetch" },
         method: { type: "string", description: "HTTP method (default GET)" },

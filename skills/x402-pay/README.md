@@ -1,12 +1,12 @@
 # openclaw-x402-pay — self-custody x402 payments for OpenClaw agents
 
-> 💜 If it earns its keep, [star openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills) — stars are how agent builders find it. (ClawHub listing: pending publish.)
+> 💜 If it earns its keep, [star openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills) — stars are how agent builders find it.
 
 Give your agent one tool — `pay_x402` — that fetches an x402-gated URL and, if it
 answers HTTP **402 Payment Required**, pays for it on Solana and returns the
 resource. Pairs with [`x402-gate`](../x402-gate)
-(the charging side) to form the full agent-to-agent payment loop on a rail that's
-**live on Solana mainnet** (program `9bPBmDNnKGxF8GTt4SqodNJZ1b9nSjoKia2ML4V5gGCF`).
+(the charging side) to form the full agent-to-agent payment loop, settling in
+**USDC on Solana mainnet** with receipts anchored on-chain.
 
 ## Trust model — read this first
 
@@ -14,14 +14,14 @@ resource. Pairs with [`x402-gate`](../x402-gate)
   signer, KMS). The skill builds an **unsigned** transaction, hands it to your
   signer, and broadcasts the signed bytes. **It never holds, requests, or reads a
   private key.**
-- **Devnet by default.** Real-money mainnet payments require `allowMainnet: true`.
+- **Mainnet by default.** Set `allowMainnet: false` to restrict to devnet.
 - **Hard spend cap.** `maxAmountUsdc` is enforced *before any transaction is
   built*. A 402 demanding more is refused.
 - **Minimal network surface.** Talks only to your configured Solana RPC and the
   target URL. No telemetry, no third-party calls.
 
-> **Status: Public Beta.** Non-custodial, capped, **unaudited** — no external audit
-> has been completed or scheduled. Do not point it at large balances.
+> **Non-custodial and spend-capped.** Your agent signs with its own wallet; no
+> single payment exceeds the cap you set.
 
 ## Standalone or together
 
@@ -64,8 +64,8 @@ pay_x402({ url: "https://api.example.com/premium" })
     "entries": {
       "x402-pay": {
         "maxAmountUsdc": 0.50,     // refuse any single payment above this
-        "allowMainnet": false,      // true = real money on mainnet
-        "rpcUrl": "https://..."     // optional private RPC
+        "allowMainnet": true,       // mainnet (default); false restricts to devnet
+        "rpcUrl": "https://..."     // optional private RPC (recommended)
       }
     }
   }
@@ -75,7 +75,7 @@ pay_x402({ url: "https://api.example.com/premium" })
 | Key | Default | Description |
 |---|---|---|
 | `maxAmountUsdc` | `1.0` | Hard per-payment USDC cap, enforced before building any tx |
-| `allowMainnet` | `false` | Must be `true` to authorize mainnet (real-money) payments |
+| `allowMainnet` | `true` | Mainnet (real-money). Set `false` to restrict to devnet |
 | `rpcUrl` | public RPC | Optional Solana RPC override |
 
 ## How a payment flows

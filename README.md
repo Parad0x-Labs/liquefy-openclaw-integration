@@ -8,34 +8,31 @@ One home for Parad0x Labs' agent skills — payments, context compression, the
 .null/x402 MCP server, and workspace guardrails — for **OpenClaw and every
 *claw-family runtime**, plus any MCP client (Claude Desktop, Cursor, Windsurf).
 
-## 🚀 The full agent loop — install it
+## 🚀 The agent payment loop — install it
 
-Give your agent **a name, a payment endpoint, and the ability to pay and get
-paid**, on Solana. Everything below is built and verified; `null-mcp` is on npm
-today, the rest publish from this repo (tracked in [`PUBLISH_RUNBOOK.md`](./PUBLISH_RUNBOOK.md)).
+Give your agent **the ability to pay and get paid in USDC**, on Solana mainnet —
+non-custodial, with a hard spend cap. Drop these into an OpenClaw agent:
 
 ```bash
-# 1. .null domains + publishing (register a name, set its x402 endpoint, publish a page)
-npx @parad0x_labs/null-mcp                      # MCP server — resolve / register / publish / bid
+# Pay + charge (OpenClaw plugins — drop into an agent)
+#   skills/x402-pay   — your agent pays x402 endpoints
+#   skills/x402-gate  — charge other agents for your skill/API
 
-# 2. the x402 + receipts MCP server (quote, anchor, nullifier, stack status)
+# Receipts + status MCP server (any MCP client)
 npx @parad0x_labs/mcp-server                    # → skills/mcp-server
 
-# 3. OpenClaw payment plugins (drop into an OpenClaw agent)
-#    skills/x402-pay  — your agent pays x402 endpoints
-#    skills/x402-gate — charge other agents for your skill/API
-#    skills/context-capsule — keep long paid sessions cheap   (npm i @parad0x_labs/openclaw-context-capsule)
+# Keep long paid sessions cheap
+npm i @parad0x_labs/openclaw-context-capsule
 ```
 
-Then walk the whole thing end to end: **[The Web0 agent loop →](./docs/WEB0_AGENT_LOOP.md)**
-(register `myagent.null` → publish a page → put your x402 endpoint on-chain →
-other agents pay you — every step labeled with its real, verified status).
+Walk it end to end: **[The Web0 agent loop →](./docs/WEB0_AGENT_LOOP.md)**.
+Your agent's **`.null` identity + pay-by-name** ship next on a fresh deployment.
 
 ## The catalog
 
 | Skill | What it does | Standalone? | Pairs with | Install |
 |---|---|---|---|---|
-| [`x402-pay`](./skills/x402-pay) | Your agent **pays** x402-gated APIs/agents in USDC on Solana — BYO signer, never holds a key, devnet-default, hard spend cap | ✅ works against any x402 endpoint | `x402-gate` (the selling side) | from source — npm publish pending |
+| [`x402-pay`](./skills/x402-pay) | Your agent **pays** x402-gated APIs/agents in USDC on Solana mainnet — BYO signer, never holds a key, hard spend cap | ✅ works against any x402 endpoint | `x402-gate` (the selling side) | from source |
 | [`x402-gate`](./skills/x402-gate) | **Charge** other agents per call — mint a 402 challenge, verify (optionally on-chain-confirmed), serve; funds land in your own wallet | ✅ any x402 client can pay it | `x402-pay` (the buying side) | from source — npm publish pending |
 | [`context-capsule`](./skills/context-capsule) | Compresses long session history before the model call (99.3% token savings / 90% recovery, measured by the [public bench](https://github.com/Parad0x-Labs/dna-x402/tree/main/packages/context-capsule)) — no network, no chain | ✅ fully self-contained | everything — orthogonal | `npm i @parad0x_labs/openclaw-context-capsule` |
 | [`mcp-server`](./skills/mcp-server) | **MCP server** for any MCP client (Claude Desktop/Cursor/Windsurf): x402 quote, receipt anchoring, single-use nullifier checks, agent-identity lookup, live mainnet stack status. Read-only by default; writes need an opt-in keypair + per-call confirm | ✅ standalone MCP server | pairs with `null-mcp` for the full loop | from source — npm publish pending |
@@ -47,10 +44,9 @@ Plus the **resident module**: the [vault appliance](#the-vault-appliance-residen
 (Python, repo root) — trace vaults, policy enforcement, flight recorder,
 state/history guards. The three liquefy skills above are its front-ends.
 
-**Start here →** [**The Web0 agent loop**](./docs/WEB0_AGENT_LOOP.md): register a
-.null name, publish a compressed page to permanent storage, put your payment
-endpoint on-chain, and charge other agents per call — each step labeled with
-its real, verified status.
+**Start here →** [**The Web0 agent loop**](./docs/WEB0_AGENT_LOOP.md): pay and get
+paid in USDC on Solana mainnet, anchor receipts, and keep long sessions cheap —
+non-custodial at every step.
 
 ## The modularity contract
 
@@ -66,10 +62,8 @@ Every entry under `skills/` is a **self-contained module**:
 - **Trust model up front.** Skills that can touch money state it bluntly
   (custody, caps, network defaults) before the install instructions.
 
-> **Status: Public Beta.** Everything here is MIT and **unaudited — no external
-> audit has been completed or scheduled.** Money-touching skills are
-> non-custodial by design, devnet-first, and capped; read each skill's trust
-> model before pointing it at real funds.
+> Everything here is MIT. Money-touching skills are non-custodial by design —
+> your own wallet signs, the skill never holds a key — and capped on the paying side.
 
 ### How this fits the Parad0x stack
 
@@ -93,7 +87,7 @@ Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. 
 product: openclaw-skills
 category: modular agent skills for OpenClaw and *claw-family runtimes
 skills:
-  x402-pay: pay x402-gated APIs on Solana (BYO signer, capped, devnet-default)
+  x402-pay: pay x402-gated APIs on Solana mainnet (BYO signer, capped)
   x402-gate: charge other agents per call (no custody, on-chain verify option)
   context-capsule: compress long session history (no network, no chain)
   mcp-server: MCP server — x402 quote / receipt anchor / nullifier / stack status (any MCP client)

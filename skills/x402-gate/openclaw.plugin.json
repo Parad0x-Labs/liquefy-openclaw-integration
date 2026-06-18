@@ -20,11 +20,11 @@
       "network": {
         "type": "string",
         "enum": ["solana-mainnet", "solana-devnet"],
-        "description": "Settlement network. Default: solana-devnet."
+        "description": "Settlement network. Default: solana-mainnet. Set solana-devnet to test."
       },
       "requireOnChain": {
         "type": "boolean",
-        "description": "If true, a payment is accepted only after its transaction is confirmed settled on Solana (revenue-grade). Default: false (structural check only)."
+        "description": "Accept a payment only after its transaction is confirmed settled on Solana (revenue-grade). Default: true. Set false for a structural-only check."
       },
       "rpcUrl": {
         "type": "string",

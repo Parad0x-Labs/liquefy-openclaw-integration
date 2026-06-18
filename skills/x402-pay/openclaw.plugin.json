@@ -15,7 +15,7 @@
       },
       "allowMainnet": {
         "type": "boolean",
-        "description": "Must be true to authorize real-money payments on solana-mainnet. Default: false (devnet only)."
+        "description": "Authorize real-money payments on solana-mainnet. Default: true. Set false to restrict to devnet."
       },
       "rpcUrl": {
         "type": "string",

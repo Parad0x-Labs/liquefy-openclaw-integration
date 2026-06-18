@@ -13,8 +13,8 @@
  *   - Revenue-grade gating: set requireOnChain=true so a payment is accepted only
  *     after the transaction is confirmed on Solana (not just a well-formed header).
  *
- * Status: Public Beta. Non-custodial, unaudited (no external audit completed
- * or scheduled).
+ * Non-custodial: funds settle straight to your own wallet; the skill holds no
+ * keys and signs nothing.
  */
 
 // Type-only: resolved from the host OpenClaw runtime at load time.
@@ -43,8 +43,8 @@ function readConfig(raw: Record<string, unknown> | undefined): GateConfig {
   return {
     recipientAddress: typeof c.recipientAddress === "string" ? c.recipientAddress : "",
     priceUsdc: typeof c.priceUsdc === "number" ? c.priceUsdc : 0.01,
-    network: c.network === "solana-mainnet" ? "solana-mainnet" : "solana-devnet",
-    requireOnChain: c.requireOnChain === true,
+    network: c.network === "solana-devnet" ? "solana-devnet" : "solana-mainnet",
+    requireOnChain: c.requireOnChain !== false,
     rpcUrl: typeof c.rpcUrl === "string" ? c.rpcUrl : undefined,
   };
 }

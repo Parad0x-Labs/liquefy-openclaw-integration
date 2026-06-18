@@ -48,7 +48,7 @@ export function receiptHashFor(payer: string, req: X402PaymentRequirement): stri
 
 /** Build a single payment requirement (one entry in a 402's `accepts`). */
 export function makeRequirement(opts: ChallengeOptions): X402PaymentRequirement {
-  const network: SolanaNetwork = opts.network ?? "solana-devnet";
+  const network: SolanaNetwork = opts.network ?? "solana-mainnet";
   if (!(opts.priceUsdc > 0)) {
     throw new Error("makeRequirement: priceUsdc must be > 0");
   }

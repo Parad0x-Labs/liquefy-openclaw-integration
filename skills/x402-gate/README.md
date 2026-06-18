@@ -1,6 +1,6 @@
 # openclaw-x402-gate — charge other agents with x402 on Solana
 
-> 💜 If it earns its keep, [star openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills) — stars are how agent builders find it. (ClawHub listing: pending publish.)
+> 💜 If it earns its keep, [star openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills) — stars are how agent builders find it.
 
 Turn any OpenClaw skill or API into a paid endpoint. Mint an HTTP **402 Payment
 Required** challenge, verify the payment, then serve. Funds settle **straight to
@@ -20,8 +20,8 @@ Solana mainnet**.
   well-formed header. The check binds to the unique receipt hash in the tx memo,
   so proofs can't be replayed against a different charge.
 
-> **Status: Public Beta.** Non-custodial, **unaudited** — no external audit has
-> been completed or scheduled.
+> **Non-custodial.** Payments settle straight to your own wallet; the skill holds
+> no keys and signs nothing.
 
 ## Standalone or together
 
@@ -55,7 +55,7 @@ x402_verify({ header, resource, priceUsdc? })
       "x402-gate": {
         "recipientAddress": "YOUR_SOLANA_WALLET",  // required — where funds land
         "priceUsdc": 0.05,
-        "network": "solana-devnet",                 // or solana-mainnet
+        "network": "solana-mainnet",                // default; solana-devnet to test
         "requireOnChain": true,                      // confirm settlement before serving
         "rpcUrl": "https://..."                      // optional private RPC
       }
@@ -68,8 +68,8 @@ x402_verify({ header, resource, priceUsdc? })
 |---|---|---|
 | `recipientAddress` | — (required) | Your wallet; payments settle here. Public key only. |
 | `priceUsdc` | `0.01` | Default price per request |
-| `network` | `solana-devnet` | Settlement network |
-| `requireOnChain` | `false` | Accept only after on-chain confirmation (recommended for real value) |
+| `network` | `solana-mainnet` | Settlement network. Set `solana-devnet` to test |
+| `requireOnChain` | `true` | Accept only after on-chain settlement confirmation |
 | `rpcUrl` | public RPC | Optional RPC override |
 
 ## Flow

@@ -14,18 +14,18 @@ Solana — without ever handing the skill a private key.
 
 ## When NOT to use
 
-- You need the agent to move money on **mainnet** but haven't set
-  `allowMainnet: true` and a sensible `maxAmountUsdc` — it will (correctly) refuse.
+- You haven't set a sensible `maxAmountUsdc` cap — the skill enforces one before
+  any payment and will (correctly) refuse anything above it.
 - You want the skill to custody keys for you. It won't, by design.
 
 ## Safety rails
 
-- **Devnet by default**; mainnet is explicit opt-in.
+- **Mainnet by default**; set `allowMainnet: false` to restrict to devnet.
 - **Hard `maxAmountUsdc` cap**, enforced before any transaction is built.
 - **Minimal network**: your Solana RPC + the target URL only. No telemetry.
 
-> **Public Beta** — non-custodial, capped, **unaudited** (no external audit
-> completed or scheduled); don't point it at large balances.
+> **Non-custodial and spend-capped by design** — your agent signs with its own
+> wallet; no single payment exceeds your cap.
 
 ## The tool
 
@@ -36,7 +36,7 @@ amountUsdc }`.
 ## Pairs with
 
 `x402-gate` — the charging side. Together they're the full agent-to-agent payment
-loop on the DNA x402 rail (live on Solana mainnet).
+loop, settling in USDC on Solana mainnet.
 
 ## Source
 
