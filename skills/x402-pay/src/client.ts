@@ -87,6 +87,10 @@ export function selectRequirement(
       reasons.push(`recipient ${req.payTo} not in allowedRecipients`);
       continue;
     }
+    if (!/^[0-9]+$/.test(req.maxAmountRequired) || BigInt(req.maxAmountRequired) <= 0n) {
+      reasons.push(`invalid amount "${req.maxAmountRequired}" (must be a positive integer of atomic units)`);
+      continue;
+    }
     const usdc = atomicToUsdc(Number(req.maxAmountRequired));
     if (usdc > config.maxAmountUsdc) {
       reasons.push(`${usdc} USDC exceeds maxAmountUsdc cap of ${config.maxAmountUsdc}`);
@@ -135,6 +139,10 @@ export async function fetchWithX402(
     return { ok: first.ok, status: first.status, body: await first.text() };
   }
 
+  // Bound the untrusted 402 challenge body before reading/parsing it (DoS guard).
+  if (Number(first.headers.get("content-length") ?? "0") > 65536) {
+    throw new Error("x402: 402 challenge body too large");
+  }
   // Decide what (if anything) we will pay — enforced before building any tx.
   const challenge = parseChallenge(await first.text());
   const req = selectRequirement(challenge, config);

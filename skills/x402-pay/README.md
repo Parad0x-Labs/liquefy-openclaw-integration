@@ -33,6 +33,18 @@ transaction's SPL memo, so every settlement is publicly auditable.
 > **Non-custodial and spend-capped.** Your agent signs with its own wallet; no
 > single payment exceeds the cap you set.
 
+## Install safety
+
+This skill runs where your signer/wallet lives. Install with lifecycle scripts
+disabled so a transitive native addon can't run code on that host:
+
+```bash
+npm install --ignore-scripts @parad0x_labs/openclaw-x402-pay
+```
+
+The dependencies are pure-JS (native addons are optional and fall back), so
+`--ignore-scripts` costs nothing.
+
 ## Standalone or together
 
 Part of [openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills).

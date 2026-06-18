@@ -68,8 +68,9 @@ function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
   const maxAmountUsdc = finitePositive(cfg.maxAmountUsdc) ?? DEFAULT_MAX_USDC;
   return {
     maxAmountUsdc,
-    // Mainnet-default (zero-friction). Only an explicit false/no/off/0 disables it.
-    allowMainnet: readBool(cfg.allowMainnet, true),
+    // Real-money spending is OPT-IN: must be explicitly enabled. Mainnet also
+    // requires an explicit rpcUrl, so enabling mainnet is already a conscious step.
+    allowMainnet: readBool(cfg.allowMainnet, false),
     // Generous-but-FINITE default so a runaway or malicious endpoint can't drain
     // the wallet one capped payment at a time. Not off by default; raise via config.
     maxTotalUsdc: finitePositive(cfg.maxTotalUsdc) ?? maxAmountUsdc * 100,

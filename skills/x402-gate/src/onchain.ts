@@ -50,22 +50,25 @@ type TokenBal = {
   uiTokenAmount?: { amount?: string };
 };
 
-/** Net change in `owner`'s balance of `mint`, in atomic units. A freshly created
- *  ATA has no pre-balance, which is correctly treated as 0. */
+/** Net change in `owner`'s total balance of `mint`, in atomic units, summed
+ *  across ALL of the owner's token accounts for that mint in the tx (a recipient
+ *  may hold more than one). Each post entry is paired to its own accountIndex pre
+ *  entry; a freshly created account has no pre-balance, correctly treated as 0. */
 function recipientDelta(
   pre: TokenBal[],
   post: TokenBal[],
   owner: string,
   mint: string,
 ): bigint {
-  const postEntry = post.find((b) => b.owner === owner && b.mint === mint);
-  if (!postEntry) return 0n;
-  const preEntry =
-    pre.find((b) => b.accountIndex === postEntry.accountIndex) ??
-    pre.find((b) => b.owner === owner && b.mint === mint);
-  const postAmt = BigInt(postEntry.uiTokenAmount?.amount ?? "0");
-  const preAmt = preEntry ? BigInt(preEntry.uiTokenAmount?.amount ?? "0") : 0n;
-  return postAmt - preAmt;
+  let delta = 0n;
+  for (const p of post) {
+    if (p.owner !== owner || p.mint !== mint) continue;
+    const preEntry = pre.find((b) => b.accountIndex === p.accountIndex);
+    const postAmt = BigInt(p.uiTokenAmount?.amount ?? "0");
+    const preAmt = preEntry ? BigInt(preEntry.uiTokenAmount?.amount ?? "0") : 0n;
+    delta += postAmt - preAmt;
+  }
+  return delta;
 }
 
 export async function confirmOnChain(

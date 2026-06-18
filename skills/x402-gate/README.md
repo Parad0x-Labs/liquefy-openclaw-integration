@@ -53,11 +53,13 @@ x402_verify({ header, resource, priceUsdc? })
   "plugins": {
     "entries": {
       "x402-gate": {
-        "recipientAddress": "YOUR_SOLANA_WALLET",  // required — where funds land
+        "recipientAddress": "YOUR_SOLANA_WALLET",      // required — where funds land
         "priceUsdc": 0.05,
-        "network": "solana-mainnet",                // default; solana-devnet to test
-        "requireOnChain": true,                      // confirm settlement before serving
-        "rpcUrl": "https://..."                      // optional private RPC
+        "network": "solana-mainnet",                    // default
+        "challengeSecret": "<random 32+ char secret>",  // REQUIRED on mainnet
+        "replayStorePath": "/var/lib/x402/replay.log",  // REQUIRED on mainnet (durable, single-instance)
+        "acknowledgeSingleInstance": true,              // confirm you run ONE instance
+        "rpcUrl": "https://<your-private-rpc>"          // recommended on mainnet
       }
     }
   }
@@ -67,10 +69,35 @@ x402_verify({ header, resource, priceUsdc? })
 | Key | Default | Description |
 |---|---|---|
 | `recipientAddress` | — (required) | Your wallet; payments settle here. Public key only. |
-| `priceUsdc` | `0.01` | Default price per request |
+| `priceUsdc` | `0.01` | Default price per request (USDC) |
 | `network` | `solana-mainnet` | Settlement network. Set `solana-devnet` to test |
-| `requireOnChain` | `true` | Accept only after on-chain settlement confirmation |
-| `rpcUrl` | public RPC | Optional RPC override |
+| `requireOnChain` | `true` | Confirm settlement before serving. **Refused on mainnet if `false`** (header-only mode is devnet/testing only) |
+| `dedupe` | `true` | Single-use payment guard. On mainnet needs a durable store (below) |
+| `replayStorePath` | — | Restart-durable, **single-instance** replay store path. Required on mainnet with `dedupe` |
+| `acknowledgeSingleInstance` | `false` | Attest you run ONE instance (the file store isn't shared across replicas). Required on mainnet with `dedupe` |
+| `acknowledgeExternalReplayStore` | `false` | Attest you run your own shared store. Required on mainnet with `dedupe: false` |
+| `requirePresenterAuth` | `true` | Caller signs the nonce with the payer key. **Forced on for mainnet** |
+| `challengeSecret` | — | MACs nonces + capability tokens. **Required on mainnet** |
+| `receiptScopeSeconds` | `0` | >0 issues a reusable capability token (pay once, reuse within scope) |
+| `rpcUrl` | — | Solana RPC for settlement checks. Use a private node on mainnet |
+
+> **Mainnet is fail-closed.** On `solana-mainnet` the gate refuses to serve (every
+> call returns an error) unless: `requireOnChain` is true; replay is durable
+> (`replayStorePath` + `acknowledgeSingleInstance`, or `dedupe: false` +
+> `acknowledgeExternalReplayStore` with your own shared store); and `challengeSecret`
+> is set. Header-only mode (`requireOnChain: false`) is allowed only on devnet.
+
+## Install safety
+
+This skill runs where your seller wallet lives. Install with lifecycle scripts
+disabled so a transitive native addon can't run code on that host:
+
+```bash
+npm install --ignore-scripts @parad0x_labs/openclaw-x402-gate
+```
+
+The dependencies are pure-JS (native addons are optional and fall back), so
+`--ignore-scripts` costs nothing.
 
 ## Flow
 

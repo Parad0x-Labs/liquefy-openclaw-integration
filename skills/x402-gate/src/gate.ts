@@ -101,13 +101,16 @@ export function decodePaymentHeader(header: string): X402PaymentProof {
   } catch {
     throw new Error("x402: X-Payment header is not valid base64");
   }
-  let proof: X402PaymentProof;
+  let parsed: unknown;
   try {
-    proof = JSON.parse(json) as X402PaymentProof;
+    parsed = JSON.parse(json);
   } catch {
     throw new Error("x402: X-Payment header is not valid JSON");
   }
-  return proof;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("x402: X-Payment header is not a JSON object");
+  }
+  return parsed as X402PaymentProof;
 }
 
 /**

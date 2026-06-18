@@ -54,6 +54,8 @@ interface GateConfig {
   dedupe: boolean;
   requirePresenterAuth: boolean;
   receiptScopeSeconds: number;
+  acknowledgeSingleInstance: boolean;
+  acknowledgeExternalReplayStore: boolean;
   challengeSecret?: string;
   replayStorePath?: string;
   rpcUrl?: string;
@@ -72,6 +74,8 @@ function readConfig(raw: Record<string, unknown> | undefined): GateConfig {
     requirePresenterAuth: network === "solana-mainnet" ? true : c.requirePresenterAuth !== false,
     receiptScopeSeconds:
       typeof c.receiptScopeSeconds === "number" && c.receiptScopeSeconds > 0 ? c.receiptScopeSeconds : 0,
+    acknowledgeSingleInstance: c.acknowledgeSingleInstance === true,
+    acknowledgeExternalReplayStore: c.acknowledgeExternalReplayStore === true,
     challengeSecret: typeof c.challengeSecret === "string" ? c.challengeSecret : undefined,
     replayStorePath: typeof c.replayStorePath === "string" ? c.replayStorePath : undefined,
     rpcUrl: typeof c.rpcUrl === "string" ? c.rpcUrl : undefined,
@@ -110,8 +114,18 @@ export default definePluginEntry({
           "verifying the payment settled on-chain. Set requireOnChain=true (header-only mode is devnet/testing only).";
       } else if (config.dedupe && !config.replayStorePath) {
         configError =
-          "x402-gate refuses in-memory dedupe on mainnet (replay reopens on restart / across instances). " +
-          "Set replayStorePath for a durable store, or dedupe=false and enforce replay with your own durable store.";
+          "x402-gate refuses in-memory dedupe on mainnet (replay reopens on restart). Set replayStorePath " +
+          "for a restart-durable single-instance store, or dedupe=false with your own shared store.";
+      } else if (config.dedupe && !config.acknowledgeSingleInstance) {
+        configError =
+          "x402-gate: replayStorePath (FileReplayStore) is SINGLE-INSTANCE only — running multiple replicas lets " +
+          "one payment be redeemed once per replica. Set acknowledgeSingleInstance=true to confirm you run ONE " +
+          "instance, or set dedupe=false with your own shared store (Redis/DB) + acknowledgeExternalReplayStore=true.";
+      } else if (!config.dedupe && !config.acknowledgeExternalReplayStore) {
+        configError =
+          "x402-gate: dedupe=false on mainnet disables the built-in replay guard — a settled payment could be " +
+          "re-redeemed within the nonce TTL. You MUST enforce replay with your own durable, shared store; set " +
+          "acknowledgeExternalReplayStore=true to attest this.";
       } else if (config.requirePresenterAuth && !config.challengeSecret) {
         configError =
           "x402-gate requires challengeSecret on mainnet (presenter-auth nonces must verify across " +
