@@ -133,6 +133,9 @@ export default definePluginEntry({
         const connection = new Connection(rpcUrl, "confirmed");
         const chain = await confirmOnChain(connection, structural.signature, {
           receiptHash: structural.receiptHash,
+          payTo: requirement.payTo,
+          asset: requirement.asset,
+          amountAtomic: requirement.maxAmountRequired,
         });
         if (!chain.confirmed) {
           return { valid: false, error: `on-chain confirmation failed: ${chain.reason}` };
