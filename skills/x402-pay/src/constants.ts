@@ -40,7 +40,7 @@ export const DEFAULT_RPC: Record<SolanaNetwork, string> = {
 };
 
 /** Memo program (used to stamp the receipt hash on-chain alongside the transfer) */
-export const MEMO_PROGRAM_ID = "MemoSq4gq7ZNgPgvNXm4VuMcUiNeAg2gZh2sZjEDLpZ";
+export const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 
 /** USDC atomic-unit conversions */
 export function usdcToAtomic(usdc: number): number {
