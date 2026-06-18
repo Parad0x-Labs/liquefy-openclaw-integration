@@ -43,7 +43,8 @@ export const DEFAULT_RPC: Record<SolanaNetwork, string> = {
 export const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 
 /** Priority fee (micro-lamports per compute unit) so a payment lands under
- *  mainnet congestion. Override per-payment via requirement.extra.priorityFeeMicroLamports. */
+ *  mainnet congestion. Fixed local value — NOT taken from the untrusted 402
+ *  challenge, so a malicious server cannot inflate the payer's SOL fee. */
 export const DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS = 50_000;
 
 /** Compute-unit cap for a payment tx (ATA-create + transfer + memo), so the

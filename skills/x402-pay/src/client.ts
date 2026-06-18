@@ -7,6 +7,7 @@
 import { Connection } from "@solana/web3.js";
 import {
   DEFAULT_RPC,
+  USDC_MINT,
   atomicToUsdc,
   type SolanaNetwork,
 } from "./constants";
@@ -53,6 +54,13 @@ export function selectRequirement(
       reasons.push("mainnet payment requires allowMainnet=true (real-money opt-in)");
       continue;
     }
+    // The cap is USDC-denominated (6 decimals). Refuse any other mint, or a
+    // malicious challenge could name a more-valuable 6-decimal token and slip
+    // a large transfer under the cap.
+    if (req.asset !== USDC_MINT[req.network]) {
+      reasons.push(`refusing non-USDC asset ${req.asset}`);
+      continue;
+    }
     const usdc = atomicToUsdc(Number(req.maxAmountRequired));
     if (usdc > config.maxAmountUsdc) {
       reasons.push(`${usdc} USDC exceeds maxAmountUsdc cap of ${config.maxAmountUsdc}`);
@@ -64,11 +72,12 @@ export function selectRequirement(
   throw new Error(`x402: refusing to pay — ${reasons.join("; ")}`);
 }
 
-/** Build the X-Payment header value (base64 JSON proof). */
-function buildPaymentHeader(opts: {
+/** Build the X-Payment header value (base64 JSON proof). Field names MUST match
+ *  the gate's X402PaymentProof exactly: { signature, payerAddress, amount, resource }. */
+export function buildPaymentHeader(opts: {
   signature: string;
   payerAddress: string;
-  amountAtomic: string;
+  amount: string;
   resource: string;
 }): string {
   return Buffer.from(JSON.stringify(opts), "utf8").toString("base64");
@@ -114,7 +123,7 @@ export async function fetchWithX402(
   const header = buildPaymentHeader({
     signature,
     payerAddress: signer.publicKey,
-    amountAtomic: req.maxAmountRequired,
+    amount: req.maxAmountRequired,
     resource: req.resource,
   });
 

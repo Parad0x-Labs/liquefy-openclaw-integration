@@ -100,15 +100,12 @@ export async function buildUnsignedPayment(
     lastValidBlockHeight,
   });
 
-  const priorityFee =
-    typeof (req.extra as Record<string, unknown> | undefined)?.priorityFeeMicroLamports === "number"
-      ? Number((req.extra as Record<string, number>).priorityFeeMicroLamports)
-      : DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS;
-
   tx.add(
-    // priority fee + CU cap so the payment lands under mainnet congestion
+    // priority fee + CU cap so the payment lands under mainnet congestion.
+    // Fixed, local value — NEVER read from the (untrusted) 402 challenge, so a
+    // malicious server cannot inflate the SOL fee charged to the payer's wallet.
     ComputeBudgetProgram.setComputeUnitLimit({ units: PAYMENT_COMPUTE_UNIT_LIMIT }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFee }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS }),
     // idempotent: no-op if the recipient already has a USDC account
     createAssociatedTokenAccountIdempotentInstruction(payerPk, payToAta, payToPk, usdcMint),
     createTransferCheckedInstruction(
