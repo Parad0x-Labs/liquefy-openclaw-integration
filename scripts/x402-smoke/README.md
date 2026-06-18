@@ -11,11 +11,16 @@ and an airdrop of devnet SOL for fees. No mainnet, no real funds, no stored keys
 ```bash
 cd scripts/x402-smoke
 npm install --ignore-scripts
+
+# reliable: point it at a funded devnet wallet (the public faucet is flaky)
+solana airdrop 1 -u devnet
+PAYER_KEYPAIR=~/.config/solana/id.json node devnet-smoke.mjs
+
+# or just try the built-in airdrop (works when the public faucet is up)
 node devnet-smoke.mjs
 ```
 
-Optional: set `SOLANA_DEVNET_RPC_URL` to a private devnet RPC if the public one
-rate-limits the airdrop.
+Set `SOLANA_DEVNET_RPC_URL` to a private devnet RPC if the public one rate-limits.
 
 ## What it asserts
 

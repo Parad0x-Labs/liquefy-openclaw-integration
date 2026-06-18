@@ -18,6 +18,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   Connection, Keypair, PublicKey, Transaction, TransactionInstruction,
   LAMPORTS_PER_SOL, sendAndConfirmTransaction,
@@ -85,22 +86,39 @@ async function payMemoOnly(conn, payer, receiptHash) {
   return sendAndConfirmTransaction(conn, tx, [payer], { commitment: "finalized" });
 }
 
-async function main() {
-  const conn = new Connection(RPC, "confirmed");
-  const payer = Keypair.generate();
-  const seller = Keypair.generate();
-  console.log(`RPC ${RPC}`);
-  console.log(`payer  ${payer.publicKey.toBase58()}`);
-  console.log(`seller ${seller.publicKey.toBase58()}`);
+// Funded payer: supply a devnet wallet via PAYER_KEYPAIR for a reliable run
+// (the public devnet faucet often refuses airdrops from shared hosts).
+function loadPayer() {
+  const path = process.env.PAYER_KEYPAIR;
+  if (path) return { kp: Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8")))), supplied: true };
+  return { kp: Keypair.generate(), supplied: false };
+}
 
-  console.log("\nairdropping devnet SOL to payer…");
+async function ensureFunds(conn, payer, supplied) {
+  const MIN = 0.05 * LAMPORTS_PER_SOL;
+  let bal = await conn.getBalance(payer.publicKey, "confirmed");
+  if (bal >= MIN) { console.log(`payer balance ${(bal / LAMPORTS_PER_SOL).toFixed(3)} SOL`); return; }
+  console.log(`payer balance low (${(bal / LAMPORTS_PER_SOL).toFixed(3)} SOL) — trying airdrop…`);
   try {
-    const sig = await conn.requestAirdrop(payer.publicKey, 2 * LAMPORTS_PER_SOL);
-    await conn.confirmTransaction(sig, "confirmed");
-  } catch (e) {
-    console.error(`airdrop failed (${e.message}). Fund ${payer.publicKey.toBase58()} with ~1 devnet SOL and re-run.`);
+    await conn.confirmTransaction(await conn.requestAirdrop(payer.publicKey, LAMPORTS_PER_SOL), "confirmed");
+    bal = await conn.getBalance(payer.publicKey, "confirmed");
+  } catch (e) { console.error(`airdrop failed (${e.message})`); }
+  if (bal < MIN) {
+    console.error(`\nPayer not funded. The public devnet faucet is unreliable — run with a funded devnet wallet:`);
+    console.error(`  solana airdrop 1 -u devnet && PAYER_KEYPAIR=~/.config/solana/id.json node devnet-smoke.mjs`);
+    if (!supplied) console.error(`  …or fund this throwaway address with ~0.1 devnet SOL: ${payer.publicKey.toBase58()}`);
     process.exit(1);
   }
+}
+
+async function main() {
+  const conn = new Connection(RPC, "confirmed");
+  const { kp: payer, supplied } = loadPayer();
+  const seller = Keypair.generate();
+  console.log(`RPC ${RPC}`);
+  console.log(`payer  ${payer.publicKey.toBase58()}${supplied ? " (supplied)" : ""}`);
+  console.log(`seller ${seller.publicKey.toBase58()}\n`);
+  await ensureFunds(conn, payer, supplied);
 
   console.log("creating throwaway test mint + minting to payer…");
   const mint = await createMint(conn, payer, payer.publicKey, null, DECIMALS);
