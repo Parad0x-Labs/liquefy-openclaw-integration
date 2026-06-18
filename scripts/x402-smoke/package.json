@@ -1,0 +1,13 @@
+{
+  "name": "x402-devnet-smoke",
+  "private": true,
+  "type": "module",
+  "description": "Devnet smoke test proving x402-gate verifies real settlement, not just the memo.",
+  "scripts": {
+    "smoke": "node devnet-smoke.mjs"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.0"
+  }
+}
