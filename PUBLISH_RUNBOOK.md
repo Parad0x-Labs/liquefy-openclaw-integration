@@ -32,7 +32,7 @@ single highest-impact publish — do it first.
 
 ```bash
 cd <openclaw-skills>/skills/mcp-server
-npm install
+npm install --ignore-scripts   # never run third-party lifecycle scripts on a host holding the npm token or any key
 npm run build           # tsc → dist/ (verified clean)
 npm publish --access public
 # smoke: npx @parad0x_labs/mcp-server  → should start an MCP stdio server (8 tools)
