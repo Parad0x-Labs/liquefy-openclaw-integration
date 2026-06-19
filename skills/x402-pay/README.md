@@ -15,7 +15,8 @@ transaction's SPL memo, so every settlement is publicly auditable.
   signer, KMS). The skill builds an **unsigned** transaction, hands it to your
   signer, and broadcasts the signed bytes. **It never holds, requests, or reads a
   private key.**
-- **Mainnet by default.** Set `allowMainnet: false` to restrict to devnet.
+- **Real-money is opt-in.** `allowMainnet` defaults **false**; set it `true` to
+  enable mainnet (which also requires an explicit `rpcUrl`).
 - **Hard spend cap.** `maxAmountUsdc` is enforced *before any transaction is
   built*. A 402 demanding more is refused.
 - **Minimal network surface.** Talks only to your configured Solana RPC and the
@@ -35,15 +36,15 @@ transaction's SPL memo, so every settlement is publicly auditable.
 
 ## Install safety
 
-This skill runs where your signer/wallet lives. Install with lifecycle scripts
-disabled so a transitive native addon can't run code on that host:
+This skill runs where your signer/wallet lives. **Install with `--ignore-scripts`**
+so a transitive native addon can't run install-time code on that host:
 
 ```bash
 npm install --ignore-scripts @parad0x_labs/openclaw-x402-pay
 ```
 
-The dependencies are pure-JS (native addons are optional and fall back), so
-`--ignore-scripts` costs nothing.
+This is **required, not optional** for a key-holding host — and free: the deps are
+pure-JS (the native addons are optional and fall back, verified).
 
 ## Standalone or together
 
@@ -87,7 +88,7 @@ pay_x402({ url: "https://api.example.com/premium" })
       "x402-pay": {
         "maxAmountUsdc": 0.50,     // refuse any single payment above this
         "maxTotalUsdc": 50,         // cumulative cap this process (default: 100x per-payment)
-        "allowMainnet": true,       // mainnet (default); false restricts to devnet
+        "allowMainnet": true,       // enable real-money mainnet (opt-in; default false)
         "rpcUrl": "https://..."     // REQUIRED on mainnet (a private RPC)
       }
     }
@@ -99,7 +100,7 @@ pay_x402({ url: "https://api.example.com/premium" })
 |---|---|---|
 | `maxAmountUsdc` | `1.0` | Hard per-payment USDC cap, enforced before building any tx |
 | `maxTotalUsdc` | `100 × maxAmountUsdc` | Cumulative cap across the process (finite; raise for volume) |
-| `allowMainnet` | `true` | Mainnet (real-money). Set `false` to restrict to devnet |
+| `allowMainnet` | `false` | Set `true` to enable real-money mainnet payments (also needs `rpcUrl`) |
 | `allowedRecipients` | — | Optional `payTo` allowlist; if set, any other recipient is refused |
 | `rpcUrl` | — | Solana RPC. **Required on mainnet**; optional on devnet |
 

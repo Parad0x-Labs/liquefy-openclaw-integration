@@ -83,7 +83,7 @@ export interface X402PayResult {
 export interface X402PayConfig {
   /** Hard per-payment cap — refuse any single challenge above this many USDC. */
   maxAmountUsdc: number;
-  /** Allow real-money mainnet payments. Default true (mainnet-default). */
+  /** Allow real-money mainnet payments. Default false (opt-in). */
   allowMainnet: boolean;
   /** Optional cumulative cap across this process's lifetime (defense vs a
    *  malicious endpoint draining the wallet one capped payment at a time). */

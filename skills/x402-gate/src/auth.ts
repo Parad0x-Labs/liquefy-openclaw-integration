@@ -37,17 +37,20 @@ function mac(secret: string, payload: string): string {
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-/** Issue a nonce token bound to `resource`, valid for NONCE_TTL_SEC from `nowSec`. */
-export function issueNonce(resource: string, secret: string, nowSec: number): string {
+/** Issue a nonce token bound to `resource` AND `amountAtomic` (the challenged
+ *  price), valid for NONCE_TTL_SEC from `nowSec`. Binding the price means a nonce
+ *  issued at price X can't be redeemed against a different (e.g. tiny) price. */
+export function issueNonce(resource: string, amountAtomic: string, secret: string, nowSec: number): string {
   const exp = nowSec + NONCE_TTL_SEC;
   const rand = randomBytes(12).toString("hex");
-  return `${exp}.${rand}.${mac(secret, `${exp}.${rand}.${resource}`)}`;
+  return `${exp}.${rand}.${mac(secret, `${exp}.${rand}.${resource}.${amountAtomic}`)}`;
 }
 
-/** Verify a nonce token: well-formed, MAC matches (right issuer + resource), unexpired. */
+/** Verify a nonce token: well-formed, MAC matches (right issuer + resource + price), unexpired. */
 export function verifyNonce(
   token: string | undefined,
   resource: string,
+  amountAtomic: string,
   secret: string,
   nowSec: number,
 ): { ok: boolean; reason?: string } {
@@ -57,7 +60,7 @@ export function verifyNonce(
   const [expStr, rand, gotMac] = parts;
   const exp = Number(expStr);
   if (!Number.isFinite(exp)) return { ok: false, reason: "bad nonce expiry" };
-  const want = mac(secret, `${expStr}.${rand}.${resource}`);
+  const want = mac(secret, `${expStr}.${rand}.${resource}.${amountAtomic}`);
   const a = Buffer.from(gotMac);
   const b = Buffer.from(want);
   if (a.length !== b.length || !timingSafeEqual(a, b)) {

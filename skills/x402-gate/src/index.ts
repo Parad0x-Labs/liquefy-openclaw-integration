@@ -24,7 +24,7 @@
 // Provided by the host OpenClaw runtime at load time (declared as a peer
 // dependency). definePluginEntry is a runtime value, not a type-only import.
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { Connection } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 
 import { DEFAULT_RPC, atomicToUsdc, type SolanaNetwork } from "./constants";
 import { makeChallenge, verifyPaymentStructure, decodePaymentHeader } from "./gate";
@@ -130,10 +130,18 @@ export default definePluginEntry({
         configError =
           "x402-gate requires challengeSecret on mainnet (presenter-auth nonces must verify across " +
           "restarts/instances). Set challengeSecret in config.";
-      } else if (config.receiptScopeSeconds > 0 && !config.replayStorePath) {
+      } else if (config.receiptScopeSeconds > 0 && (!config.replayStorePath || !config.acknowledgeSingleInstance)) {
         configError =
-          "x402-gate requires replayStorePath on mainnet when receiptScopeSeconds>0 — capability-reuse " +
-          "nonce dedupe must be durable. Set replayStorePath.";
+          "x402-gate requires replayStorePath + acknowledgeSingleInstance on mainnet when " +
+          "receiptScopeSeconds>0 — capability-reuse nonce dedupe is durable single-instance only.";
+      }
+    }
+    // Validate the recipient wallet up front (clear error instead of opaque per-request failures).
+    if (!configError && config.recipientAddress) {
+      try {
+        new PublicKey(config.recipientAddress);
+      } catch {
+        configError = "x402-gate: recipientAddress is not a valid Solana public key";
       }
     }
 
@@ -144,7 +152,6 @@ export default definePluginEntry({
         "`body` to an unpaid caller so they know how much to pay and to which address.",
       parameters: {
         resource: { type: "string", description: "The resource id/path being charged for" },
-        priceUsdc: { type: "number", description: "Override the default price (USDC)" },
         description: { type: "string", description: "Human-readable description" },
       },
       async handler(params: Record<string, unknown>) {
@@ -156,15 +163,15 @@ export default definePluginEntry({
         if (!resource) return { error: "resource is required" };
         try {
           const { status, body } = makeChallenge({
-            priceUsdc: typeof params.priceUsdc === "number" ? params.priceUsdc : config.priceUsdc,
+            priceUsdc: config.priceUsdc, // price is seller config ONLY, never caller input
             recipientAddress: config.recipientAddress,
             resource,
             description: params.description ? String(params.description) : undefined,
             network: config.network,
           });
-          // Presenter-binding nonce — the caller signs it with the payer key. The
-          // same nonce seeds the receipt hash, making it unique per challenge.
-          const nonce = issueNonce(resource, secret, Math.floor(Date.now() / 1000));
+          // Presenter-binding nonce — the caller signs it with the payer key. It
+          // commits resource + price, and seeds the receipt hash (unique per challenge).
+          const nonce = issueNonce(resource, body.accepts[0].maxAmountRequired, secret, Math.floor(Date.now() / 1000));
           body.nonce = nonce;
           body.accepts[0].extra = { ...body.accepts[0].extra, nullifierSeed: nonce };
           return { status, body };
@@ -183,7 +190,6 @@ export default definePluginEntry({
       parameters: {
         header: { type: "string", description: "The base64 X-Payment header the caller sent" },
         resource: { type: "string", description: "The resource being accessed (must match the challenge)" },
-        priceUsdc: { type: "number", description: "Override the default price (USDC)" },
       },
       async handler(params: Record<string, unknown>) {
         try {
@@ -205,12 +211,22 @@ export default definePluginEntry({
 
           const now = Math.floor(Date.now() / 1000);
 
+          // Reconstruct the requirement from CONFIG price only (never caller input).
+          // Its amount is both the settlement threshold and the value the nonce
+          // commits to, so a buyer cannot redeem at a cheaper price than challenged.
+          const { requirement } = makeChallenge({
+            priceUsdc: config.priceUsdc,
+            recipientAddress: config.recipientAddress,
+            resource,
+            network: config.network,
+          });
+
           // Presenter-auth: prove control of the paying key by signing the gate's
-          // nonce. Mandatory on mainnet, and ALWAYS required for capability reuse
-          // (the token's only guard). Blocks replay of an observed public proof.
+          // nonce (which commits resource + price). Mandatory on mainnet, and ALWAYS
+          // required for capability reuse. Blocks replay of an observed public proof.
           const needAuth = config.requirePresenterAuth || !!proof.capability;
           if (needAuth) {
-            const n = verifyNonce(proof.nonce, resource, secret, now);
+            const n = verifyNonce(proof.nonce, resource, requirement.maxAmountRequired, secret, now);
             if (!n.ok) return { valid: false, error: `presenter auth failed: ${n.reason}` };
             if (!proof.payerSig || !verifyPayerSignature(proof.payerAddress, proof.nonce as string, proof.payerSig)) {
               return {
@@ -242,14 +258,8 @@ export default definePluginEntry({
             };
           }
 
-          // Payment path. Reconstruct the requirement, binding the receipt hash to
-          // the gate-issued nonce (used as the nullifierSeed) so it's unique per challenge.
-          const { requirement } = makeChallenge({
-            priceUsdc: typeof params.priceUsdc === "number" ? params.priceUsdc : config.priceUsdc,
-            recipientAddress: config.recipientAddress,
-            resource,
-            network: config.network,
-          });
+          // Payment path. Bind the receipt hash to the gate-issued nonce (used as
+          // the nullifierSeed) so it's unique per challenge.
           if (proof.nonce) requirement.extra = { ...requirement.extra, nullifierSeed: proof.nonce };
 
           const structural = verifyPaymentStructure(header, requirement);

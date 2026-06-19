@@ -15,7 +15,7 @@
       },
       "allowMainnet": {
         "type": "boolean",
-        "description": "Authorize real-money payments on solana-mainnet. Default: true. Set false to restrict to devnet."
+        "description": "Authorize real-money payments on solana-mainnet. Default: false (opt-in). Set true to enable; mainnet also requires an explicit rpcUrl."
       },
       "maxTotalUsdc": {
         "type": "number",

@@ -55,11 +55,13 @@ assert("underpaid proof rejected", verifyPaymentStructure(cheap, requirement).va
 // --- 2. presenter auth: nonce + payer-key signature ---
 const secret = "wire-test-secret";
 const now = 1_000_000;
-const nonce = issueNonce(requirement.resource, secret, now);
-assert("issued nonce verifies", verifyNonce(nonce, requirement.resource, secret, now).ok === true);
-assert("nonce rejected for wrong resource", verifyNonce(nonce, "/other", secret, now).ok === false);
-assert("nonce rejected when expired", verifyNonce(nonce, requirement.resource, secret, now + 100_000).ok === false);
-assert("nonce rejected with wrong secret", verifyNonce(nonce, requirement.resource, "other-secret", now).ok === false);
+const amt = requirement.maxAmountRequired;
+const nonce = issueNonce(requirement.resource, amt, secret, now);
+assert("issued nonce verifies", verifyNonce(nonce, requirement.resource, amt, secret, now).ok === true);
+assert("nonce rejected for wrong resource", verifyNonce(nonce, "/other", amt, secret, now).ok === false);
+assert("nonce rejected for wrong price (price-binding)", verifyNonce(nonce, requirement.resource, "1", secret, now).ok === false);
+assert("nonce rejected when expired", verifyNonce(nonce, requirement.resource, amt, secret, now + 100_000).ok === false);
+assert("nonce rejected with wrong secret", verifyNonce(nonce, requirement.resource, amt, "other-secret", now).ok === false);
 
 const payerSig = signMessage(payer.secretKey.slice(0, 32), nonce);
 assert("payer signature verifies (presenter controls the key)", verifyPayerSignature(payer.publicKey.toBase58(), nonce, payerSig) === true);

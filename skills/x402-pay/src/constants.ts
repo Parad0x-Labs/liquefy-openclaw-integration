@@ -43,7 +43,7 @@ export const DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS = 50_000;
 
 /** Compute-unit cap for a payment tx (ATA-create + transfer + memo), so the
  *  priority fee stays bounded and predictable. */
-export const PAYMENT_COMPUTE_UNIT_LIMIT = 60_000;
+export const PAYMENT_COMPUTE_UNIT_LIMIT = 120_000;
 
 /** USDC atomic-unit conversions */
 export function usdcToAtomic(usdc: number): number {

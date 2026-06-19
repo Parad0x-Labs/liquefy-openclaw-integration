@@ -9,7 +9,7 @@
  *     hardware signer, KMS). This plugin builds an UNSIGNED transaction, hands
  *     it to that signer, then broadcasts the signed bytes. It never holds,
  *     requests, or reads a private key.
- *   - MAINNET BY DEFAULT. Set config.allowMainnet=false to restrict to devnet.
+ *   - REAL-MONEY IS OPT-IN. Set config.allowMainnet=true to enable mainnet (also needs rpcUrl).
  *   - HARD SPEND CAP. config.maxAmountUsdc is enforced before any tx is built;
  *     a 402 demanding more is refused.
  *   - NETWORK: talks only to the configured Solana RPC and the target URL.
@@ -87,7 +87,7 @@ export default definePluginEntry({
   description:
     "Let your agent pay for x402-gated APIs, data, and other agents on Solana " +
     "mainnet. Bring your own signer — the skill never holds a private key — with " +
-    "a hard USDC spend cap. Set allowMainnet=false to restrict to devnet.",
+    "a hard USDC spend cap. Set allowMainnet=true to enable real-money mainnet payments.",
   register(api: {
     registerTool: (tool: {
       name: string;

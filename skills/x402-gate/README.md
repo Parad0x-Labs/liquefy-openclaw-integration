@@ -39,11 +39,11 @@ breaks another.
 ## The two tools
 
 ```
-x402_challenge({ resource, priceUsdc?, description? })
+x402_challenge({ resource, description? })
   → { status: 402, body }          // send `body` to an unpaid caller
 
-x402_verify({ header, resource, priceUsdc? })
-  → { valid, payerAddress, amountUsdc, receiptHash, onChainVerified }
+x402_verify({ header, resource })
+  → { valid, payerAddress, amountUsdc, receiptHash, onChainVerified, capability? }
 ```
 
 ## Config
@@ -89,15 +89,15 @@ x402_verify({ header, resource, priceUsdc? })
 
 ## Install safety
 
-This skill runs where your seller wallet lives. Install with lifecycle scripts
-disabled so a transitive native addon can't run code on that host:
+This skill runs where your seller wallet lives. **Install with `--ignore-scripts`**
+so a transitive native addon can't run install-time code on that host:
 
 ```bash
 npm install --ignore-scripts @parad0x_labs/openclaw-x402-gate
 ```
 
-The dependencies are pure-JS (native addons are optional and fall back), so
-`--ignore-scripts` costs nothing.
+This is **required, not optional** for a key-holding host — and free: the deps are
+pure-JS (the native addons are optional and fall back, verified).
 
 ## Flow
 
