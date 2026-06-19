@@ -109,6 +109,8 @@ export function selectRequirement(
     throw new Error("x402: invalid maxAmountUsdc cap (must be a finite positive number) — refusing to pay");
   }
   const reasons: string[] = [];
+  let best: X402PaymentRequirement | null = null;
+  let bestAtomic = 0n;
 
   for (const req of challenge.accepts) {
     if (req.scheme !== "exact") {
@@ -139,9 +141,16 @@ export function selectRequirement(
       reasons.push(`${usdc} USDC exceeds maxAmountUsdc cap of ${config.maxAmountUsdc}`);
       continue;
     }
-    return req;
+    // Among acceptable options pick the CHEAPEST, so a greedy/hostile gate can't
+    // force overpayment by listing an expensive in-cap option first.
+    const atomic = BigInt(req.maxAmountRequired);
+    if (best === null || atomic < bestAtomic) {
+      best = req;
+      bestAtomic = atomic;
+    }
   }
 
+  if (best) return best;
   throw new Error(`x402: refusing to pay — ${reasons.join("; ")}`);
 }
 

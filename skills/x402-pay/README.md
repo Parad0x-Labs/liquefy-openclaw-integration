@@ -25,17 +25,25 @@ transaction's SPL memo, so every settlement is publicly auditable.
 - **Cumulative cap.** `maxTotalUsdc` bounds total spend across the process — not
   just per payment — so a malicious endpoint can't drain the wallet one capped
   payment at a time. Finite default; raise it via config.
-- **No accidental double-pay.** An ambiguous confirmation returns `pending` with the
-  signature (never a clean retryable error), and the client remembers that pending
-  payment per (wallet, host, resource) and re-checks it on the next call instead of
-  paying again. Always verify the returned signature before any manual retry — a
-  forced re-pay across calls is bounded only by the cumulative `maxTotalUsdc` cap.
+- **No accidental double-pay (in-process).** An ambiguous confirmation returns
+  `pending` with the signature (never a clean retryable error), and the client
+  remembers that pending payment per (wallet, host, resource) and re-checks it on
+  the next call instead of paying again.
 - **Pay once, reuse.** When the gate issues a capability receipt, the client
   caches it and reuses access to that resource within its scope without paying
   again (presenter-bound, so a stolen token is useless to anyone else).
 
 > **Non-custodial and spend-capped.** Your agent signs with its own wallet; no
 > single payment exceeds the cap you set.
+
+> ⚠️ **Restart durability.** The double-pay guard, the cumulative `maxTotalUsdc`
+> cap, and the distinct-recipient cap are **in-memory and do NOT survive a process
+> restart**. If a payment returns `pending` and the process restarts before you
+> reconcile that signature on-chain, the next call for the same resource can
+> broadcast a **second real payment**. For autonomous real-money use: run a single
+> persistent process, reconcile any `pending` signature before restarting, and (for
+> production) back the spend state with a durable host store. The per-payment
+> `maxAmountUsdc` cap is the only rail that survives a restart.
 
 ## Install safety
 
