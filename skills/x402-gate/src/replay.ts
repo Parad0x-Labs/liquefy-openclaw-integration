@@ -14,7 +14,7 @@
  * server code with config.dedupe=false on the tool.
  */
 
-import { existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 
 export interface ReplayStore {
@@ -55,7 +55,52 @@ export class FileReplayStore implements ReplayStore {
     } else {
       mkdirSync(dirname(path), { recursive: true });
     }
+    this.acquireLock();
   }
+
+  /** Refuse to start if another live process already holds this store path — the
+   *  file store is NOT shared across instances, so a second replica would create a
+   *  divergent dedup set and let one payment be redeemed per replica. Enforced, not
+   *  attested. A stale lock from a dead pid is taken over. */
+  private acquireLock(): void {
+    const lockPath = `${this.path}.lock`;
+    const pid = String(process.pid);
+    try {
+      writeFileSync(lockPath, pid, { flag: "wx" });
+    } catch {
+      let holder = "";
+      try {
+        holder = readFileSync(lockPath, "utf8").trim();
+      } catch {
+        /* ignore */
+      }
+      const oldPid = Number(holder);
+      let alive = false;
+      if (Number.isInteger(oldPid) && oldPid > 0) {
+        try {
+          process.kill(oldPid, 0);
+          alive = true;
+        } catch {
+          alive = false;
+        }
+      }
+      if (alive) {
+        throw new Error(
+          `x402-gate: replay store ${this.path} is held by another running instance (pid ${holder}). ` +
+            `FileReplayStore is single-instance — run one instance, or use dedupe=false with your own shared store.`,
+        );
+      }
+      writeFileSync(lockPath, pid); // stale lock (holder dead) — take it over
+    }
+    process.once("exit", () => {
+      try {
+        unlinkSync(lockPath);
+      } catch {
+        /* best effort */
+      }
+    });
+  }
+
   consume(key: string): boolean {
     if (!key || this.seen.has(key)) return false;
     this.seen.add(key);

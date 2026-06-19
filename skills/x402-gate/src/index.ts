@@ -100,14 +100,24 @@ export default definePluginEntry({
   }) {
     const config = readConfig(api.config);
     const secret = resolveSecret(config.challengeSecret);
-    const replayStore: ReplayStore = config.replayStorePath
-      ? new FileReplayStore(config.replayStorePath)
-      : new InMemoryReplayStore();
 
-    // Fail-closed on unsafe mainnet config: surface the error from every tool call
-    // (don't throw at load — that could crash the host — and don't silently degrade).
+    // Fail-closed on unsafe config: surface the error from every tool call (don't
+    // throw at load — that could crash the host — and don't silently degrade).
     let configError: string | null = null;
-    if (config.network === "solana-mainnet") {
+
+    // The file store takes a single-instance lock on construction; if another live
+    // instance already holds the path, refuse (fail-closed) rather than run a
+    // divergent dedup set that would let one payment be redeemed per replica.
+    let replayStore: ReplayStore = new InMemoryReplayStore();
+    if (config.replayStorePath) {
+      try {
+        replayStore = new FileReplayStore(config.replayStorePath);
+      } catch (e) {
+        configError = e instanceof Error ? e.message : String(e);
+      }
+    }
+
+    if (!configError && config.network === "solana-mainnet") {
       if (!config.requireOnChain) {
         configError =
           "x402-gate refuses requireOnChain=false on mainnet — that serves paid content without " +
@@ -147,6 +157,12 @@ export default definePluginEntry({
       } catch {
         configError = "x402-gate: recipientAddress is not a valid Solana public key";
       }
+    }
+    // A present-but-malformed priceUsdc (e.g. "5" from an env/JSON pipeline) must
+    // fail loud, not silently fall back to a cheap default price.
+    const rawPrice = (api.config ?? {}).priceUsdc;
+    if (!configError && rawPrice !== undefined && !(typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0)) {
+      configError = "x402-gate: priceUsdc must be a finite positive number";
     }
 
     api.registerTool({

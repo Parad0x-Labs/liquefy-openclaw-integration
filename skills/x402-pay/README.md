@@ -43,8 +43,9 @@ so a transitive native addon can't run install-time code on that host:
 npm install --ignore-scripts @parad0x_labs/openclaw-x402-pay
 ```
 
-This is **required, not optional** for a key-holding host — and free: the deps are
-pure-JS (the native addons are optional and fall back, verified).
+This is **required, not optional** for a key-holding host. `--ignore-scripts` skips
+the transitive native builds (e.g. `bigint-buffer`); the libraries fall back to
+pure-JS at runtime, so nothing is lost (verified).
 
 ## Standalone or together
 
