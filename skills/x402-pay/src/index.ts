@@ -4,7 +4,7 @@
  * Gives an agent one tool, `pay_x402`, that fetches an x402-gated URL and, if it
  * answers HTTP 402, pays for it on Solana and returns the resource.
  *
- * Trust model (v1.0.0):
+ * Trust model (v1.1.0):
  *   - BRING YOUR OWN SIGNER. The host supplies an X402Signer (wallet adapter,
  *     hardware signer, KMS). This plugin builds an UNSIGNED transaction, hands
  *     it to that signer, then broadcasts the signed bytes. It never holds,

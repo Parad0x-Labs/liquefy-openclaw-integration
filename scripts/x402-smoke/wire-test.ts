@@ -12,7 +12,7 @@
  */
 
 import { createPrivateKey, sign as edSign } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Keypair, PublicKey, type TransactionInstruction } from "@solana/web3.js";
@@ -109,12 +109,12 @@ const ledgerDir = mkdtempSync(join(tmpdir(), "x402-ledger-"));
 const ledgerPath = join(ledgerDir, "spend.json");
 const l1 = new SpendLedger(ledgerPath);
 assert("ledger with a path reports durable", l1.durable === true);
-l1.addSpend(0.5);
-l1.setPending("payer|host|/premium", "pendingSig123");
-l1.addRecipient("RecipientOne");
+l1.recordBroadcast("payer|host|/premium", "pendingSig123", 1000, 0.5, "RecipientOne");
 const l2 = new SpendLedger(ledgerPath); // simulate process restart
 assert("ledger persists cumulative spend across restart", l2.totalSpent() === 0.5);
-assert("ledger persists pending signature across restart", l2.getPending("payer|host|/premium") === "pendingSig123");
+const p5 = l2.getPending("payer|host|/premium");
+assert("ledger persists pending signature across restart", p5?.signature === "pendingSig123");
+assert("ledger persists pending blockhash window across restart", p5?.lastValidBlockHeight === 1000);
 assert("ledger persists distinct recipients across restart", l2.hasRecipient("RecipientOne") && l2.recipientCount() === 1);
 l2.clearPending("payer|host|/premium");
 const l3 = new SpendLedger(ledgerPath);
@@ -134,16 +134,24 @@ assert("maxAmountUsdc=NaN refuses all payment", refuses(baseCfg(NaN)));
 assert("maxAmountUsdc=Infinity refuses all payment", refuses(baseCfg(Infinity)));
 assert("positive cap above price selects the requirement", !refuses(baseCfg(1)));
 
-// --- 7. write-ahead ledger record (round-14/15 double-pay fix) ---
-const waDir = mkdtempSync(join(tmpdir(), "x402-wa-"));
-const waPath = join(waDir, "spend.json");
-const wl = new SpendLedger(waPath);
-wl.recordBroadcast("payer|host|/res", "sigWriteAhead", 0.25, "RecipWA");
-const wl2 = new SpendLedger(waPath); // restart
-assert("recordBroadcast persists the pending marker", wl2.getPending("payer|host|/res") === "sigWriteAhead");
-assert("recordBroadcast persists the spend", wl2.totalSpent() === 0.25);
-assert("recordBroadcast persists the recipient", wl2.hasRecipient("RecipWA") && wl2.recipientCount() === 1);
-rmSync(waDir, { recursive: true, force: true });
+// --- 7. ledger fails CLOSED on a corrupt file, never silently zeroes (round-16) ---
+const corruptDir = mkdtempSync(join(tmpdir(), "x402-corrupt-"));
+const corruptPath = join(corruptDir, "spend.json");
+writeFileSync(corruptPath, "{ this is not valid json", "utf8");
+let corruptThrew = false;
+try {
+  new SpendLedger(corruptPath);
+} catch {
+  corruptThrew = true;
+}
+assert("corrupt ledger fails CLOSED (constructor throws, no silent zero)", corruptThrew === true);
+// and a healthy round-trip after writing a real record still loads (atomic write)
+writeFileSync(corruptPath, "", "utf8"); // truncate to empty to clear the bad content
+rmSync(corruptPath, { force: true });
+const healthy = new SpendLedger(corruptPath);
+healthy.recordBroadcast("ck", "okSig", 42, 0.01, "R");
+assert("atomic write round-trips after a clean start", new SpendLedger(corruptPath).getPending("ck")?.signature === "okSig");
+rmSync(corruptDir, { recursive: true, force: true });
 
 // --- 8. vendored SPL builders are byte-identical to @solana/spl-token ---
 // (proves dropping the @solana/spl-token dep — and its bigint-buffer chain — did

@@ -132,10 +132,24 @@ nothing is lost (verified on this skill's dependency tree).
 3. `x402_verify` checks it. With `requireOnChain`, it confirms the transaction
    settled before you serve the resource.
 
+## Operations
+
+- **Rate-limit `x402_verify`.** With `requireOnChain`, each call may cost one
+  `getTransaction` on your metered RPC. Presenter-auth limits callers to keypair
+  holders (each attempt costs them a signature) but does not rate-limit — put a
+  per-source / per-payer limit in front of the endpoint so an unpaid caller can't
+  run up your RPC bill.
+- **Run one instance per `replayStorePath`.** The file replay store is
+  single-writer; the gate refuses to start if another live process holds the lock.
+  For multiple replicas, use `dedupe=false` + your own shared store (Redis/DB) and
+  set `acknowledgeExternalReplayStore=true`.
+
 ## No external @parad0x_labs dependency
 
-Constants and wire types are vendored inline. The only runtime dependency is the
-well-known `@solana/web3.js` (used solely for on-chain confirmation).
+Constants and wire types are vendored inline. The runtime dependencies are the
+well-known `@solana/web3.js` (on-chain confirmation) and `bs58` (decoding the SPL
+Memo instruction for program-attested receipt binding) — both pure JS. A production
+`npm audit --omit=dev --omit=peer` reports 0 high (gated at publish).
 
 ## Source
 

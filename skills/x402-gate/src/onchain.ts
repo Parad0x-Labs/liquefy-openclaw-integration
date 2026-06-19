@@ -73,20 +73,24 @@ function recipientDelta(
   return delta;
 }
 
+type CompiledIx = { programIdIndex: number; data: Uint8Array | string };
+
 /** Memo strings carried by instructions that are PROVABLY SPL-Memo-program calls
  *  in this tx — program-attested, not a substring scan of the logs (which any
- *  program can write). Handles both legacy (base58 instruction data) and v0
- *  (Uint8Array) message shapes. */
+ *  program can write). Walks BOTH top-level instructions and CPI inner instructions
+ *  (so a memo emitted inside a CPI still counts), and handles both legacy (base58
+ *  instruction data) and v0 (Uint8Array) message shapes. */
 function programAttestedMemos(tx: unknown): string[] {
   const message = (tx as { transaction?: { message?: unknown } })?.transaction?.message as
     | {
         getAccountKeys?: (a?: { accountKeysFromLookups?: unknown }) => { get(i: number): PublicKey | undefined };
-        compiledInstructions?: { programIdIndex: number; data: Uint8Array }[];
-        instructions?: { programIdIndex: number; data: string }[];
+        compiledInstructions?: CompiledIx[];
+        instructions?: CompiledIx[];
       }
     | undefined;
   if (!message?.getAccountKeys) return [];
-  const meta = (tx as { meta?: { loadedAddresses?: unknown } })?.meta;
+  const meta = (tx as { meta?: { loadedAddresses?: unknown; innerInstructions?: { instructions: CompiledIx[] }[] } })
+    ?.meta;
   let keys: { get(i: number): PublicKey | undefined };
   try {
     keys = message.getAccountKeys({ accountKeysFromLookups: meta?.loadedAddresses });
@@ -97,15 +101,17 @@ function programAttestedMemos(tx: unknown): string[] {
       return [];
     }
   }
-  const instrs: { programIdIndex: number; data: Uint8Array | string }[] =
-    message.compiledInstructions ?? message.instructions ?? [];
   const memos: string[] = [];
-  for (const ix of instrs) {
-    const pid = keys.get(ix.programIdIndex);
-    if (!pid || pid.toBase58() !== MEMO_PROGRAM_ID) continue;
-    const bytes = typeof ix.data === "string" ? Buffer.from(bs58.decode(ix.data)) : Buffer.from(ix.data ?? []);
-    memos.push(bytes.toString("utf8"));
-  }
+  const collect = (list: CompiledIx[]) => {
+    for (const ix of list) {
+      const pid = keys.get(ix.programIdIndex);
+      if (!pid || pid.toBase58() !== MEMO_PROGRAM_ID) continue;
+      const bytes = typeof ix.data === "string" ? Buffer.from(bs58.decode(ix.data)) : Buffer.from(ix.data ?? []);
+      memos.push(bytes.toString("utf8"));
+    }
+  };
+  collect(message.compiledInstructions ?? message.instructions ?? []);
+  for (const group of meta?.innerInstructions ?? []) collect(group.instructions ?? []);
   return memos;
 }
 

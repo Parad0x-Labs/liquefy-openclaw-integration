@@ -301,29 +301,46 @@ export async function fetchWithX402(
 
   // Cross-call double-pay guard: if a prior payment for this (wallet,host,resource)
   // is still unredeemed, re-check it on-chain before building another transfer.
-  const pendingSig = led.getPending(ckey);
-  if (pendingSig) {
+  const pending = led.getPending(ckey);
+  if (pending) {
     const probe = new Connection(rpcUrl, "confirmed");
-    const st = (await probe.getSignatureStatus(pendingSig, { searchTransactionHistory: true })).value;
+    const st = (await probe.getSignatureStatus(pending.signature, { searchTransactionHistory: true })).value;
     if (st && !st.err && st.confirmationStatus === "finalized") {
       return {
         ok: false,
         status: 0,
-        paymentSignature: pendingSig,
+        paymentSignature: pending.signature,
         network,
-        error: `x402: a prior payment for this resource has finalized (signature ${pendingSig}) — redeem it; not paying again`,
+        error: `x402: a prior payment for this resource has finalized (signature ${pending.signature}) — redeem it; not paying again`,
       };
     }
-    if (!st || st.err) {
-      led.clearPending(ckey); // failed or dropped — safe to pay again
+    if (st?.err) {
+      led.clearPending(ckey); // landed + failed → no funds moved → safe to pay again
+    } else if (!st) {
+      // Not seen on-chain. Only safe to clear + re-pay once the blockhash window has
+      // passed (past lastValidBlockHeight the tx can NEVER land); until then a "null"
+      // status may just be RPC lag on a tx that DID land — treat as pending, never re-pay.
+      const height = await probe.getBlockHeight("confirmed");
+      if (height > pending.lastValidBlockHeight) {
+        led.clearPending(ckey); // window expired → tx is dead → safe to pay again
+      } else {
+        return {
+          ok: false,
+          status: 0,
+          paymentSignature: pending.signature,
+          network,
+          pending: true,
+          error: `x402: a prior payment for this resource is not yet final and its blockhash window is still open (signature ${pending.signature}) — verify before retrying`,
+        };
+      }
     } else {
       return {
         ok: false,
         status: 0,
-        paymentSignature: pendingSig,
+        paymentSignature: pending.signature,
         network,
         pending: true,
-        error: `x402: a prior payment for this resource is still pending (signature ${pendingSig}) — verify before retrying`,
+        error: `x402: a prior payment for this resource is still pending (signature ${pending.signature}) — verify before retrying`,
       };
     }
   }
@@ -359,7 +376,7 @@ export async function fetchWithX402(
       connection,
       signer,
       req,
-      (sig) => led.recordBroadcast(ckey, sig, reqUsdc, req.payTo),
+      (sig, lvbh) => led.recordBroadcast(ckey, sig, lvbh, reqUsdc, req.payTo),
     ));
   } catch (e) {
     // Reached only on a DEFINITIVE on-chain execution error (the tx landed and

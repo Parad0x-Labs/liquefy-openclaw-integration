@@ -29,7 +29,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { DEFAULT_RPC, PRESENTER_AUTH_DOMAIN, atomicToUsdc, type SolanaNetwork } from "./constants";
 import { makeChallenge, verifyPaymentStructure, decodePaymentHeader } from "./gate";
 import { confirmOnChain } from "./onchain";
-import { InMemoryReplayStore, FileReplayStore, type ReplayStore } from "./replay";
+import { InMemoryReplayStore, FileReplayStore, TTLReplayStore, type ReplayStore } from "./replay";
 import {
   resolveSecret,
   issueNonce,
@@ -116,6 +116,11 @@ export default definePluginEntry({
         configError = e instanceof Error ? e.message : String(e);
       }
     }
+    // Nonces are short-lived and high-churn (a fresh one per capability reuse), so
+    // they get a TTL-pruned in-memory store that self-expires — keeping the durable
+    // append-only store reserved for tx signatures (the permanent money record), so a
+    // reuse loop can't grow the durable file/Set without bound.
+    const nonceStore = new TTLReplayStore();
 
     if (!configError && config.network === "solana-mainnet") {
       if (!config.requireOnChain) {
@@ -270,7 +275,7 @@ export default definePluginEntry({
             // are only enabled with dedupe=true (enforced above on mainnet), so this
             // store is authoritative; never silently dedupe reuse against a per-host
             // store while the operator believes an external shared store covers it.
-            if (config.dedupe && !replayStore.consume(`nonce:${proof.nonce}`)) {
+            if (config.dedupe && !nonceStore.consume(`nonce:${proof.nonce}`)) {
               return { valid: false, error: "nonce already used" };
             }
             return {
@@ -319,7 +324,7 @@ export default definePluginEntry({
             if (!replayStore.consume(structural.signature)) {
               return { valid: false, error: "payment already used (replay)" };
             }
-            if (proof.nonce && !replayStore.consume(`nonce:${proof.nonce}`)) {
+            if (proof.nonce && !nonceStore.consume(`nonce:${proof.nonce}`)) {
               return { valid: false, error: "challenge nonce already used — request a fresh 402 challenge per payment" };
             }
           }

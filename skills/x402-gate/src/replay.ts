@@ -40,6 +40,32 @@ export class InMemoryReplayStore implements ReplayStore {
   }
 }
 
+/** In-memory, TTL-pruned store for SHORT-LIVED keys whose expiry is embedded as the
+ *  first dot-delimited segment of the final colon field — the gate's nonce format
+ *  `<expSec>.<rand>.<hmac>` (here keyed as `nonce:<expSec>.<rand>.<hmac>`). Entries
+ *  self-expire, so high-rate capability reuse (a fresh nonce per call) can't grow it
+ *  without bound, unlike the permanent signature store. In-memory by design: a
+ *  nonce's replay window is only its short TTL, and the durable signature store still
+ *  prevents re-redeeming a settled PAYMENT across restarts. */
+export class TTLReplayStore implements ReplayStore {
+  private seen = new Map<string, number>(); // key -> expiry epoch seconds
+  private lastSweep = 0;
+  consume(key: string): boolean {
+    if (!key) return false;
+    const now = Math.floor(Date.now() / 1000);
+    if (now > this.lastSweep) {
+      // amortized prune (at most once per second) so the map can't accumulate dead keys
+      for (const [k, exp] of this.seen) if (exp <= now) this.seen.delete(k);
+      this.lastSweep = now;
+    }
+    if (this.seen.has(key)) return false;
+    const embedded = Number(key.split(":").pop()?.split(".")[0]);
+    const exp = Number.isFinite(embedded) && embedded > now ? embedded : now + 600; // fallback TTL
+    this.seen.set(key, exp);
+    return true;
+  }
+}
+
 /** Durable single-instance store: consumed keys are appended to a file and
  *  reloaded on startup, so a restart does not reopen replay. For MULTI-instance
  *  deployments implement ReplayStore over a shared backend (Redis SETNX / a DB

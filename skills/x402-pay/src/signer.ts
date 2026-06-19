@@ -227,11 +227,12 @@ export async function broadcastSigned(
 /**
  * Full BYO-signer round: build → owner signs → (write-ahead hook) → broadcast.
  *
- * `onBeforeBroadcast` is invoked with the locally-derived signature AFTER signing
- * but BEFORE the tx is handed to the network, so the caller can durably persist a
- * recheck marker first. Invariant: once a signed tx reaches sendRawTransaction, a
- * marker that re-checks this signature is already persisted — so a throw or crash
- * during broadcast can never lose the signature and let a retry pay twice.
+ * `onBeforeBroadcast` is invoked with the locally-derived signature and the tx's
+ * lastValidBlockHeight AFTER signing but BEFORE the tx is handed to the network, so
+ * the caller can durably persist a recheck marker first. Invariant: once a signed
+ * tx reaches sendRawTransaction, a marker that re-checks this signature is already
+ * persisted — so a throw or crash during broadcast can never lose the signature and
+ * let a retry pay twice.
  *
  * status "pending" means confirmation was ambiguous — the caller MUST surface the
  * signature and must NOT retry-pay without checking it first.
@@ -240,12 +241,12 @@ export async function payWithSigner(
   connection: Connection,
   signer: X402Signer,
   req: X402PaymentRequirement,
-  onBeforeBroadcast?: (signature: string) => void | Promise<void>,
+  onBeforeBroadcast?: (signature: string, lastValidBlockHeight: number) => void | Promise<void>,
 ): Promise<{ signature: string; receiptHash: string; amountUsdc: number; status: "confirmed" | "pending" }> {
   const unsigned = await buildUnsignedPayment(connection, signer.publicKey, req);
   const signedTxBase64 = await signer.signTransaction(unsigned.txBase64);
   const signature = signatureOf(signedTxBase64); // known before any network send
-  if (onBeforeBroadcast) await onBeforeBroadcast(signature);
+  if (onBeforeBroadcast) await onBeforeBroadcast(signature, unsigned.lastValidBlockHeight);
   const { status } = await broadcastSigned(
     connection,
     signedTxBase64,

@@ -49,14 +49,17 @@ function programAttestedMemos(tx) {
   let keys;
   try { keys = message.getAccountKeys({ accountKeysFromLookups: tx.meta?.loadedAddresses }); }
   catch { try { keys = message.getAccountKeys(); } catch { return []; } }
-  const instrs = message.compiledInstructions ?? message.instructions ?? [];
   const memos = [];
-  for (const ix of instrs) {
-    const pid = keys.get(ix.programIdIndex);
-    if (!pid || pid.toBase58() !== MEMO_PROGRAM_ID.toBase58()) continue;
-    const bytes = typeof ix.data === "string" ? Buffer.from(bs58.decode(ix.data)) : Buffer.from(ix.data ?? []);
-    memos.push(bytes.toString("utf8"));
-  }
+  const collect = (list) => {
+    for (const ix of list) {
+      const pid = keys.get(ix.programIdIndex);
+      if (!pid || pid.toBase58() !== MEMO_PROGRAM_ID.toBase58()) continue;
+      const bytes = typeof ix.data === "string" ? Buffer.from(bs58.decode(ix.data)) : Buffer.from(ix.data ?? []);
+      memos.push(bytes.toString("utf8"));
+    }
+  };
+  collect(message.compiledInstructions ?? message.instructions ?? []);
+  for (const group of tx.meta?.innerInstructions ?? []) collect(group.instructions ?? []);
   return memos;
 }
 
