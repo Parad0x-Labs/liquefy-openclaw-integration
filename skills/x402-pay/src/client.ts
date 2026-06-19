@@ -348,8 +348,12 @@ export async function fetchWithX402(
       // Not seen on-chain. Only safe to clear + re-pay once the blockhash window has
       // passed (past lastValidBlockHeight the tx can NEVER land); until then a "null"
       // status may just be RPC lag on a tx that DID land — treat as pending, never re-pay.
-      const height = await probe.getBlockHeight("confirmed");
-      if (height > pending.lastValidBlockHeight) {
+      // A non-positive/unknown window (e.g. a legacy or corrupted ledger entry) is NOT
+      // auto-cleared: we cannot prove the tx is dead, so require manual reconciliation
+      // rather than risk re-paying an in-flight payment.
+      const windowKnown = Number.isFinite(pending.lastValidBlockHeight) && pending.lastValidBlockHeight > 0;
+      const height = windowKnown ? await probe.getBlockHeight("confirmed") : 0;
+      if (windowKnown && height > pending.lastValidBlockHeight) {
         led.clearPending(ckey); // window expired → tx is dead → safe to pay again
       } else {
         return {
@@ -358,7 +362,9 @@ export async function fetchWithX402(
           paymentSignature: pending.signature,
           network,
           pending: true,
-          error: `x402: a prior payment for this resource is not yet final and its blockhash window is still open (signature ${pending.signature}) — verify before retrying`,
+          error: windowKnown
+            ? `x402: a prior payment for this resource is not yet final and its blockhash window is still open (signature ${pending.signature}) — verify before retrying`
+            : `x402: a prior payment for this resource has an unknown confirmation window (signature ${pending.signature}) — verify it on-chain and clear the ledger entry manually before retrying (not re-paying)`,
         };
       }
     } else {

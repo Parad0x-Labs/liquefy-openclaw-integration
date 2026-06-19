@@ -54,8 +54,14 @@ export class InMemoryReplayStore implements ReplayStore {
     if (exp <= now) return false; // refuse an already-expired nonce (defensive)
     this.seen.set(key, exp);
     if (this.seen.size > this.maxEntries) {
-      const oldest = this.seen.keys().next().value;
-      if (oldest !== undefined) this.seen.delete(oldest);
+      // Evict only the oldest EXPIRABLE (nonce) key — never a permanent signature,
+      // which would silently reopen the replay window for a settled payment.
+      for (const [k, e] of this.seen) {
+        if (e !== Infinity) {
+          this.seen.delete(k);
+          break;
+        }
+      }
     }
     return true;
   }
@@ -123,7 +129,22 @@ export class FileReplayStore implements ReplayStore {
             `FileReplayStore is single-instance — run one instance, or use dedupe=false with your own shared store.`,
         );
       }
-      writeFileSync(this.lockPath, pid); // stale lock (holder dead) — take it over
+      // Stale lock (holder dead) — take it over ATOMICALLY: remove it, then re-create
+      // EXCLUSIVELY. If another reviving process raced us to the exclusive create, we
+      // lose and refuse, closing the concurrent double-start divergence window.
+      try {
+        unlinkSync(this.lockPath);
+      } catch {
+        /* another process may have already removed it */
+      }
+      try {
+        writeFileSync(this.lockPath, pid, { flag: "wx" });
+      } catch {
+        throw new Error(
+          `x402-gate: replay store ${this.path} lock was contended during stale-lock takeover — ` +
+            `another instance won the race; refusing to start (FileReplayStore is single-instance).`,
+        );
+      }
     }
     this.onExit = () => {
       try {

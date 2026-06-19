@@ -1,5 +1,11 @@
 # openclaw-x402-pay — self-custody x402 payments for OpenClaw agents
 
+> 🔒 **Install on a wallet host with `npm install --ignore-scripts`** (or `--omit=optional`).
+> This package runs where your signer key lives; `--ignore-scripts` blocks any
+> transitive install-time code. The only native addons are optional and unused here,
+> so nothing is lost. npm can't enforce this from inside a package — it's on you.
+> [Details ↓](#install-safety)
+
 > 💜 If it earns its keep, [star openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills) — stars are how agent builders find it.
 
 Give your agent one tool — `pay_x402` — that fetches an x402-gated URL and, if it
@@ -32,6 +38,11 @@ transaction's SPL memo, so every settlement is publicly auditable.
 - **Pay once, reuse.** When the gate issues a capability receipt, the client
   caches it and reuses access to that resource within its scope without paying
   again (presenter-bound, so a stolen token is useless to anyone else).
+- **SSRF guard.** The fetch target must be http(s) and is refused if it points at
+  a loopback / link-local / private / cloud-metadata host — so a prompt-injected
+  agent can't turn the wallet host into an internal-network read primitive. (Literal
+  hosts only; DNS names that resolve to private IPs aren't caught.) Set
+  `allowInternalHosts=true` only for local-dev testing.
 
 > **Non-custodial and spend-capped.** Your agent signs with its own wallet; no
 > single payment exceeds the cap you set.
@@ -77,7 +88,10 @@ The previously-pulled, unmaintained `bigint-buffer` (advisory GHSA-3gc7-fjrx-p6m
 is now **gone** — its only path in was `@solana/spl-token`, whose three instruction
 builders are vendored here, so the runtime deps are just `@solana/web3.js` and
 `bs58` (both pure JS). A production `npm audit --omit=dev --omit=peer` reports
-**0 high** (gated at publish via `prepublishOnly`).
+**0 high** (gated at publish via `prepublishOnly`). Three *moderate* advisories
+remain, all intrinsic to `@solana/web3.js` 1.x's own tree (`web3.js`, `jayson`,
+`uuid@8.3.2` / GHSA-w5hq-g745-h8pq) — not reachable from skill code and unfixable
+without web3.js 2.x (a non-drop-in rewrite); the `--audit-level=high` gate stands.
 
 ## Standalone or together
 
@@ -112,6 +126,10 @@ pay_x402({ url: "https://api.example.com/premium" })
 → { ok, status, body, paymentSignature, receiptHash, amountUsdc, payTo, network }
 ```
 
+> `pay_x402` is intended for **idempotent** (typically GET) fetches: on a 402 it pays
+> once and retries the request. It does not take a request body; the initial probe and
+> the paid retry hit the same URL, so use it for safe-to-repeat reads.
+
 ## Config
 
 ```jsonc
@@ -139,6 +157,7 @@ pay_x402({ url: "https://api.example.com/premium" })
 | `maxDistinctRecipients` | `100` | Max distinct recipients funded per process — bounds SOL spent on recipient ATA rent (USDC caps don't bound SOL) |
 | `rpcUrl` | — | Solana RPC. **Required on mainnet**; optional on devnet |
 | `spendLedgerPath` | — | Path to a durable spend-ledger file. Persists the cumulative cap, double-pay guard, and recipient cap across restarts. **Required on mainnet**; single-writer (one process per file) |
+| `allowInternalHosts` | `false` | Turns OFF the SSRF guard (allows loopback/link-local/private hosts). Set `true` ONLY for local-dev testing against a localhost gate — never on a wallet host |
 
 ## How a payment flows
 

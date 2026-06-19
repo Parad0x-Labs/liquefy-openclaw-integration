@@ -277,9 +277,10 @@ export default definePluginEntry({
             if (!cap.ok) return { valid: false, error: `capability invalid: ${cap.reason}` };
             // Single-use nonce against the DURABLE replay store (it survives restart —
             // critical here, since this reuse path has no on-chain check, so the nonce
-            // is the only thing stopping a captured reuse bundle from being replayed).
-            // Capabilities are only enabled with dedupe=true + replayStorePath on mainnet.
-            if (config.dedupe && !replayStore.consume(`nonce:${proof.nonce}`)) {
+            // is the ONLY thing stopping a captured reuse bundle from being replayed).
+            // UNCONDITIONAL (not gated by config.dedupe): a captured reuse bundle must
+            // be single-use on every network, including devnet where dedupe may be off.
+            if (!replayStore.consume(`nonce:${proof.nonce}`)) {
               return { valid: false, error: "nonce already used" };
             }
             return {

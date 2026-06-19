@@ -1,5 +1,11 @@
 # openclaw-x402-gate — charge other agents with x402 on Solana
 
+> 🔒 **Install on a wallet host with `npm install --ignore-scripts`** (or `--omit=optional`).
+> This package runs where your seller key lives; `--ignore-scripts` blocks any
+> transitive install-time code. The only native addons are optional and unused here,
+> so nothing is lost. npm can't enforce this from inside a package — it's on you.
+> [Details ↓](#install-safety)
+
 > 💜 If it earns its keep, [star openclaw-skills](https://github.com/Parad0x-Labs/openclaw-skills) — stars are how agent builders find it.
 
 Turn any OpenClaw skill or API into a paid endpoint. Mint an HTTP **402 Payment
