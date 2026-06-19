@@ -23,6 +23,7 @@
  */
 
 import type { Connection } from "@solana/web3.js";
+import { MEMO_PREFIX } from "./constants";
 
 export interface OnChainExpect {
   /** unique receipt hash for this charge (must appear in the tx memo) */
@@ -101,10 +102,20 @@ export async function confirmOnChain(
     return { confirmed: false, reason: `transaction failed on-chain: ${JSON.stringify(tx.meta.err)}` };
   }
 
-  // (1) Bind to THIS charge — the unique receipt hash must be in the memo.
+  // (1) Bind to THIS charge — the tx must carry EXACTLY ONE receipt memo, and it
+  //     must be this charge's. Requiring a single memo stops one transfer (to a
+  //     shared recipient wallet) from carrying several receipt hashes and settling
+  //     multiple charges/gates for the price of one (cross-gate double-counting).
   const logs = tx.meta?.logMessages?.join("\n") ?? "";
-  if (!logs.includes(expect.receiptHash)) {
-    return { confirmed: false, reason: "memo missing the expected receipt hash (payment not bound to this charge)" };
+  const receiptMemoCount = logs.split(`${MEMO_PREFIX}:`).length - 1;
+  if (receiptMemoCount === 0) {
+    return { confirmed: false, reason: "no receipt memo found (payment not bound to this charge)" };
+  }
+  if (receiptMemoCount > 1) {
+    return { confirmed: false, reason: "transaction carries multiple receipt memos — not a single-charge payment" };
+  }
+  if (!logs.includes(`${MEMO_PREFIX}:${expect.receiptHash}`)) {
+    return { confirmed: false, reason: "receipt memo does not match this charge" };
   }
 
   // (2) Prove money actually moved — the recipient's token balance for the

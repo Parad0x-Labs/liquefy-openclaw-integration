@@ -52,7 +52,10 @@ async function confirmOnChain(conn, signature, expect) {
   if (tx.meta?.err) return { confirmed: false, reason: `tx failed: ${JSON.stringify(tx.meta.err)}` };
 
   const logs = (tx.meta?.logMessages ?? []).join("\n");
-  if (!logs.includes(expect.receiptHash)) return { confirmed: false, reason: "memo missing receipt hash" };
+  const receiptMemoCount = logs.split(`${MEMO_PREFIX}:`).length - 1;
+  if (receiptMemoCount === 0) return { confirmed: false, reason: "no receipt memo found" };
+  if (receiptMemoCount > 1) return { confirmed: false, reason: "multiple receipt memos (not a single charge)" };
+  if (!logs.includes(`${MEMO_PREFIX}:${expect.receiptHash}`)) return { confirmed: false, reason: "receipt memo does not match this charge" };
 
   const pre = tx.meta?.preTokenBalances ?? [];
   const post = tx.meta?.postTokenBalances ?? [];
