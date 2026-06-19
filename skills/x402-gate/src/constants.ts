@@ -17,6 +17,10 @@ export const NULL_TOKEN = "8EeDdvCRmFAzVD4takkBrNNwkeUTUQh4MscRK5Fzpump";
 export const X402_VERSION = 1;
 export const MEMO_PREFIX = "null-miner-v1";
 
+/** Domain tag prepended to the presenter-auth nonce before the payer key signs it
+ *  (see x402-pay). MUST stay byte-identical to the paying side. */
+export const PRESENTER_AUTH_DOMAIN = "x402-presenter-auth:v1:";
+
 export const DEFAULT_RPC: Record<SolanaNetwork, string> = {
   "solana-mainnet": "https://api.mainnet-beta.solana.com",
   "solana-devnet": "https://api.devnet.solana.com",

@@ -16,6 +16,7 @@ import { Keypair } from "@solana/web3.js";
 import { buildPaymentHeader } from "../../skills/x402-pay/src/client";
 import { makeRequirement, verifyPaymentStructure, receiptHashFor } from "../../skills/x402-gate/src/gate";
 import { issueNonce, verifyNonce, verifyPayerSignature, issueCapability, verifyCapability } from "../../skills/x402-gate/src/auth";
+import { PRESENTER_AUTH_DOMAIN } from "../../skills/x402-gate/src/constants";
 
 let fail = 0;
 const assert = (name: string, ok: boolean, extra?: string) => {
@@ -63,12 +64,14 @@ assert("nonce rejected for wrong price (price-binding)", verifyNonce(nonce, requ
 assert("nonce rejected when expired", verifyNonce(nonce, requirement.resource, amt, secret, now + 100_000).ok === false);
 assert("nonce rejected with wrong secret", verifyNonce(nonce, requirement.resource, amt, "other-secret", now).ok === false);
 
-const payerSig = signMessage(payer.secretKey.slice(0, 32), nonce);
-assert("payer signature verifies (presenter controls the key)", verifyPayerSignature(payer.publicKey.toBase58(), nonce, payerSig) === true);
+const authMsg = PRESENTER_AUTH_DOMAIN + nonce; // domain-separated message the payer signs
+const payerSig = signMessage(payer.secretKey.slice(0, 32), authMsg);
+assert("payer signature verifies (presenter controls the key)", verifyPayerSignature(payer.publicKey.toBase58(), authMsg, payerSig) === true);
+assert("raw-nonce signature rejected (domain separation)", verifyPayerSignature(payer.publicKey.toBase58(), authMsg, signMessage(payer.secretKey.slice(0, 32), nonce)) === false);
 
 const attacker = Keypair.generate();
-const attackerSig = signMessage(attacker.secretKey.slice(0, 32), nonce);
-assert("observer/attacker signature rejected (presenter binding)", verifyPayerSignature(payer.publicKey.toBase58(), nonce, attackerSig) === false);
+const attackerSig = signMessage(attacker.secretKey.slice(0, 32), authMsg);
+assert("observer/attacker signature rejected (presenter binding)", verifyPayerSignature(payer.publicKey.toBase58(), authMsg, attackerSig) === false);
 
 // --- 3. portable capability receipts (pay-once-reuse) ---
 const cap = issueCapability(payer.publicKey.toBase58(), requirement.resource, 3600, secret, now);

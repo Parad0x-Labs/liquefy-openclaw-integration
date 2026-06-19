@@ -8,6 +8,7 @@ import { Connection } from "@solana/web3.js";
 import {
   DEFAULT_RPC,
   USDC_MINT,
+  PRESENTER_AUTH_DOMAIN,
   atomicToUsdc,
   type SolanaNetwork,
 } from "./constants";
@@ -31,7 +32,9 @@ interface CachedCapability {
   exp: number;
 }
 const capabilityStore = new Map<string, CachedCapability>();
-const capKey = (payer: string, resource: string): string => `${payer}|${resource}`;
+// Key by payer + ORIGIN HOST + resource so a capability paid at one seller can
+// never be presented to a different origin that happens to use the same resource path.
+const capKey = (payer: string, host: string, resource: string): string => `${payer}|${host}|${resource}`;
 const capExp = (token: string): number => {
   const n = Number(token.split(".")[0]);
   return Number.isFinite(n) ? n : 0;
@@ -147,6 +150,18 @@ export function buildPaymentHeader(opts: {
   return Buffer.from(JSON.stringify(opts), "utf8").toString("base64");
 }
 
+/** Shape of a gate-issued nonce: `<exp>.<rand-hex>.<sha256-hex>`. */
+const NONCE_RE = /^\d+\.[0-9a-f]+\.[0-9a-f]{64}$/;
+
+/** The exact message the payer key signs for presenter-auth: a domain-tagged,
+ *  shape-validated nonce — never raw attacker-chosen bytes (anti signing-oracle). */
+function authMessage(nonce: string): string {
+  if (!NONCE_RE.test(nonce)) {
+    throw new Error("x402: gate nonce is not a well-formed token — refusing to sign (possible signing oracle)");
+  }
+  return PRESENTER_AUTH_DOMAIN + nonce;
+}
+
 export interface FetchWithX402Options {
   signer: X402Signer;
   config: X402PayConfig;
@@ -185,10 +200,16 @@ export async function fetchWithX402(
 
   // Capability reuse: if we hold a live capability for this resource, present it
   // (signing the fresh nonce to prove the key) and skip payment entirely.
-  const ckey = capKey(signer.publicKey, req.resource);
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    /* leave host empty if url has no parseable host */
+  }
+  const ckey = capKey(signer.publicKey, host, req.resource);
   const cached = capabilityStore.get(ckey);
   if (cached && cached.exp > nowSec + 5 && challenge.nonce && signer.signMessage) {
-    const reuseSig = await signer.signMessage(challenge.nonce);
+    const reuseSig = await signer.signMessage(authMessage(challenge.nonce));
     const reuseHeader = buildPaymentHeader({
       signature: "",
       payerAddress: signer.publicKey,
@@ -246,7 +267,7 @@ export async function fetchWithX402(
   let payerSig: string | undefined;
   if (challenge.nonce) {
     nonce = challenge.nonce;
-    payerSig = await signer.signMessage!(challenge.nonce);
+    payerSig = await signer.signMessage!(authMessage(challenge.nonce));
   }
 
   const header = buildPaymentHeader({

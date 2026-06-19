@@ -85,7 +85,8 @@ export async function buildUnsignedPayment(
   const amountAtomic = BigInt(req.maxAmountRequired);
 
   const payerAta = getAssociatedTokenAddressSync(usdcMint, payerPk);
-  const payToAta = getAssociatedTokenAddressSync(usdcMint, payToPk);
+  // allowOwnerOffCurve so a PDA / Squads-multisig recipient (off-curve) is payable.
+  const payToAta = getAssociatedTokenAddressSync(usdcMint, payToPk, true);
 
   const receiptHash = receiptHashFor(payer, req);
 

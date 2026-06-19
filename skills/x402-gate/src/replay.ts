@@ -58,10 +58,11 @@ export class FileReplayStore implements ReplayStore {
     this.acquireLock();
   }
 
-  /** Refuse to start if another live process already holds this store path — the
-   *  file store is NOT shared across instances, so a second replica would create a
-   *  divergent dedup set and let one payment be redeemed per replica. Enforced, not
-   *  attested. A stale lock from a dead pid is taken over. */
+  /** Refuse to start if another live process ON THIS HOST already holds the store
+   *  path. The file store is not shared across instances, so a second replica would
+   *  diverge and let one payment be redeemed per replica. Enforced on a single host
+   *  (a shared/network filesystem across hosts is NOT supported — for multi-host use
+   *  dedupe=false + your own shared store). A stale lock from a dead pid is taken over. */
   private acquireLock(): void {
     const lockPath = `${this.path}.lock`;
     const pid = String(process.pid);

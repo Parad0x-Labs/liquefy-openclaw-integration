@@ -43,6 +43,9 @@ so a transitive native addon can't run install-time code on that host:
 npm install --ignore-scripts @parad0x_labs/openclaw-x402-pay
 ```
 
+> Lands on npm with the v1.1 release. Until then, install from source (this repo,
+> `skills/x402-pay`); the command above resolves once it's published.
+
 This is **required, not optional** for a key-holding host. `--ignore-scripts` skips
 the transitive native builds (e.g. `bigint-buffer`); the libraries fall back to
 pure-JS at runtime, so nothing is lost (verified).

@@ -26,7 +26,7 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { Connection, PublicKey } from "@solana/web3.js";
 
-import { DEFAULT_RPC, atomicToUsdc, type SolanaNetwork } from "./constants";
+import { DEFAULT_RPC, PRESENTER_AUTH_DOMAIN, atomicToUsdc, type SolanaNetwork } from "./constants";
 import { makeChallenge, verifyPaymentStructure, decodePaymentHeader } from "./gate";
 import { confirmOnChain } from "./onchain";
 import { InMemoryReplayStore, FileReplayStore, type ReplayStore } from "./replay";
@@ -248,7 +248,7 @@ export default definePluginEntry({
           if (needAuth) {
             const n = verifyNonce(proof.nonce, resource, requirement.maxAmountRequired, secret, now);
             if (!n.ok) return { valid: false, error: `presenter auth failed: ${n.reason}` };
-            if (!proof.payerSig || !verifyPayerSignature(proof.payerAddress, proof.nonce as string, proof.payerSig)) {
+            if (!proof.payerSig || !verifyPayerSignature(proof.payerAddress, PRESENTER_AUTH_DOMAIN + (proof.nonce as string), proof.payerSig)) {
               return {
                 valid: false,
                 error: "presenter auth failed: payer signature invalid (presenter does not control the paying key)",
