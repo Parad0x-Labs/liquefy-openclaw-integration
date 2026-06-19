@@ -218,6 +218,7 @@ export default definePluginEntry({
             return { valid: false, error: "gate not configured: set recipientAddress in plugin config" };
           }
           const resource = String(params.resource ?? "");
+          if (!resource) return { valid: false, error: "resource is required" };
           const header = params.header == null ? null : String(params.header);
           if (!header) return { valid: false, error: "missing X-Payment header" };
 

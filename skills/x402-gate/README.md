@@ -115,8 +115,8 @@ npm install --ignore-scripts @parad0x_labs/openclaw-x402-gate
 > `skills/x402-gate`); the command above resolves once it's published.
 
 This is **required, not optional** for a key-holding host. `--ignore-scripts` skips
-the transitive native builds (e.g. `bigint-buffer`); the libraries fall back to
-pure-JS at runtime, so nothing is lost (verified).
+any transitive native builds; the libraries fall back to pure-JS at runtime, so
+nothing is lost (verified on this skill's dependency tree).
 
 ## Flow
 

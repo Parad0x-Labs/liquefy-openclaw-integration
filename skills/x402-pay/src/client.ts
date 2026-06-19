@@ -40,6 +40,10 @@ const capExp = (token: string): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/** Unconfirmed payments, keyed like capabilities (payer|host|resource), so a
+ *  cross-call retry re-checks the prior tx instead of broadcasting a second one. */
+const pendingStore = new Map<string, string>();
+
 const MAX_CHALLENGE_BYTES = 65_536;
 const MAX_RESOURCE_BYTES = 16 * 1024 * 1024;
 
@@ -226,6 +230,35 @@ export async function fetchWithX402(
     capabilityStore.delete(ckey); // rejected / expired — fall through to a fresh payment
   }
 
+  // Cross-call double-pay guard: if a prior payment for this (wallet,host,resource)
+  // is still unconfirmed, re-check it on-chain before building another transfer.
+  const pendingSig = pendingStore.get(ckey);
+  if (pendingSig) {
+    const probe = new Connection(config.rpcUrl ?? DEFAULT_RPC[network], "confirmed");
+    const st = (await probe.getSignatureStatus(pendingSig, { searchTransactionHistory: true })).value;
+    if (st && !st.err && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) {
+      return {
+        ok: false,
+        status: 0,
+        paymentSignature: pendingSig,
+        network,
+        error: `x402: a prior payment for this resource has confirmed (signature ${pendingSig}) — redeem it; not paying again`,
+      };
+    }
+    if (!st || st.err) {
+      pendingStore.delete(ckey); // failed or dropped — safe to pay again
+    } else {
+      return {
+        ok: false,
+        status: 0,
+        paymentSignature: pendingSig,
+        network,
+        pending: true,
+        error: `x402: a prior payment for this resource is still pending (signature ${pendingSig}) — verify before retrying`,
+      };
+    }
+  }
+
   // Cumulative spend rail — bound total spend across this process, not just per call.
   const reqUsdc = atomicToUsdc(Number(req.maxAmountRequired));
   if (config.maxTotalUsdc !== undefined && totalSpentUsdc + reqUsdc > config.maxTotalUsdc) {
@@ -251,6 +284,7 @@ export async function fetchWithX402(
   // Ambiguous confirmation — the tx MAY have landed. Surface the signature; do NOT
   // report a clean retryable failure (a naive retry would pay a second time).
   if (status !== "confirmed") {
+    pendingStore.set(ckey, signature); // so a cross-call retry re-checks this tx, not re-pays
     return {
       ok: false,
       status: 0,
@@ -260,6 +294,7 @@ export async function fetchWithX402(
       pending: true,
     };
   }
+  pendingStore.delete(ckey); // confirmed — clear any prior pending marker for this resource
 
   // Presenter binding: sign the gate-issued nonce with the payer key so an
   // observer of the on-chain payment can't replay this proof for free access.

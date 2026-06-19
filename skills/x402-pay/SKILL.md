@@ -20,6 +20,8 @@ Solana — without ever handing the skill a private key.
 
 ## Safety rails
 
+- **Install with `--ignore-scripts`** (required): this skill runs where the payment
+  key lives; never let a transitive native addon run install-time code on that host.
 - **Real-money is opt-in**; set `allowMainnet: true` to enable mainnet (also needs `rpcUrl`).
 - **Hard `maxAmountUsdc` cap**, enforced before any transaction is built.
 - **Minimal network**: your Solana RPC + the target URL only. No telemetry.

@@ -25,8 +25,11 @@ transaction's SPL memo, so every settlement is publicly auditable.
 - **Cumulative cap.** `maxTotalUsdc` bounds total spend across the process — not
   just per payment — so a malicious endpoint can't drain the wallet one capped
   payment at a time. Finite default; raise it via config.
-- **No double-pay.** If a confirmation is ambiguous, the result is returned as
-  `pending` with the signature — never a clean error — so a retry can't pay twice.
+- **No accidental double-pay.** An ambiguous confirmation returns `pending` with the
+  signature (never a clean retryable error), and the client remembers that pending
+  payment per (wallet, host, resource) and re-checks it on the next call instead of
+  paying again. Always verify the returned signature before any manual retry — a
+  forced re-pay across calls is bounded only by the cumulative `maxTotalUsdc` cap.
 - **Pay once, reuse.** When the gate issues a capability receipt, the client
   caches it and reuses access to that resource within its scope without paying
   again (presenter-bound, so a stolen token is useless to anyone else).
