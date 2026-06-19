@@ -96,4 +96,8 @@ export interface X402PayConfig {
   maxDistinctRecipients?: number;
   /** Optional private RPC URL override */
   rpcUrl?: string;
+  /** Path to a durable spend-ledger file. Backs the cumulative cap, the double-pay
+   *  guard, and the distinct-recipient cap so they survive a restart. REQUIRED on
+   *  mainnet (allowMainnet=true) — without it a restart mid-pending can double-pay. */
+  spendLedgerPath?: string;
 }

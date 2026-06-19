@@ -11,7 +11,7 @@
       "maxAmountUsdc": {
         "type": "number",
         "minimum": 0,
-        "description": "Hard spend cap. The skill refuses any single 402 payment above this many USDC. Default: 1.0."
+        "description": "Hard per-payment spend cap. The skill refuses any single 402 payment above this many USDC. An explicit 0 means pay-nothing (refuse all). The 1.0 default applies only when this is left unset."
       },
       "allowMainnet": {
         "type": "boolean",
@@ -35,6 +35,10 @@
       "rpcUrl": {
         "type": "string",
         "description": "Solana RPC URL. REQUIRED on solana-mainnet (the public RPC is a third-party observer and unreliable for real payments). Optional on devnet (defaults to the public devnet endpoint)."
+      },
+      "spendLedgerPath": {
+        "type": "string",
+        "description": "Path to a durable spend-ledger file (JSON). Backs the cumulative cap, the double-pay guard, and the distinct-recipient cap so they survive a process restart. REQUIRED on mainnet (allowMainnet=true): without it, a restart while a payment is pending can broadcast a second real payment. Use a single persistent process per ledger file."
       }
     }
   }

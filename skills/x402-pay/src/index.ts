@@ -65,7 +65,17 @@ function finitePositive(v: unknown): number | undefined {
 
 function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
   const cfg = raw ?? {};
-  const maxAmountUsdc = finitePositive(cfg.maxAmountUsdc) ?? DEFAULT_MAX_USDC;
+  // An EXPLICIT cap is honored as-is — a 0 or negative value means "pay nothing"
+  // (refuse-all), and a non-finite value (NaN/Infinity/junk numeric string) is also
+  // refused downstream by selectRequirement. The 1.0 default applies ONLY when the
+  // operator left maxAmountUsdc unset, so an intended "0" is never silently raised.
+  const rawMax = cfg.maxAmountUsdc;
+  const maxAmountUsdc =
+    typeof rawMax === "number"
+      ? rawMax
+      : typeof rawMax === "string" && rawMax.trim() !== ""
+        ? Number(rawMax)
+        : DEFAULT_MAX_USDC;
   return {
     maxAmountUsdc,
     // Real-money spending is OPT-IN: must be explicitly enabled. Mainnet also
@@ -81,6 +91,10 @@ function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
     // on ATA rent (USDC caps don't bound SOL). Raise for legitimately many-seller agents.
     maxDistinctRecipients: finitePositive(cfg.maxDistinctRecipients) ?? 100,
     rpcUrl: typeof cfg.rpcUrl === "string" ? cfg.rpcUrl : undefined,
+    spendLedgerPath:
+      typeof cfg.spendLedgerPath === "string" && cfg.spendLedgerPath.trim() !== ""
+        ? cfg.spendLedgerPath
+        : undefined,
   };
 }
 

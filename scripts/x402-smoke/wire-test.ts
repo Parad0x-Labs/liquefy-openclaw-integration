@@ -12,8 +12,13 @@
  */
 
 import { createPrivateKey, sign as edSign } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Keypair } from "@solana/web3.js";
-import { buildPaymentHeader } from "../../skills/x402-pay/src/client";
+import { buildPaymentHeader, selectRequirement } from "../../skills/x402-pay/src/client";
+import { SpendLedger } from "../../skills/x402-pay/src/ledger";
+import type { X402PayConfig } from "../../skills/x402-pay/src/types";
 import { makeRequirement, verifyPaymentStructure, receiptHashFor } from "../../skills/x402-gate/src/gate";
 import { issueNonce, verifyNonce, verifyPayerSignature, issueCapability, verifyCapability } from "../../skills/x402-gate/src/auth";
 import { PRESENTER_AUTH_DOMAIN } from "../../skills/x402-gate/src/constants";
@@ -89,5 +94,35 @@ assert(
   receiptHashFor(payer.publicKey.toBase58(), reqA) !== receiptHashFor(payer.publicKey.toBase58(), reqB),
 );
 
-console.log(`\n${fail === 0 ? "WIRE + AUTH + CAPABILITY OK" : "FAILED"} — ${fail} failure(s)`);
+// --- 5. durable spend ledger survives a "restart" (round-14 double-pay fix) ---
+const ledgerDir = mkdtempSync(join(tmpdir(), "x402-ledger-"));
+const ledgerPath = join(ledgerDir, "spend.json");
+const l1 = new SpendLedger(ledgerPath);
+assert("ledger with a path reports durable", l1.durable === true);
+l1.addSpend(0.5);
+l1.setPending("payer|host|/premium", "pendingSig123");
+l1.addRecipient("RecipientOne");
+const l2 = new SpendLedger(ledgerPath); // simulate process restart
+assert("ledger persists cumulative spend across restart", l2.totalSpent() === 0.5);
+assert("ledger persists pending signature across restart", l2.getPending("payer|host|/premium") === "pendingSig123");
+assert("ledger persists distinct recipients across restart", l2.hasRecipient("RecipientOne") && l2.recipientCount() === 1);
+l2.clearPending("payer|host|/premium");
+const l3 = new SpendLedger(ledgerPath);
+assert("ledger persists a pending clear across restart", l3.getPending("payer|host|/premium") === undefined);
+assert("in-memory ledger (no path) reports NOT durable", new SpendLedger().durable === false);
+rmSync(ledgerDir, { recursive: true, force: true });
+
+// --- 6. explicit maxAmountUsdc=0 / negative is refuse-all, never an open spend ---
+const challenge = { x402Version: 1, accepts: [requirement] };
+const baseCfg = (max: number): X402PayConfig => ({ maxAmountUsdc: max, allowMainnet: false });
+const refuses = (cfg: X402PayConfig): boolean => {
+  try { selectRequirement(challenge, cfg); return false; } catch { return true; }
+};
+assert("maxAmountUsdc=0 refuses all payment (explicit pay-nothing)", refuses(baseCfg(0)));
+assert("maxAmountUsdc<0 refuses all payment", refuses(baseCfg(-1)));
+assert("maxAmountUsdc=NaN refuses all payment", refuses(baseCfg(NaN)));
+assert("maxAmountUsdc=Infinity refuses all payment", refuses(baseCfg(Infinity)));
+assert("positive cap above price selects the requirement", !refuses(baseCfg(1)));
+
+console.log(`\n${fail === 0 ? "WIRE + AUTH + CAPABILITY + LEDGER OK" : "FAILED"} — ${fail} failure(s)`);
 process.exit(fail === 0 ? 0 : 1);

@@ -36,14 +36,15 @@ transaction's SPL memo, so every settlement is publicly auditable.
 > **Non-custodial and spend-capped.** Your agent signs with its own wallet; no
 > single payment exceeds the cap you set.
 
-> ⚠️ **Restart durability.** The double-pay guard, the cumulative `maxTotalUsdc`
-> cap, and the distinct-recipient cap are **in-memory and do NOT survive a process
-> restart**. If a payment returns `pending` and the process restarts before you
-> reconcile that signature on-chain, the next call for the same resource can
-> broadcast a **second real payment**. For autonomous real-money use: run a single
-> persistent process, reconcile any `pending` signature before restarting, and (for
-> production) back the spend state with a durable host store. The per-payment
-> `maxAmountUsdc` cap is the only rail that survives a restart.
+> ⚠️ **Restart durability — set `spendLedgerPath` on mainnet.** The double-pay
+> guard, the cumulative `maxTotalUsdc` cap, and the distinct-recipient cap live in a
+> spend ledger. With **no** `spendLedgerPath` it is in-memory and resets on restart —
+> so if a payment returns `pending` and the process restarts before you reconcile
+> that signature, the next call for the same resource can broadcast a **second real
+> payment**. Setting `spendLedgerPath` persists the ledger to disk so all three rails
+> survive a restart; on mainnet the skill **requires** it and refuses to pay without
+> one. Use a single persistent process per ledger file (it is single-writer); for a
+> multi-process payer fleet, front it with a shared store via a host hook.
 
 ## Install safety
 
@@ -104,7 +105,8 @@ pay_x402({ url: "https://api.example.com/premium" })
         "maxAmountUsdc": 0.50,     // refuse any single payment above this
         "maxTotalUsdc": 50,         // cumulative cap this process (default: 100x per-payment)
         "allowMainnet": true,       // enable real-money mainnet (opt-in; default false)
-        "rpcUrl": "https://..."     // REQUIRED on mainnet (a private RPC)
+        "rpcUrl": "https://...",    // REQUIRED on mainnet (a private RPC)
+        "spendLedgerPath": "/var/lib/x402/spend.json" // REQUIRED on mainnet (durable spend rails)
       }
     }
   }
@@ -113,12 +115,13 @@ pay_x402({ url: "https://api.example.com/premium" })
 
 | Key | Default | Description |
 |---|---|---|
-| `maxAmountUsdc` | `1.0` | Hard per-payment USDC cap, enforced before building any tx |
+| `maxAmountUsdc` | `1.0` | Hard per-payment USDC cap, enforced before building any tx. An explicit `0` means refuse-all; the default applies only when unset |
 | `maxTotalUsdc` | `100 × maxAmountUsdc` | Cumulative cap across the process (finite; raise for volume) |
 | `allowMainnet` | `false` | Set `true` to enable real-money mainnet payments (also needs `rpcUrl`) |
 | `allowedRecipients` | — | Optional `payTo` allowlist; if set, any other recipient is refused. Strongest fund-redirection defense — recommended on mainnet |
 | `maxDistinctRecipients` | `100` | Max distinct recipients funded per process — bounds SOL spent on recipient ATA rent (USDC caps don't bound SOL) |
 | `rpcUrl` | — | Solana RPC. **Required on mainnet**; optional on devnet |
+| `spendLedgerPath` | — | Path to a durable spend-ledger file. Persists the cumulative cap, double-pay guard, and recipient cap across restarts. **Required on mainnet**; single-writer (one process per file) |
 
 ## How a payment flows
 

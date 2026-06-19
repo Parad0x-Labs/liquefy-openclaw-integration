@@ -13,6 +13,7 @@ import {
   type SolanaNetwork,
 } from "./constants";
 import { payWithSigner } from "./signer";
+import { SpendLedger } from "./ledger";
 import type {
   X402Challenge,
   X402PayConfig,
@@ -21,12 +22,21 @@ import type {
   X402Signer,
 } from "./types";
 
-/** Cumulative USDC spent by this process — bounds a malicious endpoint draining
- *  the wallet one capped payment at a time. Reset only by restarting the process. */
-let totalSpentUsdc = 0;
+/**
+ * Spend-safety state — cumulative cap, the cross-call double-pay guard (pending
+ * payments), and the distinct-recipient cap. Backed by a durable file when
+ * config.spendLedgerPath is set (REQUIRED on mainnet) so it survives restarts;
+ * otherwise in-memory (devnet/testing). Lazily created from the first config.
+ */
+let ledger: SpendLedger | null = null;
+function getLedger(config: X402PayConfig): SpendLedger {
+  if (!ledger) ledger = new SpendLedger(config.spendLedgerPath);
+  return ledger;
+}
 
-/** Capability tokens held from prior payments, keyed by payer|resource, so the
- *  same resource can be reused within its scope without paying again. */
+/** Capability tokens held from prior payments, keyed by payer|host|resource, so the
+ *  same resource can be reused within its scope without paying again. In-memory:
+ *  losing one on restart costs at most a re-pay, never a double-pay. */
 interface CachedCapability {
   token: string;
   exp: number;
@@ -39,15 +49,6 @@ const capExp = (token: string): number => {
   const n = Number(token.split(".")[0]);
   return Number.isFinite(n) ? n : 0;
 };
-
-/** Unconfirmed payments, keyed like capabilities (payer|host|resource), so a
- *  cross-call retry re-checks the prior tx instead of broadcasting a second one. */
-const pendingStore = new Map<string, string>();
-
-/** Distinct payTo recipients funded this process — bounds SOL spent on recipient
- *  ATA rent, which the USDC caps do NOT bound (a hostile endpoint cycling fresh
- *  recipients can't drain SOL past maxDistinctRecipients). */
-const recipientsFunded = new Set<string>();
 
 const MAX_CHALLENGE_BYTES = 65_536;
 const MAX_RESOURCE_BYTES = 16 * 1024 * 1024;
@@ -103,10 +104,10 @@ export function selectRequirement(
   challenge: X402Challenge,
   config: X402PayConfig,
 ): X402PaymentRequirement {
-  // The cap must be a finite positive number — a NaN/Infinity cap would make the
-  // `usdc > cap` check below always false and silently authorize any amount.
+  // The cap must be a finite positive number — a NaN/Infinity/0/negative cap is a
+  // refuse-all (an explicit 0 means "pay nothing"), never a silent open spend.
   if (!Number.isFinite(config.maxAmountUsdc) || config.maxAmountUsdc <= 0) {
-    throw new Error("x402: invalid maxAmountUsdc cap (must be a finite positive number) — refusing to pay");
+    throw new Error("x402: maxAmountUsdc is not a positive number — refusing to pay (set a positive per-payment cap)");
   }
   const reasons: string[] = [];
   let best: X402PaymentRequirement | null = null;
@@ -117,6 +118,10 @@ export function selectRequirement(
       reasons.push(`unsupported scheme "${req.scheme}"`);
       continue;
     }
+    if (req.network !== "solana-mainnet" && req.network !== "solana-devnet") {
+      reasons.push(`unknown network "${req.network}"`);
+      continue;
+    }
     if (req.network === "solana-mainnet" && !config.allowMainnet) {
       reasons.push("mainnet payment requires allowMainnet=true (real-money opt-in)");
       continue;
@@ -124,8 +129,12 @@ export function selectRequirement(
     // The cap is USDC-denominated (6 decimals). Refuse any other mint, or a
     // malicious challenge could name a more-valuable 6-decimal token and slip
     // a large transfer under the cap.
-    if (req.asset !== USDC_MINT[req.network]) {
+    if (!req.asset || req.asset !== USDC_MINT[req.network]) {
       reasons.push(`refusing non-USDC asset ${req.asset}`);
+      continue;
+    }
+    if (!req.payTo) {
+      reasons.push("requirement missing payTo");
       continue;
     }
     if (config.allowedRecipients && config.allowedRecipients.length > 0 && !config.allowedRecipients.includes(req.payTo)) {
@@ -197,6 +206,7 @@ export async function fetchWithX402(
   opts: FetchWithX402Options,
 ): Promise<X402PayResult> {
   const { signer, config, init } = opts;
+  const led = getLedger(config);
 
   const first = await fetch(url, init);
   if (first.status !== 402) {
@@ -245,22 +255,22 @@ export async function fetchWithX402(
   }
 
   // Cross-call double-pay guard: if a prior payment for this (wallet,host,resource)
-  // is still unconfirmed, re-check it on-chain before building another transfer.
-  const pendingSig = pendingStore.get(ckey);
+  // is still unredeemed, re-check it on-chain before building another transfer.
+  const pendingSig = led.getPending(ckey);
   if (pendingSig) {
     const probe = new Connection(config.rpcUrl ?? DEFAULT_RPC[network], "confirmed");
     const st = (await probe.getSignatureStatus(pendingSig, { searchTransactionHistory: true })).value;
-    if (st && !st.err && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) {
+    if (st && !st.err && st.confirmationStatus === "finalized") {
       return {
         ok: false,
         status: 0,
         paymentSignature: pendingSig,
         network,
-        error: `x402: a prior payment for this resource has confirmed (signature ${pendingSig}) — redeem it; not paying again`,
+        error: `x402: a prior payment for this resource has finalized (signature ${pendingSig}) — redeem it; not paying again`,
       };
     }
     if (!st || st.err) {
-      pendingStore.delete(ckey); // failed or dropped — safe to pay again
+      led.clearPending(ckey); // failed or dropped — safe to pay again
     } else {
       return {
         ok: false,
@@ -273,19 +283,19 @@ export async function fetchWithX402(
     }
   }
 
-  // Cumulative spend rail — bound total spend across this process, not just per call.
+  // Cumulative spend rail — bound total spend across this process / ledger.
   const reqUsdc = atomicToUsdc(Number(req.maxAmountRequired));
-  if (config.maxTotalUsdc !== undefined && totalSpentUsdc + reqUsdc > config.maxTotalUsdc) {
+  if (config.maxTotalUsdc !== undefined && led.totalSpent() + reqUsdc > config.maxTotalUsdc) {
     throw new Error(
-      `x402: refusing to pay — cumulative cap reached (${totalSpentUsdc} + ${reqUsdc} > ${config.maxTotalUsdc} USDC)`,
+      `x402: refusing to pay — cumulative cap reached (${led.totalSpent()} + ${reqUsdc} > ${config.maxTotalUsdc} USDC)`,
     );
   }
   // SOL-drain rail: paying a brand-new recipient funds ~0.002 SOL of ATA rent, which
-  // the USDC caps don't bound. Cap distinct recipients per process.
+  // the USDC caps don't bound. Cap distinct recipients.
   if (
     config.maxDistinctRecipients !== undefined &&
-    !recipientsFunded.has(req.payTo) &&
-    recipientsFunded.size >= config.maxDistinctRecipients
+    !led.hasRecipient(req.payTo) &&
+    led.recipientCount() >= config.maxDistinctRecipients
   ) {
     throw new Error(
       `x402: refusing to pay — distinct-recipient cap reached (${config.maxDistinctRecipients}); ` +
@@ -297,21 +307,28 @@ export async function fetchWithX402(
       "x402: mainnet requires an explicit rpcUrl in config — the public RPC is a third-party observer and unreliable for real payments.",
     );
   }
+  // On mainnet the spend rails MUST be durable, or a restart can re-arm the caps
+  // and lose a pending signature (double-pay). Refuse mainnet without a ledger.
+  if (network === "solana-mainnet" && !led.durable) {
+    throw new Error(
+      "x402: mainnet requires a durable spend ledger — set spendLedgerPath so the spend cap and double-pay guard survive a restart.",
+    );
+  }
 
   const rpcUrl = config.rpcUrl ?? DEFAULT_RPC[network];
   const connection = new Connection(rpcUrl, "confirmed");
 
   const { signature, receiptHash, amountUsdc, status } = await payWithSigner(connection, signer, req);
-  // Count the spend as soon as it's broadcast — a "pending" tx MAY have landed, so
-  // counting conservatively stops the lifetime cap being bypassed via repeated
+  // Count the spend + recipient as soon as it's broadcast — a "pending" tx MAY have
+  // landed, so counting conservatively stops the caps being bypassed via repeated
   // pending outcomes. (Slight over-count if it truly failed; the safe direction.)
-  totalSpentUsdc += reqUsdc;
-  recipientsFunded.add(req.payTo);
+  led.addSpend(reqUsdc);
+  led.addRecipient(req.payTo);
 
   // Ambiguous confirmation — the tx MAY have landed. Surface the signature; do NOT
   // report a clean retryable failure (a naive retry would pay a second time).
   if (status !== "confirmed") {
-    pendingStore.set(ckey, signature); // so a cross-call retry re-checks this tx, not re-pays
+    led.setPending(ckey, signature); // so a cross-call retry re-checks this tx, not re-pays
     return {
       ok: false,
       status: 0,
@@ -321,10 +338,10 @@ export async function fetchWithX402(
       pending: true,
     };
   }
-  // Payment confirmed on-chain. KEEP the signature marked until we've SUCCESSFULLY
-  // redeemed it — so if the redeem leg fails, a retry re-checks the signature
-  // on-chain (and does not pay again) rather than broadcasting a second payment.
-  pendingStore.set(ckey, signature);
+  // Confirmed on-chain. KEEP the signature marked until we've SUCCESSFULLY redeemed
+  // it — so if the redeem leg fails, a retry re-checks the signature on-chain (and
+  // does not pay again) rather than broadcasting a second payment.
+  led.setPending(ckey, signature);
 
   // Presenter binding: sign the gate-issued nonce with the payer key so an
   // observer of the on-chain payment can't replay this proof for free access.
@@ -370,7 +387,7 @@ export async function fetchWithX402(
   const body = await readCappedText(retried, MAX_RESOURCE_BYTES);
   // Redeemed only once the gate accepted the proof. If it rejected (non-ok), keep
   // the marker so a retry re-checks the confirmed signature instead of re-paying.
-  if (retried.ok) pendingStore.delete(ckey);
+  if (retried.ok) led.clearPending(ckey);
 
   return {
     ok: retried.ok,
