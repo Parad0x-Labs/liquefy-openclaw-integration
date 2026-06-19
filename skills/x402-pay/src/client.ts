@@ -81,11 +81,37 @@ async function readCappedText(res: Response, maxBytes: number): Promise<string> 
   return Buffer.concat(chunks).toString("utf8");
 }
 
-/** Reject a fetch target that is not http(s) or points at the cloud-metadata
- *  service — the highest-value SSRF abuse of a wallet-bearing process by a
- *  prompt-injected agent. (Recipient/amount/caps are decoupled from the URL, so
- *  fund safety does not depend on this; it bounds the request surface.) */
-function assertSafeUrl(raw: string): void {
+/** A literal loopback / link-local / private / ULA host (the SSRF target set):
+ *  localhost + .local DNS suffixes, IPv4 loopback/RFC1918/link-local/CGNAT, and
+ *  IPv6 loopback/link-local/ULA. NOTE: this matches LITERAL hosts only — a public
+ *  DNS name that resolves to a private IP (DNS rebinding) is not caught here. */
+function isInternalHost(host: string): boolean {
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "0.0.0.0") return true;
+  if (host.includes(":")) {
+    // IPv6 literal
+    if (host === "::1" || host === "::") return true;
+    return host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd"); // link-local + ULA (fc00::/7)
+  }
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false; // a normal DNS name — allowed
+  const o = m.slice(1).map(Number);
+  if (o.some((x) => x > 255)) return true; // malformed octet → block
+  const [a, b] = o;
+  if (a === 127 || a === 10 || a === 0) return true; // loopback / RFC1918 / 0.0.0.0-8
+  if (a === 192 && b === 168) return true; // RFC1918
+  if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
+  if (a === 169 && b === 254) return true; // link-local incl. 169.254.169.254 cloud metadata
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64/10
+  return false;
+}
+
+/** Reject a fetch target that is not http(s) or points at an internal host — SSRF
+ *  abuse of a wallet-bearing process by a prompt-injected agent. (Recipient/amount/
+ *  caps are decoupled from the URL, so fund safety does not depend on this; it bounds
+ *  the request surface.) Internal targets can be allowed for LOCAL DEV with
+ *  config.allowInternalHosts=true (default false). */
+function assertSafeUrl(raw: string, allowInternalHosts: boolean): void {
   let u: URL;
   try {
     u = new URL(raw);
@@ -96,8 +122,10 @@ function assertSafeUrl(raw: string): void {
     throw new Error(`x402: refusing non-http(s) URL scheme "${u.protocol}"`);
   }
   const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (host === "169.254.169.254" || host === "fd00:ec2::254" || host === "0.0.0.0") {
-    throw new Error(`x402: refusing cloud-metadata / unspecified host "${host}"`);
+  if (!allowInternalHosts && isInternalHost(host)) {
+    throw new Error(
+      `x402: refusing internal/loopback/link-local host "${host}" (set allowInternalHosts=true for local testing)`,
+    );
   }
 }
 
@@ -227,7 +255,7 @@ export async function fetchWithX402(
 ): Promise<X402PayResult> {
   const { signer, config, init } = opts;
   const led = getLedger(config);
-  assertSafeUrl(url);
+  assertSafeUrl(url, config.allowInternalHosts ?? false);
 
   const first = await fetch(url, init);
   if (first.status !== 402) {
@@ -371,19 +399,26 @@ export async function fetchWithX402(
   // durable write. So a throw or crash during broadcast can never lose the signature
   // (a retry would re-check it, not re-pay) and can never re-arm the caps.
   let signature: string, receiptHash: string, amountUsdc: number, status: "confirmed" | "pending";
+  let recorded = false;
+  const recipientWasNew = !led.hasRecipient(req.payTo);
   try {
     ({ signature, receiptHash, amountUsdc, status } = await payWithSigner(
       connection,
       signer,
       req,
-      (sig, lvbh) => led.recordBroadcast(ckey, sig, lvbh, reqUsdc, req.payTo),
+      (sig, lvbh) => {
+        led.recordBroadcast(ckey, sig, lvbh, reqUsdc, req.payTo);
+        recorded = true;
+      },
     ));
   } catch (e) {
     // Reached only on a DEFINITIVE on-chain execution error (the tx landed and
-    // failed → atomic → no USDC moved) or a pre-broadcast error (build/sign failed →
-    // nothing sent). Either way no funds moved: clear the recheck marker so a retry
-    // may safely re-pay, and surface a clean failure.
-    led.clearPending(ckey);
+    // reverted → atomic → no USDC moved) or a pre-broadcast error (build/sign failed →
+    // nothing sent). No funds moved: if we'd written the write-ahead record, REVERSE it
+    // (refund the cumulative cap + drop a newly-added recipient) so a hostile gate
+    // cycling fresh failing recipients can't permanently exhaust the caps. Then surface
+    // a clean failure a retry may safely re-pay.
+    if (recorded) led.reverseBroadcast(ckey, reqUsdc, recipientWasNew ? req.payTo : undefined);
     throw e;
   }
 

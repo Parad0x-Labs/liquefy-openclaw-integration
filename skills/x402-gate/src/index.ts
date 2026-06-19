@@ -29,7 +29,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { DEFAULT_RPC, PRESENTER_AUTH_DOMAIN, atomicToUsdc, type SolanaNetwork } from "./constants";
 import { makeChallenge, verifyPaymentStructure, decodePaymentHeader } from "./gate";
 import { confirmOnChain } from "./onchain";
-import { InMemoryReplayStore, FileReplayStore, TTLReplayStore, type ReplayStore } from "./replay";
+import { InMemoryReplayStore, FileReplayStore, type ReplayStore } from "./replay";
 import {
   resolveSecret,
   issueNonce,
@@ -116,11 +116,10 @@ export default definePluginEntry({
         configError = e instanceof Error ? e.message : String(e);
       }
     }
-    // Nonces are short-lived and high-churn (a fresh one per capability reuse), so
-    // they get a TTL-pruned in-memory store that self-expires — keeping the durable
-    // append-only store reserved for tx signatures (the permanent money record), so a
-    // reuse loop can't grow the durable file/Set without bound.
-    const nonceStore = new TTLReplayStore();
+    // Nonces (incl. the capability-reuse nonce, whose single-use is its ONLY replay
+    // guard) go through the SAME durable replayStore as signatures, so a restart can't
+    // reopen replay. The store self-compacts expired nonces, so high-rate capability
+    // reuse can't grow it without bound (signatures are kept permanently).
 
     if (!configError && config.network === "solana-mainnet") {
       if (!config.requireOnChain) {
@@ -171,6 +170,11 @@ export default definePluginEntry({
     const rawPrice = (api.config ?? {}).priceUsdc;
     if (!configError && rawPrice !== undefined && !(typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0)) {
       configError = "x402-gate: priceUsdc must be a finite positive number";
+    }
+    // Reject a sub-atomic price up front (it would round to 0 atomic units and serve
+    // for free / brick the resource) rather than failing only when a challenge is built.
+    if (!configError && typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0 && Math.round(rawPrice * 1e6) < 1) {
+      configError = "x402-gate: priceUsdc is below the smallest USDC unit (0.000001) — raise it";
     }
 
     api.registerTool({
@@ -271,11 +275,11 @@ export default definePluginEntry({
           if (proof.capability) {
             const cap = verifyCapability(proof.capability, proof.payerAddress, resource, secret, now);
             if (!cap.ok) return { valid: false, error: `capability invalid: ${cap.reason}` };
-            // Single-use nonce against the durable single-instance store. Capabilities
-            // are only enabled with dedupe=true (enforced above on mainnet), so this
-            // store is authoritative; never silently dedupe reuse against a per-host
-            // store while the operator believes an external shared store covers it.
-            if (config.dedupe && !nonceStore.consume(`nonce:${proof.nonce}`)) {
+            // Single-use nonce against the DURABLE replay store (it survives restart —
+            // critical here, since this reuse path has no on-chain check, so the nonce
+            // is the only thing stopping a captured reuse bundle from being replayed).
+            // Capabilities are only enabled with dedupe=true + replayStorePath on mainnet.
+            if (config.dedupe && !replayStore.consume(`nonce:${proof.nonce}`)) {
               return { valid: false, error: "nonce already used" };
             }
             return {
@@ -324,7 +328,7 @@ export default definePluginEntry({
             if (!replayStore.consume(structural.signature)) {
               return { valid: false, error: "payment already used (replay)" };
             }
-            if (proof.nonce && !nonceStore.consume(`nonce:${proof.nonce}`)) {
+            if (proof.nonce && !replayStore.consume(`nonce:${proof.nonce}`)) {
               return { valid: false, error: "challenge nonce already used — request a fresh 402 challenge per payment" };
             }
           }

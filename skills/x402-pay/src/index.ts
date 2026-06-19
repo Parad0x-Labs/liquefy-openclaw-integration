@@ -95,6 +95,7 @@ function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
       typeof cfg.spendLedgerPath === "string" && cfg.spendLedgerPath.trim() !== ""
         ? cfg.spendLedgerPath
         : undefined,
+    allowInternalHosts: readBool(cfg.allowInternalHosts, false),
   };
 }
 

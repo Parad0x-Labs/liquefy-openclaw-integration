@@ -107,21 +107,34 @@ startup — a second instance pointed at the same path **refuses to start**.
 > gate refuses them in multi-replica (`dedupe: false`) mode. `replayStorePath` must
 > be **local disk**; a shared/network filesystem across hosts defeats the lock.
 
+> 💡 **A capability is a PRE-PAID reuse window at the price paid.** It grants reuse
+> for `receiptScopeSeconds` from the settling payment, and a later `priceUsdc` change
+> does **not** retroactively re-price or revoke an outstanding capability (the buyer
+> already paid for that term). Set `receiptScopeSeconds` to the longest window you're
+> willing to pre-sell at the current price — that is your exposure bound.
+
 ## Install safety
 
-This skill runs where your seller wallet lives. **Install with `--ignore-scripts`**
-so a transitive native addon can't run install-time code on that host:
+This skill runs where your seller wallet lives. **Install so no transitive native
+addon can run install-time code on that host** — use either:
 
 ```bash
-npm install --ignore-scripts @parad0x_labs/openclaw-x402-gate
+npm install --ignore-scripts @parad0x_labs/openclaw-x402-gate   # skips ALL install scripts
+npm install --omit=optional  @parad0x_labs/openclaw-x402-gate   # skips the optional native addons
 ```
 
 > Lands on npm with the v1.1 release. Until then, install from source (this repo,
-> `skills/x402-gate`); the command above resolves once it's published.
+> `skills/x402-gate`); the commands above resolve once it's published.
 
-This is **required, not optional** for a key-holding host. `--ignore-scripts` skips
-any transitive native builds; the libraries fall back to pure-JS at runtime, so
-nothing is lost (verified on this skill's dependency tree).
+This is **required, not optional** for a key-holding host. The only transitive
+native builds are `bufferutil` / `utf-8-validate` — **optional** perf addons of
+`@solana/web3.js`'s WebSocket stack; this skill makes only HTTP RPC calls, so they
+are never loaded, and skipping them loses nothing.
+
+> ⚠️ **npm cannot enforce this from inside a published package** — a dependency's
+> `overrides`/`scripts`/`.npmrc` don't govern your install, only your root project's
+> do. Treat `--ignore-scripts` as policy on any wallet host, and prefer building on
+> a host that does not hold the seller key.
 
 ## Flow
 

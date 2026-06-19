@@ -39,6 +39,10 @@
       "spendLedgerPath": {
         "type": "string",
         "description": "Path to a durable spend-ledger file (JSON). Backs the cumulative cap, the double-pay guard, and the distinct-recipient cap so they survive a process restart. REQUIRED on mainnet (allowMainnet=true): without it, a restart while a payment is pending can broadcast a second real payment. Use a single persistent process per ledger file."
+      },
+      "allowInternalHosts": {
+        "type": "boolean",
+        "description": "Allow fetching internal/loopback/link-local/private hosts (turns OFF the SSRF guard). Default false. Set true ONLY for local-dev testing against a localhost gate — never on a production wallet host."
       }
     }
   }

@@ -55,10 +55,16 @@ export function makeRequirement(opts: ChallengeOptions): X402PaymentRequirement 
   if (!opts.recipientAddress) {
     throw new Error("makeRequirement: recipientAddress (your wallet) is required");
   }
+  const atomic = usdcToAtomic(opts.priceUsdc);
+  if (atomic < 1) {
+    // Sub-atomic price would round to "0" — which serves content for nothing in
+    // header-only mode and demands 0 on-chain. Refuse it rather than ship a free gate.
+    throw new Error("makeRequirement: priceUsdc is below the smallest USDC unit (0.000001) — it would round to 0");
+  }
   return {
     scheme: "exact",
     network,
-    maxAmountRequired: String(usdcToAtomic(opts.priceUsdc)),
+    maxAmountRequired: String(atomic),
     resource: opts.resource,
     description: opts.description ?? opts.resource,
     memoPrefix: MEMO_PREFIX,
@@ -145,6 +151,11 @@ export function verifyPaymentStructure(
     required = BigInt(requirement.maxAmountRequired);
   } catch {
     return { valid: false, error: "proof amount is not an integer" };
+  }
+  if (required <= 0n) {
+    // Defensive: a zero/negative requirement would accept a zero payment. The
+    // requirement comes from config, but never let a degenerate price serve free.
+    return { valid: false, error: "requirement amount must be a positive integer" };
   }
   if (paid < required) {
     return {

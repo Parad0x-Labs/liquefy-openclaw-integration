@@ -32,6 +32,7 @@ import type { X402PayConfig } from "../../skills/x402-pay/src/types";
 import { makeRequirement, verifyPaymentStructure, receiptHashFor } from "../../skills/x402-gate/src/gate";
 import { issueNonce, verifyNonce, verifyPayerSignature, issueCapability, verifyCapability } from "../../skills/x402-gate/src/auth";
 import { PRESENTER_AUTH_DOMAIN } from "../../skills/x402-gate/src/constants";
+import { FileReplayStore } from "../../skills/x402-gate/src/replay";
 
 let fail = 0;
 const assert = (name: string, ok: boolean, extra?: string) => {
@@ -190,5 +191,43 @@ assert(
   ),
 );
 
-console.log(`\n${fail === 0 ? "WIRE + AUTH + CAPABILITY + LEDGER + SPL OK" : "FAILED"} — ${fail} failure(s)`);
+// --- 9. durable replay store survives "restart" — incl. the capability-reuse nonce
+//        (round-18: the reuse path has no on-chain check, so its nonce MUST be durable) ---
+const rsDir = mkdtempSync(join(tmpdir(), "x402-replay-"));
+const rsPath = join(rsDir, "replay.log");
+const realNow = Math.floor(Date.now() / 1000); // the replay store uses wall-clock, not the fixed test `now`
+const futureNonce = `nonce:${realNow + 3600}.aabb.ccdd`;
+const rs1 = new FileReplayStore(rsPath);
+assert("replay store records a new signature", rs1.consume("settledSig111") === true);
+assert("replay store records a fresh capability nonce", rs1.consume(futureNonce) === true);
+assert("replay store rejects an in-session signature replay", rs1.consume("settledSig111") === false);
+rs1.close(); // simulate process shutdown (release the single-instance lock)
+const rs2 = new FileReplayStore(rsPath); // restart
+assert("signature dedupe survives restart (durable)", rs2.consume("settledSig111") === false);
+assert("capability-reuse nonce dedupe survives restart (durable)", rs2.consume(futureNonce) === false);
+assert("an already-expired nonce is refused (defensive)", rs2.consume(`nonce:${realNow - 10}.dead.beef`) === false);
+rs2.close();
+rmSync(rsDir, { recursive: true, force: true });
+
+// --- 10. sub-atomic price is refused (would round to 0 atomic = free) ---
+let subAtomicThrew = false;
+try {
+  makeRequirement({ priceUsdc: 0.0000004, recipientAddress: requirement.payTo, resource: "/x", network: "solana-devnet" });
+} catch {
+  subAtomicThrew = true;
+}
+assert("sub-atomic priceUsdc is refused (rounds to 0)", subAtomicThrew === true);
+
+// --- 11. reverseBroadcast refunds a definitively-failed (no-funds-moved) payment ---
+const rbDir = mkdtempSync(join(tmpdir(), "x402-rb-"));
+const rbPath = join(rbDir, "spend.json");
+const rb = new SpendLedger(rbPath);
+rb.recordBroadcast("ck", "failSig", 5, 0.3, "RevRecip");
+rb.reverseBroadcast("ck", 0.3, "RevRecip"); // recipient was newly added by this call
+assert("reverseBroadcast clears the pending marker", rb.getPending("ck") === undefined);
+assert("reverseBroadcast refunds the cumulative spend", rb.totalSpent() === 0);
+assert("reverseBroadcast drops the newly-added recipient", rb.hasRecipient("RevRecip") === false && rb.recipientCount() === 0);
+rmSync(rbDir, { recursive: true, force: true });
+
+console.log(`\n${fail === 0 ? "WIRE + AUTH + CAPABILITY + LEDGER + SPL + REPLAY OK" : "FAILED"} — ${fail} failure(s)`);
 process.exit(fail === 0 ? 0 : 1);

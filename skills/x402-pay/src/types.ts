@@ -100,4 +100,7 @@ export interface X402PayConfig {
    *  guard, and the distinct-recipient cap so they survive a restart. REQUIRED on
    *  mainnet (allowMainnet=true) — without it a restart mid-pending can double-pay. */
   spendLedgerPath?: string;
+  /** Allow fetching internal/loopback/link-local hosts (SSRF guard off). Default
+   *  false; set true ONLY for local-dev testing against a localhost gate. */
+  allowInternalHosts?: boolean;
 }

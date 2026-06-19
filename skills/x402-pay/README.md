@@ -48,24 +48,36 @@ transaction's SPL memo, so every settlement is publicly auditable.
 
 ## Install safety
 
-This skill runs where your signer/wallet lives. **Install with `--ignore-scripts`**
-so a transitive native addon can't run install-time code on that host:
+This skill runs where your signer/wallet lives. **Install so no transitive native
+addon can run install-time code on that host** — use either:
 
 ```bash
-npm install --ignore-scripts @parad0x_labs/openclaw-x402-pay
+npm install --ignore-scripts @parad0x_labs/openclaw-x402-pay   # skips ALL install scripts
+# or, equivalently for this package:
+npm install --omit=optional  @parad0x_labs/openclaw-x402-pay   # skips the optional native addons
 ```
 
 > Lands on npm with the v1.1 release. Until then, install from source (this repo,
-> `skills/x402-pay`); the command above resolves once it's published.
+> `skills/x402-pay`); the commands above resolve once it's published.
 
-This is **required, not optional** for a key-holding host. `--ignore-scripts` skips
-the only remaining transitive native builds — `bufferutil` and `utf-8-validate`,
-optional perf addons pulled by `@solana/web3.js`'s WebSocket stack; both fall back
-to pure-JS at runtime, so nothing is lost (verified). The previously-pulled,
-unmaintained `bigint-buffer` (advisory GHSA-3gc7-fjrx-p6mg) is now **gone** — its
-only path in was `@solana/spl-token`, whose three instruction builders are vendored
-here, so the runtime deps are just `@solana/web3.js` and `bs58` (both pure JS). A
-production `npm audit --omit=dev --omit=peer` reports **0 high** (gated at publish).
+This is **required, not optional** for a key-holding host. The only transitive
+native builds are `bufferutil` and `utf-8-validate` — **optional** perf addons
+pulled by `@solana/web3.js`'s WebSocket stack. This skill makes only **HTTP RPC
+calls** (no WebSocket subscriptions), so those addons are **never loaded at
+runtime**: `--ignore-scripts` (skip the build) and `--omit=optional` (skip the
+install entirely) both lose nothing.
+
+> ⚠️ **npm cannot enforce this from inside a published package.** A dependency's
+> `overrides`, `scripts`, and `.npmrc` do **not** govern your install — only your
+> own root project's settings do. So this is install-command guidance you (or your
+> agent runner) must apply; treat `--ignore-scripts` as policy on any wallet host.
+> For maximum safety, install/build on a host that does **not** hold the signer key.
+
+The previously-pulled, unmaintained `bigint-buffer` (advisory GHSA-3gc7-fjrx-p6mg)
+is now **gone** — its only path in was `@solana/spl-token`, whose three instruction
+builders are vendored here, so the runtime deps are just `@solana/web3.js` and
+`bs58` (both pure JS). A production `npm audit --omit=dev --omit=peer` reports
+**0 high** (gated at publish via `prepublishOnly`).
 
 ## Standalone or together
 

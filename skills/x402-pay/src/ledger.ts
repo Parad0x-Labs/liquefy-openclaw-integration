@@ -135,6 +135,20 @@ export class SpendLedger {
     this.persist();
   }
 
+  /** Reverse a recordBroadcast after a DEFINITIVE, no-funds-moved failure (the tx
+   *  landed and reverted): clear the pending marker, refund the cumulative spend, and
+   *  drop the recipient IFF this payment newly added it. Only the caller's definitive
+   *  failure path calls this — ambiguous outcomes keep the conservative over-count. */
+  reverseBroadcast(ckey: string, usdc: number, addedRecipient?: string): void {
+    delete this.state.pending[ckey];
+    this.state.totalSpentUsdc = Math.max(0, this.state.totalSpentUsdc - usdc);
+    if (addedRecipient && this.recipientSet.has(addedRecipient)) {
+      this.recipientSet.delete(addedRecipient);
+      this.state.recipients = this.state.recipients.filter((r) => r !== addedRecipient);
+    }
+    this.persist();
+  }
+
   getPending(ckey: string): PendingInfo | undefined {
     const p = this.state.pending[ckey];
     return p ? { signature: p.sig, lastValidBlockHeight: p.lvbh } : undefined;
