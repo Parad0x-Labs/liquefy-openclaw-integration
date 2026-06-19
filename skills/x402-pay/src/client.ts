@@ -321,7 +321,10 @@ export async function fetchWithX402(
       pending: true,
     };
   }
-  pendingStore.delete(ckey); // confirmed — clear any prior pending marker for this resource
+  // Payment confirmed on-chain. KEEP the signature marked until we've SUCCESSFULLY
+  // redeemed it — so if the redeem leg fails, a retry re-checks the signature
+  // on-chain (and does not pay again) rather than broadcasting a second payment.
+  pendingStore.set(ckey, signature);
 
   // Presenter binding: sign the gate-issued nonce with the payer key so an
   // observer of the on-chain payment can't replay this proof for free access.
@@ -341,20 +344,38 @@ export async function fetchWithX402(
     payerSig,
   });
 
-  const retried = await fetch(url, {
-    ...init,
-    headers: { ...(init?.headers ?? {}), "X-Payment": header },
-  });
+  let retried: Response;
+  try {
+    retried = await fetch(url, {
+      ...init,
+      headers: { ...(init?.headers ?? {}), "X-Payment": header },
+    });
+  } catch (e) {
+    // Redeem leg failed AFTER a confirmed payment. Keep the marker so a retry hits
+    // the on-chain re-check (never re-pays); surface the paid signature.
+    return {
+      ok: false,
+      status: 0,
+      error: `x402: payment confirmed (signature ${signature}) but the redeem request failed (${e instanceof Error ? e.message : String(e)}) — retry to redeem; do NOT re-pay`,
+      paymentSignature: signature,
+      network,
+      pending: true,
+    };
+  }
 
   // Cache any capability the gate issued (the seller echoes x402_verify's
   // `capability` in the X-Payment-Capability response header) for later reuse.
   const capToken = retried.headers.get("X-Payment-Capability");
   if (capToken) capabilityStore.set(ckey, { token: capToken, exp: capExp(capToken) });
+  const body = await readCappedText(retried, MAX_RESOURCE_BYTES);
+  // Redeemed only once the gate accepted the proof. If it rejected (non-ok), keep
+  // the marker so a retry re-checks the confirmed signature instead of re-paying.
+  if (retried.ok) pendingStore.delete(ckey);
 
   return {
     ok: retried.ok,
     status: retried.status,
-    body: await readCappedText(retried, MAX_RESOURCE_BYTES),
+    body,
     paymentSignature: signature,
     receiptHash,
     amountUsdc,
