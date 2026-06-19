@@ -108,7 +108,8 @@ pay_x402({ url: "https://api.example.com/premium" })
 | `maxAmountUsdc` | `1.0` | Hard per-payment USDC cap, enforced before building any tx |
 | `maxTotalUsdc` | `100 × maxAmountUsdc` | Cumulative cap across the process (finite; raise for volume) |
 | `allowMainnet` | `false` | Set `true` to enable real-money mainnet payments (also needs `rpcUrl`) |
-| `allowedRecipients` | — | Optional `payTo` allowlist; if set, any other recipient is refused |
+| `allowedRecipients` | — | Optional `payTo` allowlist; if set, any other recipient is refused. Strongest fund-redirection defense — recommended on mainnet |
+| `maxDistinctRecipients` | `100` | Max distinct recipients funded per process — bounds SOL spent on recipient ATA rent (USDC caps don't bound SOL) |
 | `rpcUrl` | — | Solana RPC. **Required on mainnet**; optional on devnet |
 
 ## How a payment flows

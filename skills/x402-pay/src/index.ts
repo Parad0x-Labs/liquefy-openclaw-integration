@@ -77,6 +77,9 @@ function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
     allowedRecipients: Array.isArray(cfg.allowedRecipients)
       ? cfg.allowedRecipients.filter((x): x is string => typeof x === "string")
       : undefined,
+    // Finite default so a hostile endpoint cycling fresh recipients can't drain SOL
+    // on ATA rent (USDC caps don't bound SOL). Raise for legitimately many-seller agents.
+    maxDistinctRecipients: finitePositive(cfg.maxDistinctRecipients) ?? 100,
     rpcUrl: typeof cfg.rpcUrl === "string" ? cfg.rpcUrl : undefined,
   };
 }

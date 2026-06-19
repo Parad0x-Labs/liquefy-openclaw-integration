@@ -44,6 +44,11 @@ const capExp = (token: string): number => {
  *  cross-call retry re-checks the prior tx instead of broadcasting a second one. */
 const pendingStore = new Map<string, string>();
 
+/** Distinct payTo recipients funded this process — bounds SOL spent on recipient
+ *  ATA rent, which the USDC caps do NOT bound (a hostile endpoint cycling fresh
+ *  recipients can't drain SOL past maxDistinctRecipients). */
+const recipientsFunded = new Set<string>();
+
 const MAX_CHALLENGE_BYTES = 65_536;
 const MAX_RESOURCE_BYTES = 16 * 1024 * 1024;
 
@@ -266,6 +271,18 @@ export async function fetchWithX402(
       `x402: refusing to pay — cumulative cap reached (${totalSpentUsdc} + ${reqUsdc} > ${config.maxTotalUsdc} USDC)`,
     );
   }
+  // SOL-drain rail: paying a brand-new recipient funds ~0.002 SOL of ATA rent, which
+  // the USDC caps don't bound. Cap distinct recipients per process.
+  if (
+    config.maxDistinctRecipients !== undefined &&
+    !recipientsFunded.has(req.payTo) &&
+    recipientsFunded.size >= config.maxDistinctRecipients
+  ) {
+    throw new Error(
+      `x402: refusing to pay — distinct-recipient cap reached (${config.maxDistinctRecipients}); ` +
+        `a hostile endpoint cycling fresh recipients can't drain SOL on ATA rent past this`,
+    );
+  }
   if (network === "solana-mainnet" && !config.rpcUrl) {
     throw new Error(
       "x402: mainnet requires an explicit rpcUrl in config — the public RPC is a third-party observer and unreliable for real payments.",
@@ -280,6 +297,7 @@ export async function fetchWithX402(
   // counting conservatively stops the lifetime cap being bypassed via repeated
   // pending outcomes. (Slight over-count if it truly failed; the safe direction.)
   totalSpentUsdc += reqUsdc;
+  recipientsFunded.add(req.payTo);
 
   // Ambiguous confirmation — the tx MAY have landed. Surface the signature; do NOT
   // report a clean retryable failure (a naive retry would pay a second time).

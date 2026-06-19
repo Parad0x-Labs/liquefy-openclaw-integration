@@ -90,6 +90,10 @@ export interface X402PayConfig {
   maxTotalUsdc?: number;
   /** Optional recipient allowlist — if set, refuse to pay any payTo not listed. */
   allowedRecipients?: string[];
+  /** Max DISTINCT recipients funded per process — bounds SOL spent on recipient
+   *  ATA rent (USDC caps don't bound SOL). A hostile endpoint cycling fresh payTo
+   *  addresses can't drain SOL past this. Default 100; raise for many-seller agents. */
+  maxDistinctRecipients?: number;
   /** Optional private RPC URL override */
   rpcUrl?: string;
 }

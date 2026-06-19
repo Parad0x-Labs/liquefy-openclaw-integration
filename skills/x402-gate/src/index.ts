@@ -136,10 +136,11 @@ export default definePluginEntry({
           "x402-gate: dedupe=false on mainnet disables the built-in replay guard — a settled payment could be " +
           "re-redeemed within the nonce TTL. You MUST enforce replay with your own durable, shared store; set " +
           "acknowledgeExternalReplayStore=true to attest this.";
-      } else if (config.requirePresenterAuth && !config.challengeSecret) {
+      } else if (config.requirePresenterAuth && (!config.challengeSecret || config.challengeSecret.length < 32)) {
         configError =
-          "x402-gate requires challengeSecret on mainnet (presenter-auth nonces must verify across " +
-          "restarts/instances). Set challengeSecret in config.";
+          "x402-gate requires a STRONG challengeSecret on mainnet (>= 32 chars; prefer a 256-bit hex/base64 " +
+          "random). It is the HMAC key for nonces + capability tokens — a weak/guessable secret can be " +
+          "brute-forced offline from one public challenge and used to forge capability tokens for free access.";
       } else if (config.receiptScopeSeconds > 0 && (!config.dedupe || !config.replayStorePath || !config.acknowledgeSingleInstance)) {
         configError =
           "x402-gate: capabilities (receiptScopeSeconds>0) on mainnet require dedupe=true + " +

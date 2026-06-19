@@ -25,7 +25,12 @@
       "allowedRecipients": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Optional allowlist of recipient (payTo) addresses. If set, the skill refuses to pay any 402 whose recipient is not listed."
+        "description": "Optional allowlist of recipient (payTo) addresses. If set, the skill refuses to pay any 402 whose recipient is not listed. The strongest defense against fund redirection — recommended on mainnet."
+      },
+      "maxDistinctRecipients": {
+        "type": "number",
+        "minimum": 1,
+        "description": "Max distinct recipient (payTo) addresses funded per process. Bounds SOL spent on recipient ATA rent (the USDC caps do NOT bound SOL). Default: 100."
       },
       "rpcUrl": {
         "type": "string",
