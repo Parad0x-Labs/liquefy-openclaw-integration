@@ -296,6 +296,9 @@ export default definePluginEntry({
           if (!config.requireOnChain) return structural;
 
           const rpcUrl = config.rpcUrl ?? DEFAULT_RPC[config.network];
+          if (!rpcUrl) {
+            return { valid: false, error: `x402-gate: no RPC URL configured for ${config.network}` };
+          }
           const connection = new Connection(rpcUrl, "confirmed");
           const chain = await confirmOnChain(connection, structural.signature, {
             receiptHash: structural.receiptHash,
@@ -306,12 +309,25 @@ export default definePluginEntry({
           if (!chain.confirmed) {
             return { valid: false, error: `on-chain confirmation failed: ${chain.reason}` };
           }
-          // Replay guard: a settled payment may only be redeemed once.
-          if (config.dedupe && !replayStore.consume(structural.signature)) {
-            return { valid: false, error: "payment already used (replay)" };
+          // Replay guard: a settled payment may only be redeemed once. The tx
+          // signature is the collision-free primary key. Also consume the challenge
+          // nonce (which seeds the receiptHash via nullifierSeed) so the receiptHash
+          // is single-use too — this makes the documented receiptHash-based dedup safe
+          // for integrators and forces a fresh challenge per payment (two payments on
+          // one nonce would otherwise share a receiptHash).
+          if (config.dedupe) {
+            if (!replayStore.consume(structural.signature)) {
+              return { valid: false, error: "payment already used (replay)" };
+            }
+            if (proof.nonce && !replayStore.consume(`nonce:${proof.nonce}`)) {
+              return { valid: false, error: "challenge nonce already used — request a fresh 402 challenge per payment" };
+            }
           }
 
           // Trust the on-chain delta for the reported amount, not the caller header.
+          // (Reported as a JS number; the settlement DECISION above is BigInt-exact.
+          // Number is lossless below 2^53 atomic units ≈ 9.007e9 USDC, far above any
+          // single x402 payment — this is a reporting bound only, never a check.)
           const paidAtomic = Number(chain.receivedAtomic ?? structural.amountAtomic);
           const result: Record<string, unknown> = {
             ...structural,

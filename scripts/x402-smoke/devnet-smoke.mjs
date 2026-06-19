@@ -28,6 +28,7 @@ import {
   getAssociatedTokenAddressSync, createTransferCheckedInstruction,
   createAssociatedTokenAccountIdempotentInstruction,
 } from "@solana/spl-token";
+import bs58 from "bs58";
 
 const RPC = process.env.SOLANA_DEVNET_RPC_URL || "https://api.devnet.solana.com";
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -40,6 +41,25 @@ const sha256Hex = (s) => createHash("sha256").update(s, "utf8").digest("hex");
 const receiptHashFor = (payer, req) =>
   sha256Hex([req.memoPrefix, payer, req.payTo, req.maxAmountRequired, req.resource, req.network, req.extra?.nullifierSeed ?? ""].join("|"));
 
+// mirrors skills/x402-gate/src/onchain.ts programAttestedMemos: memos carried by
+// instructions PROVABLY emitted by the SPL Memo program (not a log substring).
+function programAttestedMemos(tx) {
+  const message = tx?.transaction?.message;
+  if (!message?.getAccountKeys) return [];
+  let keys;
+  try { keys = message.getAccountKeys({ accountKeysFromLookups: tx.meta?.loadedAddresses }); }
+  catch { try { keys = message.getAccountKeys(); } catch { return []; } }
+  const instrs = message.compiledInstructions ?? message.instructions ?? [];
+  const memos = [];
+  for (const ix of instrs) {
+    const pid = keys.get(ix.programIdIndex);
+    if (!pid || pid.toBase58() !== MEMO_PROGRAM_ID.toBase58()) continue;
+    const bytes = typeof ix.data === "string" ? Buffer.from(bs58.decode(ix.data)) : Buffer.from(ix.data ?? []);
+    memos.push(bytes.toString("utf8"));
+  }
+  return memos;
+}
+
 // mirrors skills/x402-gate/src/onchain.ts confirmOnChain
 async function confirmOnChain(conn, signature, expect) {
   if (!signature) return { confirmed: false, reason: "no signature" };
@@ -51,11 +71,10 @@ async function confirmOnChain(conn, signature, expect) {
   if (!tx) return { confirmed: false, reason: "not finalized / not found" };
   if (tx.meta?.err) return { confirmed: false, reason: `tx failed: ${JSON.stringify(tx.meta.err)}` };
 
-  const logs = (tx.meta?.logMessages ?? []).join("\n");
-  const receiptMemoCount = logs.split(`${MEMO_PREFIX}:`).length - 1;
-  if (receiptMemoCount === 0) return { confirmed: false, reason: "no receipt memo found" };
-  if (receiptMemoCount > 1) return { confirmed: false, reason: "multiple receipt memos (not a single charge)" };
-  if (!logs.includes(`${MEMO_PREFIX}:${expect.receiptHash}`)) return { confirmed: false, reason: "receipt memo does not match this charge" };
+  const receiptMemos = programAttestedMemos(tx).filter((m) => m.startsWith(`${MEMO_PREFIX}:`));
+  if (receiptMemos.length === 0) return { confirmed: false, reason: "no SPL-Memo receipt found" };
+  if (receiptMemos.length > 1) return { confirmed: false, reason: "multiple receipt memos (not a single charge)" };
+  if (receiptMemos[0] !== `${MEMO_PREFIX}:${expect.receiptHash}`) return { confirmed: false, reason: "receipt memo does not match this charge" };
 
   const pre = tx.meta?.preTokenBalances ?? [];
   const post = tx.meta?.postTokenBalances ?? [];

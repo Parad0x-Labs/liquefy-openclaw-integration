@@ -15,8 +15,18 @@ import { createPrivateKey, sign as edSign } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, PublicKey, type TransactionInstruction } from "@solana/web3.js";
+import {
+  getAssociatedTokenAddressSync as splGetAta,
+  createAssociatedTokenAccountIdempotentInstruction as splCreateAtaIdem,
+  createTransferCheckedInstruction as splTransferChecked,
+} from "@solana/spl-token";
 import { buildPaymentHeader, selectRequirement } from "../../skills/x402-pay/src/client";
+import {
+  getAssociatedTokenAddressSync as venGetAta,
+  createAssociatedTokenAccountIdempotentInstruction as venCreateAtaIdem,
+  createTransferCheckedInstruction as venTransferChecked,
+} from "../../skills/x402-pay/src/spl";
 import { SpendLedger } from "../../skills/x402-pay/src/ledger";
 import type { X402PayConfig } from "../../skills/x402-pay/src/types";
 import { makeRequirement, verifyPaymentStructure, receiptHashFor } from "../../skills/x402-gate/src/gate";
@@ -124,5 +134,53 @@ assert("maxAmountUsdc=NaN refuses all payment", refuses(baseCfg(NaN)));
 assert("maxAmountUsdc=Infinity refuses all payment", refuses(baseCfg(Infinity)));
 assert("positive cap above price selects the requirement", !refuses(baseCfg(1)));
 
-console.log(`\n${fail === 0 ? "WIRE + AUTH + CAPABILITY + LEDGER OK" : "FAILED"} — ${fail} failure(s)`);
+// --- 7. write-ahead ledger record (round-14/15 double-pay fix) ---
+const waDir = mkdtempSync(join(tmpdir(), "x402-wa-"));
+const waPath = join(waDir, "spend.json");
+const wl = new SpendLedger(waPath);
+wl.recordBroadcast("payer|host|/res", "sigWriteAhead", 0.25, "RecipWA");
+const wl2 = new SpendLedger(waPath); // restart
+assert("recordBroadcast persists the pending marker", wl2.getPending("payer|host|/res") === "sigWriteAhead");
+assert("recordBroadcast persists the spend", wl2.totalSpent() === 0.25);
+assert("recordBroadcast persists the recipient", wl2.hasRecipient("RecipWA") && wl2.recipientCount() === 1);
+rmSync(waDir, { recursive: true, force: true });
+
+// --- 8. vendored SPL builders are byte-identical to @solana/spl-token ---
+// (proves dropping the @solana/spl-token dep — and its bigint-buffer chain — did
+//  not change a single byte of any payment instruction)
+const ixEqual = (a: TransactionInstruction, b: TransactionInstruction): boolean =>
+  a.programId.equals(b.programId) &&
+  Buffer.from(a.data).equals(Buffer.from(b.data)) &&
+  a.keys.length === b.keys.length &&
+  a.keys.every((k, i) =>
+    k.pubkey.equals(b.keys[i].pubkey) && k.isSigner === b.keys[i].isSigner && k.isWritable === b.keys[i].isWritable);
+
+const mint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"); // USDC mainnet
+const ownerOn = payer.publicKey; // on-curve owner
+const ownerOff = new PublicKey("9vDnXsPonRJa7yAmvwRGMAdxt8W13Qbm7HZuvauM3Ya3"); // may be off-curve
+assert(
+  "vendored ATA address == spl-token (on-curve owner)",
+  venGetAta(mint, ownerOn).equals(splGetAta(mint, ownerOn)),
+);
+assert(
+  "vendored ATA address == spl-token (off-curve allowed)",
+  venGetAta(mint, ownerOff).equals(splGetAta(mint, ownerOff, true)),
+);
+const venAta = venGetAta(mint, ownerOff);
+assert(
+  "vendored createAtaIdempotent ix == spl-token",
+  ixEqual(
+    venCreateAtaIdem(ownerOn, venAta, ownerOff, mint),
+    splCreateAtaIdem(ownerOn, venAta, ownerOff, mint),
+  ),
+);
+assert(
+  "vendored transferChecked ix == spl-token",
+  ixEqual(
+    venTransferChecked(venGetAta(mint, ownerOn), mint, venAta, ownerOn, 50000n, 6),
+    splTransferChecked(venGetAta(mint, ownerOn), mint, venAta, ownerOn, 50000n, 6),
+  ),
+);
+
+console.log(`\n${fail === 0 ? "WIRE + AUTH + CAPABILITY + LEDGER + SPL OK" : "FAILED"} — ${fail} failure(s)`);
 process.exit(fail === 0 ? 0 : 1);

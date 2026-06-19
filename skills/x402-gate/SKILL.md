@@ -19,8 +19,8 @@ verify the payment, then serve — funds settle straight to your own Solana wall
 
 ## The two tools
 
-- `x402_challenge({ resource, priceUsdc? })` → a 402 challenge body to send an
-  unpaid caller.
+- `x402_challenge({ resource, description? })` → a 402 challenge body to send an
+  unpaid caller. The price is seller config (`priceUsdc`), never a caller input.
 - `x402_verify({ header, resource })` → validates the payment; with
   `requireOnChain: true`, confirms the transaction settled on Solana first.
 

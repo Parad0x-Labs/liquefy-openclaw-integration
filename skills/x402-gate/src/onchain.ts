@@ -22,8 +22,9 @@
  * Isolated here so gate.ts stays network-free. Uses @solana/web3.js only.
  */
 
-import type { Connection } from "@solana/web3.js";
-import { MEMO_PREFIX } from "./constants";
+import bs58 from "bs58";
+import type { Connection, PublicKey } from "@solana/web3.js";
+import { MEMO_PREFIX, MEMO_PROGRAM_ID } from "./constants";
 
 export interface OnChainExpect {
   /** unique receipt hash for this charge (must appear in the tx memo) */
@@ -72,6 +73,42 @@ function recipientDelta(
   return delta;
 }
 
+/** Memo strings carried by instructions that are PROVABLY SPL-Memo-program calls
+ *  in this tx — program-attested, not a substring scan of the logs (which any
+ *  program can write). Handles both legacy (base58 instruction data) and v0
+ *  (Uint8Array) message shapes. */
+function programAttestedMemos(tx: unknown): string[] {
+  const message = (tx as { transaction?: { message?: unknown } })?.transaction?.message as
+    | {
+        getAccountKeys?: (a?: { accountKeysFromLookups?: unknown }) => { get(i: number): PublicKey | undefined };
+        compiledInstructions?: { programIdIndex: number; data: Uint8Array }[];
+        instructions?: { programIdIndex: number; data: string }[];
+      }
+    | undefined;
+  if (!message?.getAccountKeys) return [];
+  const meta = (tx as { meta?: { loadedAddresses?: unknown } })?.meta;
+  let keys: { get(i: number): PublicKey | undefined };
+  try {
+    keys = message.getAccountKeys({ accountKeysFromLookups: meta?.loadedAddresses });
+  } catch {
+    try {
+      keys = message.getAccountKeys();
+    } catch {
+      return [];
+    }
+  }
+  const instrs: { programIdIndex: number; data: Uint8Array | string }[] =
+    message.compiledInstructions ?? message.instructions ?? [];
+  const memos: string[] = [];
+  for (const ix of instrs) {
+    const pid = keys.get(ix.programIdIndex);
+    if (!pid || pid.toBase58() !== MEMO_PROGRAM_ID) continue;
+    const bytes = typeof ix.data === "string" ? Buffer.from(bs58.decode(ix.data)) : Buffer.from(ix.data ?? []);
+    memos.push(bytes.toString("utf8"));
+  }
+  return memos;
+}
+
 export async function confirmOnChain(
   connection: Connection,
   signature: string,
@@ -102,19 +139,19 @@ export async function confirmOnChain(
     return { confirmed: false, reason: `transaction failed on-chain: ${JSON.stringify(tx.meta.err)}` };
   }
 
-  // (1) Bind to THIS charge — the tx must carry EXACTLY ONE receipt memo, and it
-  //     must be this charge's. Requiring a single memo stops one transfer (to a
-  //     shared recipient wallet) from carrying several receipt hashes and settling
+  // (1) Bind to THIS charge — the tx must carry EXACTLY ONE receipt memo, emitted
+  //     by the SPL Memo program (program-attested, not just a string in the logs),
+  //     and it must be this charge's. Requiring a single memo stops one transfer (to
+  //     a shared recipient wallet) from carrying several receipt hashes and settling
   //     multiple charges/gates for the price of one (cross-gate double-counting).
-  const logs = tx.meta?.logMessages?.join("\n") ?? "";
-  const receiptMemoCount = logs.split(`${MEMO_PREFIX}:`).length - 1;
-  if (receiptMemoCount === 0) {
-    return { confirmed: false, reason: "no receipt memo found (payment not bound to this charge)" };
+  const receiptMemos = programAttestedMemos(tx).filter((m) => m.startsWith(`${MEMO_PREFIX}:`));
+  if (receiptMemos.length === 0) {
+    return { confirmed: false, reason: "no SPL-Memo receipt found (payment not bound to this charge)" };
   }
-  if (receiptMemoCount > 1) {
+  if (receiptMemos.length > 1) {
     return { confirmed: false, reason: "transaction carries multiple receipt memos — not a single-charge payment" };
   }
-  if (!logs.includes(`${MEMO_PREFIX}:${expect.receiptHash}`)) {
+  if (receiptMemos[0] !== `${MEMO_PREFIX}:${expect.receiptHash}`) {
     return { confirmed: false, reason: "receipt memo does not match this charge" };
   }
 

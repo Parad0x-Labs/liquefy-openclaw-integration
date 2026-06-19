@@ -32,9 +32,11 @@ export const MEMO_PREFIX = "null-miner-v1";
  *  MUST stay byte-identical to the gate side. */
 export const PRESENTER_AUTH_DOMAIN = "x402-presenter-auth:v1:";
 
-/** Default public RPC endpoints (override in config for a private RPC) */
-export const DEFAULT_RPC: Record<SolanaNetwork, string> = {
-  "solana-mainnet": "https://api.mainnet-beta.solana.com",
+/** Default public RPC endpoint(s). DEVNET ONLY by design: mainnet has NO default
+ *  so a real-money payment never silently falls back to the public mainnet RPC (a
+ *  third-party observer, and unreliable) — mainnet requires an explicit private
+ *  rpcUrl in config. */
+export const DEFAULT_RPC: Partial<Record<SolanaNetwork, string>> = {
   "solana-devnet": "https://api.devnet.solana.com",
 };
 

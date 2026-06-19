@@ -59,8 +59,13 @@ npm install --ignore-scripts @parad0x_labs/openclaw-x402-pay
 > `skills/x402-pay`); the command above resolves once it's published.
 
 This is **required, not optional** for a key-holding host. `--ignore-scripts` skips
-the transitive native builds (e.g. `bigint-buffer`); the libraries fall back to
-pure-JS at runtime, so nothing is lost (verified).
+the only remaining transitive native builds — `bufferutil` and `utf-8-validate`,
+optional perf addons pulled by `@solana/web3.js`'s WebSocket stack; both fall back
+to pure-JS at runtime, so nothing is lost (verified). The previously-pulled,
+unmaintained `bigint-buffer` (advisory GHSA-3gc7-fjrx-p6mg) is now **gone** — its
+only path in was `@solana/spl-token`, whose three instruction builders are vendored
+here, so the runtime deps are just `@solana/web3.js` and `bs58` (both pure JS). A
+production `npm audit --omit=dev --omit=peer` reports **0 high** (gated at publish).
 
 ## Standalone or together
 
@@ -136,8 +141,10 @@ pay_x402({ url: "https://api.example.com/premium" })
 
 ## No external @parad0x_labs dependency
 
-The Solana-specific constants and the x402 wire types are vendored inline. Runtime
-deps are only the well-known `@solana/web3.js` and `@solana/spl-token`.
+The Solana-specific constants, the x402 wire types, and the three SPL Token
+instruction builders are vendored inline (the builders proven byte-identical to
+`@solana/spl-token` in the wire tests). Runtime deps are only the well-known
+`@solana/web3.js` and `bs58` — no native `bigint-buffer` / `buffer-layout` chain.
 
 ## Source
 

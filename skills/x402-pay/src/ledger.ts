@@ -70,6 +70,24 @@ export class SpendLedger {
     this.persist();
   }
 
+  /**
+   * Write-ahead record of a payment about to be broadcast: persist the pending
+   * (recheck) marker, count the spend toward the cumulative cap, and record the
+   * recipient — all in ONE durable write, BEFORE the tx reaches the network. So a
+   * crash/throw during broadcast can never lose the signature (double-pay) and the
+   * caps can never be re-armed by a restart mid-flight. Counting the spend here is
+   * conservative: over-counts only if the tx never lands (the safe direction).
+   */
+  recordBroadcast(ckey: string, signature: string, usdc: number, payTo: string): void {
+    this.state.pending[ckey] = signature;
+    this.state.totalSpentUsdc += usdc;
+    if (!this.recipientSet.has(payTo)) {
+      this.recipientSet.add(payTo);
+      this.state.recipients.push(payTo);
+    }
+    this.persist();
+  }
+
   getPending(ckey: string): string | undefined {
     return this.state.pending[ckey];
   }

@@ -81,6 +81,26 @@ async function readCappedText(res: Response, maxBytes: number): Promise<string> 
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Reject a fetch target that is not http(s) or points at the cloud-metadata
+ *  service — the highest-value SSRF abuse of a wallet-bearing process by a
+ *  prompt-injected agent. (Recipient/amount/caps are decoupled from the URL, so
+ *  fund safety does not depend on this; it bounds the request surface.) */
+function assertSafeUrl(raw: string): void {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error("x402: invalid URL");
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") {
+    throw new Error(`x402: refusing non-http(s) URL scheme "${u.protocol}"`);
+  }
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "169.254.169.254" || host === "fd00:ec2::254" || host === "0.0.0.0") {
+    throw new Error(`x402: refusing cloud-metadata / unspecified host "${host}"`);
+  }
+}
+
 /** Parse + minimally validate a 402 response body into a challenge. */
 export function parseChallenge(body: string): X402Challenge {
   let parsed: unknown;
@@ -207,6 +227,7 @@ export async function fetchWithX402(
 ): Promise<X402PayResult> {
   const { signer, config, init } = opts;
   const led = getLedger(config);
+  assertSafeUrl(url);
 
   const first = await fetch(url, init);
   if (first.status !== 402) {
@@ -224,6 +245,30 @@ export async function fetchWithX402(
   // Presenter auth needs message signing — confirm we can BEFORE spending anything.
   if (challenge.nonce && !signer.signMessage) {
     throw new Error("x402: gate requires presenter auth (a signed nonce) but the signer has no signMessage");
+  }
+
+  // Mainnet fail-closed, BEFORE any RPC connection or capability/pending probe:
+  // (a) an explicit private rpcUrl is required (the public RPC is a third-party
+  // observer and unreliable for money — and we must never silently fall back to it
+  // on mainnet, including on the pending re-check below), and (b) the spend rails
+  // must be durable (a restart must not re-arm the caps or lose a pending signature).
+  if (network === "solana-mainnet") {
+    if (!config.rpcUrl) {
+      throw new Error(
+        "x402: mainnet requires an explicit rpcUrl in config — the public RPC is a third-party observer and unreliable for real payments.",
+      );
+    }
+    if (!led.durable) {
+      throw new Error(
+        "x402: mainnet requires a durable spend ledger — set spendLedgerPath so the spend cap and double-pay guard survive a restart.",
+      );
+    }
+  }
+  // Single resolved RPC for every on-chain call below. DEFAULT_RPC has no mainnet
+  // entry, so mainnet uses the (guaranteed) config.rpcUrl; devnet may use the default.
+  const rpcUrl = config.rpcUrl ?? DEFAULT_RPC[network];
+  if (!rpcUrl) {
+    throw new Error(`x402: no RPC URL configured for ${network} — set an rpcUrl in config.`);
   }
 
   // Capability reuse: if we hold a live capability for this resource, present it
@@ -258,7 +303,7 @@ export async function fetchWithX402(
   // is still unredeemed, re-check it on-chain before building another transfer.
   const pendingSig = led.getPending(ckey);
   if (pendingSig) {
-    const probe = new Connection(config.rpcUrl ?? DEFAULT_RPC[network], "confirmed");
+    const probe = new Connection(rpcUrl, "confirmed");
     const st = (await probe.getSignatureStatus(pendingSig, { searchTransactionHistory: true })).value;
     if (st && !st.err && st.confirmationStatus === "finalized") {
       return {
@@ -302,33 +347,32 @@ export async function fetchWithX402(
         `a hostile endpoint cycling fresh recipients can't drain SOL on ATA rent past this`,
     );
   }
-  if (network === "solana-mainnet" && !config.rpcUrl) {
-    throw new Error(
-      "x402: mainnet requires an explicit rpcUrl in config — the public RPC is a third-party observer and unreliable for real payments.",
-    );
-  }
-  // On mainnet the spend rails MUST be durable, or a restart can re-arm the caps
-  // and lose a pending signature (double-pay). Refuse mainnet without a ledger.
-  if (network === "solana-mainnet" && !led.durable) {
-    throw new Error(
-      "x402: mainnet requires a durable spend ledger — set spendLedgerPath so the spend cap and double-pay guard survive a restart.",
-    );
-  }
-
-  const rpcUrl = config.rpcUrl ?? DEFAULT_RPC[network];
   const connection = new Connection(rpcUrl, "confirmed");
 
-  const { signature, receiptHash, amountUsdc, status } = await payWithSigner(connection, signer, req);
-  // Count the spend + recipient as soon as it's broadcast — a "pending" tx MAY have
-  // landed, so counting conservatively stops the caps being bypassed via repeated
-  // pending outcomes. (Slight over-count if it truly failed; the safe direction.)
-  led.addSpend(reqUsdc);
-  led.addRecipient(req.payTo);
+  // WRITE-AHEAD: the moment the signed tx is known (before it touches the network),
+  // persist the recheck marker + count the spend + record the recipient in ONE
+  // durable write. So a throw or crash during broadcast can never lose the signature
+  // (a retry would re-check it, not re-pay) and can never re-arm the caps.
+  let signature: string, receiptHash: string, amountUsdc: number, status: "confirmed" | "pending";
+  try {
+    ({ signature, receiptHash, amountUsdc, status } = await payWithSigner(
+      connection,
+      signer,
+      req,
+      (sig) => led.recordBroadcast(ckey, sig, reqUsdc, req.payTo),
+    ));
+  } catch (e) {
+    // Reached only on a DEFINITIVE on-chain execution error (the tx landed and
+    // failed → atomic → no USDC moved) or a pre-broadcast error (build/sign failed →
+    // nothing sent). Either way no funds moved: clear the recheck marker so a retry
+    // may safely re-pay, and surface a clean failure.
+    led.clearPending(ckey);
+    throw e;
+  }
 
-  // Ambiguous confirmation — the tx MAY have landed. Surface the signature; do NOT
-  // report a clean retryable failure (a naive retry would pay a second time).
+  // Ambiguous confirmation — the tx MAY have landed. The marker is already persisted
+  // (write-ahead); surface the signature and do NOT report a clean retryable failure.
   if (status !== "confirmed") {
-    led.setPending(ckey, signature); // so a cross-call retry re-checks this tx, not re-pays
     return {
       ok: false,
       status: 0,
@@ -338,10 +382,9 @@ export async function fetchWithX402(
       pending: true,
     };
   }
-  // Confirmed on-chain. KEEP the signature marked until we've SUCCESSFULLY redeemed
-  // it — so if the redeem leg fails, a retry re-checks the signature on-chain (and
-  // does not pay again) rather than broadcasting a second payment.
-  led.setPending(ckey, signature);
+  // Confirmed on-chain. The recheck marker stays set (from the write-ahead record)
+  // until we've SUCCESSFULLY redeemed — so if the redeem leg fails, a retry re-checks
+  // the signature on-chain (and does not pay again) rather than broadcasting again.
 
   // Presenter binding: sign the gate-issued nonce with the payer key so an
   // observer of the on-chain payment can't replay this proof for free access.
