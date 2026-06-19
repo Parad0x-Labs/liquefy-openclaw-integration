@@ -140,10 +140,12 @@ export default definePluginEntry({
         configError =
           "x402-gate requires challengeSecret on mainnet (presenter-auth nonces must verify across " +
           "restarts/instances). Set challengeSecret in config.";
-      } else if (config.receiptScopeSeconds > 0 && (!config.replayStorePath || !config.acknowledgeSingleInstance)) {
+      } else if (config.receiptScopeSeconds > 0 && (!config.dedupe || !config.replayStorePath || !config.acknowledgeSingleInstance)) {
         configError =
-          "x402-gate requires replayStorePath + acknowledgeSingleInstance on mainnet when " +
-          "receiptScopeSeconds>0 — capability-reuse nonce dedupe is durable single-instance only.";
+          "x402-gate: capabilities (receiptScopeSeconds>0) on mainnet require dedupe=true + " +
+          "replayStorePath + acknowledgeSingleInstance. Capability-reuse dedupe is single-instance " +
+          "only and is NOT supported in external-store / multi-replica mode (dedupe=false) — a " +
+          "settled payment would fan out to free reuse across replicas. Disable capabilities or run single-instance.";
       } else if (!config.rpcUrl) {
         configError =
           "x402-gate requires an explicit rpcUrl on mainnet — the public RPC is rate-limited and is the " +
@@ -263,7 +265,11 @@ export default definePluginEntry({
           if (proof.capability) {
             const cap = verifyCapability(proof.capability, proof.payerAddress, resource, secret, now);
             if (!cap.ok) return { valid: false, error: `capability invalid: ${cap.reason}` };
-            if (!replayStore.consume(`nonce:${proof.nonce}`)) {
+            // Single-use nonce against the durable single-instance store. Capabilities
+            // are only enabled with dedupe=true (enforced above on mainnet), so this
+            // store is authoritative; never silently dedupe reuse against a per-host
+            // store while the operator believes an external shared store covers it.
+            if (config.dedupe && !replayStore.consume(`nonce:${proof.nonce}`)) {
               return { valid: false, error: "nonce already used" };
             }
             return {

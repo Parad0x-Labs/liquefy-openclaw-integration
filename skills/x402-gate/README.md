@@ -102,6 +102,11 @@ startup — a second instance pointed at the same path **refuses to start**.
   your own **shared atomic store** (Redis `SETNX` / a DB unique constraint) around
   the returned `signature`/`receiptHash` before serving.
 
+> ⚠️ **Capabilities (`receiptScopeSeconds > 0`) are single-instance only** — they
+> require `dedupe: true` + `replayStorePath` + `acknowledgeSingleInstance` and the
+> gate refuses them in multi-replica (`dedupe: false`) mode. `replayStorePath` must
+> be **local disk**; a shared/network filesystem across hosts defeats the lock.
+
 ## Install safety
 
 This skill runs where your seller wallet lives. **Install with `--ignore-scripts`**
