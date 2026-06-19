@@ -134,6 +134,10 @@ export default definePluginEntry({
         configError =
           "x402-gate requires replayStorePath + acknowledgeSingleInstance on mainnet when " +
           "receiptScopeSeconds>0 — capability-reuse nonce dedupe is durable single-instance only.";
+      } else if (!config.rpcUrl) {
+        configError =
+          "x402-gate requires an explicit rpcUrl on mainnet — the public RPC is rate-limited and is the " +
+          "trusted oracle for the settlement decision. Set a private/dedicated node.";
       }
     }
     // Validate the recipient wallet up front (clear error instead of opaque per-request failures).

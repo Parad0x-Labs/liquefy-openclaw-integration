@@ -19,8 +19,9 @@ key.
 [`x402-pay`](../skills/x402-pay) gives your agent one tool — `pay_x402(url)`. It
 fetches a URL; on HTTP 402 it pays the demanded USDC on Solana and returns the
 resource. Bring your own signer (the skill builds an unsigned tx, your wallet
-signs) with a hard per-payment USDC cap. Mainnet by default; set
-`allowMainnet: false` to rehearse on devnet.
+signs) with a hard per-payment USDC cap. Real-money mainnet is **opt-in and off by
+default** — set `allowMainnet: true` plus an explicit `rpcUrl` to enable it; the
+network for each payment comes from the 402 challenge.
 
 ## 2 · Charge for your agent's work
 

@@ -37,6 +37,37 @@ const capExp = (token: string): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const MAX_CHALLENGE_BYTES = 65_536;
+const MAX_RESOURCE_BYTES = 16 * 1024 * 1024;
+
+/** Read a response body, aborting past maxBytes. Bounds the ACTUAL bytes streamed,
+ *  not the server-advertised Content-Length (which a malicious server can omit or
+ *  send chunked) — so an untrusted endpoint can't OOM the wallet-bearing process. */
+async function readCappedText(res: Response, maxBytes: number): Promise<string> {
+  const body = res.body;
+  if (!body) return await res.text();
+  const reader = body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        total += value.length;
+        if (total > maxBytes) {
+          await reader.cancel().catch(() => {});
+          throw new Error(`x402: response body exceeds ${maxBytes} bytes`);
+        }
+        chunks.push(Buffer.from(value));
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 /** Parse + minimally validate a 402 response body into a challenge. */
 export function parseChallenge(body: string): X402Challenge {
   let parsed: unknown;
@@ -136,15 +167,13 @@ export async function fetchWithX402(
 
   const first = await fetch(url, init);
   if (first.status !== 402) {
-    return { ok: first.ok, status: first.status, body: await first.text() };
+    return { ok: first.ok, status: first.status, body: await readCappedText(first, MAX_RESOURCE_BYTES) };
   }
 
-  // Bound the untrusted 402 challenge body before reading/parsing it (DoS guard).
-  if (Number(first.headers.get("content-length") ?? "0") > 65536) {
-    throw new Error("x402: 402 challenge body too large");
-  }
-  // Decide what (if anything) we will pay — enforced before building any tx.
-  const challenge = parseChallenge(await first.text());
+  // Decide what (if anything) we will pay — enforced before building any tx. Read
+  // the challenge with a hard byte cap (not the server's Content-Length, which it
+  // can omit or chunk to slip an unbounded body past the guard).
+  const challenge = parseChallenge(await readCappedText(first, MAX_CHALLENGE_BYTES));
   const req = selectRequirement(challenge, config);
   const network: SolanaNetwork = req.network;
   const nowSec = Math.floor(Date.now() / 1000);
@@ -171,7 +200,7 @@ export async function fetchWithX402(
     });
     const reuse = await fetch(url, { ...init, headers: { ...(init?.headers ?? {}), "X-Payment": reuseHeader } });
     if (reuse.ok) {
-      return { ok: true, status: reuse.status, body: await reuse.text(), payTo: req.payTo, network, reusedCapability: true };
+      return { ok: true, status: reuse.status, body: await readCappedText(reuse, MAX_RESOURCE_BYTES), payTo: req.payTo, network, reusedCapability: true };
     }
     capabilityStore.delete(ckey); // rejected / expired — fall through to a fresh payment
   }
@@ -193,6 +222,10 @@ export async function fetchWithX402(
   const connection = new Connection(rpcUrl, "confirmed");
 
   const { signature, receiptHash, amountUsdc, status } = await payWithSigner(connection, signer, req);
+  // Count the spend as soon as it's broadcast — a "pending" tx MAY have landed, so
+  // counting conservatively stops the lifetime cap being bypassed via repeated
+  // pending outcomes. (Slight over-count if it truly failed; the safe direction.)
+  totalSpentUsdc += reqUsdc;
 
   // Ambiguous confirmation — the tx MAY have landed. Surface the signature; do NOT
   // report a clean retryable failure (a naive retry would pay a second time).
@@ -206,7 +239,6 @@ export async function fetchWithX402(
       pending: true,
     };
   }
-  totalSpentUsdc += reqUsdc;
 
   // Presenter binding: sign the gate-issued nonce with the payer key so an
   // observer of the on-chain payment can't replay this proof for free access.
@@ -239,7 +271,7 @@ export async function fetchWithX402(
   return {
     ok: retried.ok,
     status: retried.status,
-    body: await retried.text(),
+    body: await readCappedText(retried, MAX_RESOURCE_BYTES),
     paymentSignature: signature,
     receiptHash,
     amountUsdc,

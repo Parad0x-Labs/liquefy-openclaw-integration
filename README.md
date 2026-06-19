@@ -19,7 +19,7 @@ non-custodial, with a hard spend cap. Drop these into an OpenClaw agent:
 #   skills/x402-gate  — charge other agents for your skill/API
 
 # Receipts + status MCP server (any MCP client)
-npx @parad0x_labs/mcp-server                    # → skills/mcp-server
+npx @parad0x_labs/mcp-server                    # → skills/mcp-server (from source until published)
 
 # Keep long paid sessions cheap
 npm i @parad0x_labs/openclaw-context-capsule
