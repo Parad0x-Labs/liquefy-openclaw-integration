@@ -11,6 +11,10 @@ declare module "openclaw/plugin-sdk/plugin-entry" {
   export function definePluginEntry(entry: any): any;
 }
 
+declare module "openclaw/plugin-sdk/core" {
+  export function delegateCompactionToRuntime(...args: any[]): Promise<any>;
+}
+
 declare module "openclaw/plugin-sdk/context-engine" {
   export type AssembleResult = any;
   export type CompactResult = any;
