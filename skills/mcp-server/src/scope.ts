@@ -17,6 +17,7 @@ export const READ_TOOLS = new Set<string>([
   "check_nullifier",
   "compress_receipts",
   "build_outcome_receipt",
+  "resolve_null",
   "get_scope_status",
   "grant_write_consent",
   "revoke_write_consent",

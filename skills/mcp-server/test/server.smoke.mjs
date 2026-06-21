@@ -94,8 +94,8 @@ test("server boots, lists consent tools, gates writes (read-only scope)", async 
     for (const t of ["get_scope_status", "grant_write_consent", "revoke_write_consent"]) {
       assert.ok(names.includes(t), `tools/list missing ${t}`);
     }
-    for (const t of ["x402_get_quote", "anchor_receipt", "private_compute", "get_stack_status"]) {
-      assert.ok(names.includes(t), `tools/list missing original tool ${t}`);
+    for (const t of ["x402_get_quote", "anchor_receipt", "private_compute", "get_stack_status", "resolve_null"]) {
+      assert.ok(names.includes(t), `tools/list missing tool ${t}`);
     }
 
     // get_scope_status — write mode must be OFF (env flag unset).

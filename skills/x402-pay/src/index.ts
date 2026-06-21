@@ -25,12 +25,14 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 import { fetchWithX402, quoteX402, needsApproval } from "./client";
+import { resolveNullName, isNullName } from "./resolve";
 import type { X402PayConfig, X402Signer } from "./types";
 
 export * from "./constants";
 export * from "./types";
 export * from "./signer";
 export * from "./client";
+export * from "./resolve";
 
 const DEFAULT_MAX_USDC = 1.0;
 
@@ -121,11 +123,16 @@ export default definePluginEntry({
     api.registerTool({
       name: "pay_x402",
       description:
-        "Fetch a URL; if it returns HTTP 402, pay the demanded USDC on Solana " +
-        "(within the configured cap and network) and return the resource. " +
+        "Fetch a URL or a .null name; if it returns HTTP 402, pay the demanded USDC " +
+        "on Solana (within the configured cap and network) and return the resource. " +
+        "A name.null resolves on mainnet to its published x402 endpoint (pay-by-name). " +
         "Refuses any payment over the configured USDC cap.",
       parameters: {
-        url: { type: "string", description: "The x402-gated resource URL to fetch" },
+        url: {
+          type: "string",
+          description:
+            "The x402-gated resource URL, OR a .null name (e.g. \"myagent.null\") to pay by name.",
+        },
         method: { type: "string", description: "HTTP method (default GET)" },
         approved: {
           type: "boolean",
@@ -146,6 +153,34 @@ export default definePluginEntry({
         const url = String(params.url ?? "");
         if (!url) return { ok: false, error: "url is required" };
 
+        // Pay-by-name: a `name.null` resolves on mainnet to its published x402
+        // endpoint, which is what we then pay. A plain URL is used as-is.
+        let targetUrl = url;
+        let resolvedName: { name: string; pda: string; owner?: string } | undefined;
+        if (isNullName(url)) {
+          let r;
+          try {
+            r = await resolveNullName(url);
+          } catch (err) {
+            return {
+              ok: false,
+              error: `x402: failed to resolve ${url}: ${err instanceof Error ? err.message : String(err)}`,
+            };
+          }
+          if (!r.found) {
+            return { ok: false, error: `x402: .null name "${url}" is not registered on mainnet (pda ${r.pda}).` };
+          }
+          if (!r.x402Endpoint) {
+            return {
+              ok: false,
+              error: `x402: ${url} resolves (owner ${r.owner}) but has no x402 endpoint published yet — the owner must set one (UPDATE_ENDPOINT) before it can be paid by name.`,
+              resolved: { name: r.name, pda: r.pda, owner: r.owner },
+            };
+          }
+          targetUrl = r.x402Endpoint;
+          resolvedName = { name: r.name, pda: r.pda, owner: r.owner };
+        }
+
         const init = params.method ? { method: String(params.method) } : undefined;
 
         // Approval handoff (opt-in): when requireApproval is set, do NOT pay on the
@@ -155,16 +190,22 @@ export default definePluginEntry({
         const approved = params.approved === true;
         if (needsApproval(config, approved)) {
           try {
-            const quote = await quoteX402(url, { config, init });
+            const quote = await quoteX402(targetUrl, { config, init });
             if (!quote.paymentRequired) {
               // Free resource — nothing to approve; return it.
-              return { ok: true, status: quote.status, body: quote.body };
+              return {
+                ok: true,
+                status: quote.status,
+                body: quote.body,
+                ...(resolvedName ? { resolved_name: resolvedName } : {}),
+              };
             }
             return {
               ok: false,
               approval_required: true,
               quote: {
-                url,
+                url: targetUrl,
+                name: resolvedName?.name ?? null,
                 amount_usdc: quote.amountUsdc,
                 pay_to: quote.requirement?.payTo,
                 network: quote.network,
@@ -182,7 +223,8 @@ export default definePluginEntry({
         }
 
         try {
-          return await fetchWithX402(url, { signer: activeSigner, config, init });
+          const result = await fetchWithX402(targetUrl, { signer: activeSigner, config, init });
+          return resolvedName ? { ...result, resolved_name: resolvedName } : result;
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }

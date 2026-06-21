@@ -14,6 +14,7 @@ import {
   assertNotSeized,
   canSubmitWrite,
 } from "./scope.js";
+import { resolveNullName } from "./resolve.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -854,6 +855,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "resolve_null",
+        description:
+          "Resolve a .null name on Solana mainnet → its owner, published x402 endpoint (pay-by-name), stealth meta-address, and Arweave content. Read-only: derives the NullDomain PDA on the live registrar and reads it. Returns payable_by_name=true when an x402 endpoint is set.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "The .null name to resolve (e.g. \"myagent.null\" or \"myagent\").",
+            },
+            rpc_url: {
+              type: "string",
+              description: "Solana mainnet RPC URL (default: publicnode mainnet). The registrar is on mainnet.",
+            },
+          },
+          required: ["name"],
+        },
+      },
+      {
         name: "get_scope_status",
         description:
           "Show the current permission scope for this MCP session — which tools require elevated consent, which are currently consented, and whether write mode is enabled by the operator.",
@@ -976,6 +996,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }),
           consented: sessionConsent.has("private_compute"),
         });
+        break;
+      }
+
+      case "resolve_null": {
+        const { name: nullName, rpc_url } = args as { name: string; rpc_url?: string };
+        const r = await resolveNullName(nullName, rpc_url);
+        result = {
+          ...r,
+          payable_by_name: !!r.x402_endpoint,
+          explorer_url: explorerAccount(r.pda),
+          note: r.found
+            ? r.x402_endpoint
+              ? "Resolved — payable by name via the published x402 endpoint."
+              : "Registered, but no x402 endpoint published yet (the owner must set one via UPDATE_ENDPOINT)."
+            : "Not registered on mainnet.",
+        };
         break;
       }
 
