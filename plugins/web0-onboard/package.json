@@ -1,0 +1,43 @@
+{
+  "name": "@parad0x_labs/openclaw-web0-onboard",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin — one-call web0 setup: identity, a paid x402 storefront, receipt anchoring, and a .null name-binding plan",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": ["src/", "openclaw.plugin.json", "SKILL.md", "README.md"],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "web0",
+    "null",
+    "x402",
+    "solana",
+    "agent-payments",
+    "monetization",
+    "parad0x-labs"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": { "node": ">=22" },
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Parad0x-Labs/openclaw-skills",
+    "directory": "plugins/web0-onboard"
+  }
+}
