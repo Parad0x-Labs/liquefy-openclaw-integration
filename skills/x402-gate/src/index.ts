@@ -19,11 +19,15 @@
  *     token so the payer can reuse access within that window without re-paying.
  *
  * Non-custodial: funds settle straight to your own wallet; the skill holds no keys.
+ *
+ * Plugin contract: defined with `defineToolPlugin` against the real OpenClaw SDK
+ * (TypeBox `parameters` + `execute(params, config, context)`). The one-time setup
+ * (config validation + the single-instance replay store lock) is built lazily on
+ * first tool call and shared across both tools.
  */
 
-// Provided by the host OpenClaw runtime at load time (declared as a peer
-// dependency). definePluginEntry is a runtime value, not a type-only import.
-import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { Type } from "typebox";
+import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 import { DEFAULT_RPC, PRESENTER_AUTH_DOMAIN, atomicToUsdc, type SolanaNetwork } from "./constants";
@@ -82,111 +86,150 @@ function readConfig(raw: Record<string, unknown> | undefined): GateConfig {
   };
 }
 
-export default definePluginEntry({
+interface GateState {
+  config: GateConfig;
+  secret: ReturnType<typeof resolveSecret>;
+  configError: string | null;
+  replayStore: ReplayStore;
+}
+
+/**
+ * One-time gate setup, built lazily on first tool call and memoized. This is where
+ * the FileReplayStore takes its single-instance lock and where unsafe config is
+ * turned into a fail-closed `configError` (surfaced from every tool call rather
+ * than thrown at load, which could crash the host). Config is the plugin's static
+ * config, identical across calls, so memoizing on first use is correct.
+ */
+let gateState: GateState | null = null;
+function getGateState(rawConfig: Record<string, unknown> | undefined): GateState {
+  if (gateState) return gateState;
+
+  const config = readConfig(rawConfig);
+  const secret = resolveSecret(config.challengeSecret);
+  let configError: string | null = null;
+
+  // The file store takes a single-instance lock on construction; if another live
+  // instance already holds the path, refuse (fail-closed) rather than run a
+  // divergent dedup set that would let one payment be redeemed per replica.
+  let replayStore: ReplayStore = new InMemoryReplayStore();
+  if (config.replayStorePath) {
+    try {
+      replayStore = new FileReplayStore(config.replayStorePath);
+    } catch (e) {
+      configError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  // Nonces (incl. the capability-reuse nonce, whose single-use is its ONLY replay
+  // guard) go through the SAME durable replayStore as signatures, so a restart can't
+  // reopen replay. The store self-compacts expired nonces, so high-rate capability
+  // reuse can't grow it without bound (signatures are kept permanently).
+
+  if (!configError && config.network === "solana-mainnet") {
+    if (!config.requireOnChain) {
+      configError =
+        "x402-gate refuses requireOnChain=false on mainnet — that serves paid content without " +
+        "verifying the payment settled on-chain. Set requireOnChain=true (header-only mode is devnet/testing only).";
+    } else if (config.dedupe && !config.replayStorePath) {
+      configError =
+        "x402-gate refuses in-memory dedupe on mainnet (replay reopens on restart). Set replayStorePath " +
+        "for a restart-durable single-instance store, or dedupe=false with your own shared store.";
+    } else if (config.dedupe && !config.acknowledgeSingleInstance) {
+      configError =
+        "x402-gate: replayStorePath (FileReplayStore) is SINGLE-INSTANCE only — running multiple replicas lets " +
+        "one payment be redeemed once per replica. Set acknowledgeSingleInstance=true to confirm you run ONE " +
+        "instance, or set dedupe=false with your own shared store (Redis/DB) + acknowledgeExternalReplayStore=true.";
+    } else if (!config.dedupe && !config.acknowledgeExternalReplayStore) {
+      configError =
+        "x402-gate: dedupe=false on mainnet disables the built-in replay guard — a settled payment could be " +
+        "re-redeemed within the nonce TTL. You MUST enforce replay with your own durable, shared store; set " +
+        "acknowledgeExternalReplayStore=true to attest this.";
+    } else if (config.requirePresenterAuth && (!config.challengeSecret || config.challengeSecret.length < 32)) {
+      configError =
+        "x402-gate requires a STRONG challengeSecret on mainnet (>= 32 chars; prefer a 256-bit hex/base64 " +
+        "random). It is the HMAC key for nonces + capability tokens — a weak/guessable secret can be " +
+        "brute-forced offline from one public challenge and used to forge capability tokens for free access.";
+    } else if (config.receiptScopeSeconds > 0 && (!config.dedupe || !config.replayStorePath || !config.acknowledgeSingleInstance)) {
+      configError =
+        "x402-gate: capabilities (receiptScopeSeconds>0) on mainnet require dedupe=true + " +
+        "replayStorePath + acknowledgeSingleInstance. Capability-reuse dedupe is single-instance " +
+        "only and is NOT supported in external-store / multi-replica mode (dedupe=false) — a " +
+        "settled payment would fan out to free reuse across replicas. Disable capabilities or run single-instance.";
+    } else if (!config.rpcUrl) {
+      configError =
+        "x402-gate requires an explicit rpcUrl on mainnet — the public RPC is rate-limited and is the " +
+        "trusted oracle for the settlement decision. Set a private/dedicated node.";
+    }
+  }
+  // Validate the recipient wallet up front (clear error instead of opaque per-request failures).
+  if (!configError && config.recipientAddress) {
+    try {
+      new PublicKey(config.recipientAddress);
+    } catch {
+      configError = "x402-gate: recipientAddress is not a valid Solana public key";
+    }
+  }
+  // A present-but-malformed priceUsdc (e.g. "5" from an env/JSON pipeline) must
+  // fail loud, not silently fall back to a cheap default price.
+  const rawPrice = (rawConfig ?? {}).priceUsdc;
+  if (!configError && rawPrice !== undefined && !(typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0)) {
+    configError = "x402-gate: priceUsdc must be a finite positive number";
+  }
+  // Reject a sub-atomic price up front (it would round to 0 atomic units and serve
+  // for free / brick the resource) rather than failing only when a challenge is built.
+  if (!configError && typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0 && Math.round(rawPrice * 1e6) < 1) {
+    configError = "x402-gate: priceUsdc is below the smallest USDC unit (0.000001) — raise it";
+  }
+
+  gateState = { config, secret, configError, replayStore };
+  return gateState;
+}
+
+const ConfigSchema = Type.Object(
+  {
+    recipientAddress: Type.Optional(Type.String()),
+    priceUsdc: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    network: Type.Optional(Type.String()),
+    requireOnChain: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+    dedupe: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+    requirePresenterAuth: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+    receiptScopeSeconds: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    acknowledgeSingleInstance: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+    acknowledgeExternalReplayStore: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+    challengeSecret: Type.Optional(Type.String()),
+    replayStorePath: Type.Optional(Type.String()),
+    rpcUrl: Type.Optional(Type.String()),
+  },
+  { additionalProperties: true },
+);
+
+const ChallengeParams = Type.Object({
+  resource: Type.String({ description: "The resource id/path being charged for" }),
+  description: Type.Optional(Type.String({ description: "Human-readable description" })),
+});
+
+const VerifyParams = Type.Object({
+  header: Type.String({ description: "The base64 X-Payment header the caller sent" }),
+  resource: Type.String({ description: "The resource being accessed (must match the challenge)" }),
+});
+
+export default defineToolPlugin({
   id: "x402-gate",
   name: "x402 Gate",
   description:
     "Charge other agents for your skill or API with x402 micropayments on Solana. " +
     "Mint a 402 challenge, verify the payment (confirmed on-chain), then serve. " +
     "Funds go to your own wallet address — the skill holds no keys.",
-  register(api: {
-    registerTool: (tool: {
-      name: string;
-      description: string;
-      parameters: Record<string, unknown>;
-      handler: (params: Record<string, unknown>) => Promise<unknown>;
-    }) => void;
-    config?: Record<string, unknown>;
-  }) {
-    const config = readConfig(api.config);
-    const secret = resolveSecret(config.challengeSecret);
-
-    // Fail-closed on unsafe config: surface the error from every tool call (don't
-    // throw at load — that could crash the host — and don't silently degrade).
-    let configError: string | null = null;
-
-    // The file store takes a single-instance lock on construction; if another live
-    // instance already holds the path, refuse (fail-closed) rather than run a
-    // divergent dedup set that would let one payment be redeemed per replica.
-    let replayStore: ReplayStore = new InMemoryReplayStore();
-    if (config.replayStorePath) {
-      try {
-        replayStore = new FileReplayStore(config.replayStorePath);
-      } catch (e) {
-        configError = e instanceof Error ? e.message : String(e);
-      }
-    }
-    // Nonces (incl. the capability-reuse nonce, whose single-use is its ONLY replay
-    // guard) go through the SAME durable replayStore as signatures, so a restart can't
-    // reopen replay. The store self-compacts expired nonces, so high-rate capability
-    // reuse can't grow it without bound (signatures are kept permanently).
-
-    if (!configError && config.network === "solana-mainnet") {
-      if (!config.requireOnChain) {
-        configError =
-          "x402-gate refuses requireOnChain=false on mainnet — that serves paid content without " +
-          "verifying the payment settled on-chain. Set requireOnChain=true (header-only mode is devnet/testing only).";
-      } else if (config.dedupe && !config.replayStorePath) {
-        configError =
-          "x402-gate refuses in-memory dedupe on mainnet (replay reopens on restart). Set replayStorePath " +
-          "for a restart-durable single-instance store, or dedupe=false with your own shared store.";
-      } else if (config.dedupe && !config.acknowledgeSingleInstance) {
-        configError =
-          "x402-gate: replayStorePath (FileReplayStore) is SINGLE-INSTANCE only — running multiple replicas lets " +
-          "one payment be redeemed once per replica. Set acknowledgeSingleInstance=true to confirm you run ONE " +
-          "instance, or set dedupe=false with your own shared store (Redis/DB) + acknowledgeExternalReplayStore=true.";
-      } else if (!config.dedupe && !config.acknowledgeExternalReplayStore) {
-        configError =
-          "x402-gate: dedupe=false on mainnet disables the built-in replay guard — a settled payment could be " +
-          "re-redeemed within the nonce TTL. You MUST enforce replay with your own durable, shared store; set " +
-          "acknowledgeExternalReplayStore=true to attest this.";
-      } else if (config.requirePresenterAuth && (!config.challengeSecret || config.challengeSecret.length < 32)) {
-        configError =
-          "x402-gate requires a STRONG challengeSecret on mainnet (>= 32 chars; prefer a 256-bit hex/base64 " +
-          "random). It is the HMAC key for nonces + capability tokens — a weak/guessable secret can be " +
-          "brute-forced offline from one public challenge and used to forge capability tokens for free access.";
-      } else if (config.receiptScopeSeconds > 0 && (!config.dedupe || !config.replayStorePath || !config.acknowledgeSingleInstance)) {
-        configError =
-          "x402-gate: capabilities (receiptScopeSeconds>0) on mainnet require dedupe=true + " +
-          "replayStorePath + acknowledgeSingleInstance. Capability-reuse dedupe is single-instance " +
-          "only and is NOT supported in external-store / multi-replica mode (dedupe=false) — a " +
-          "settled payment would fan out to free reuse across replicas. Disable capabilities or run single-instance.";
-      } else if (!config.rpcUrl) {
-        configError =
-          "x402-gate requires an explicit rpcUrl on mainnet — the public RPC is rate-limited and is the " +
-          "trusted oracle for the settlement decision. Set a private/dedicated node.";
-      }
-    }
-    // Validate the recipient wallet up front (clear error instead of opaque per-request failures).
-    if (!configError && config.recipientAddress) {
-      try {
-        new PublicKey(config.recipientAddress);
-      } catch {
-        configError = "x402-gate: recipientAddress is not a valid Solana public key";
-      }
-    }
-    // A present-but-malformed priceUsdc (e.g. "5" from an env/JSON pipeline) must
-    // fail loud, not silently fall back to a cheap default price.
-    const rawPrice = (api.config ?? {}).priceUsdc;
-    if (!configError && rawPrice !== undefined && !(typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0)) {
-      configError = "x402-gate: priceUsdc must be a finite positive number";
-    }
-    // Reject a sub-atomic price up front (it would round to 0 atomic units and serve
-    // for free / brick the resource) rather than failing only when a challenge is built.
-    if (!configError && typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0 && Math.round(rawPrice * 1e6) < 1) {
-      configError = "x402-gate: priceUsdc is below the smallest USDC unit (0.000001) — raise it";
-    }
-
-    api.registerTool({
+  configSchema: ConfigSchema,
+  tools: (tool) => [
+    tool({
       name: "x402_challenge",
+      label: "x402 Challenge",
       description:
         "Build an HTTP 402 Payment Required challenge for a resource. Return its " +
         "`body` to an unpaid caller so they know how much to pay and to which address.",
-      parameters: {
-        resource: { type: "string", description: "The resource id/path being charged for" },
-        description: { type: "string", description: "Human-readable description" },
-      },
-      async handler(params: Record<string, unknown>) {
+      parameters: ChallengeParams,
+      async execute(params, rawConfig) {
+        const { config, secret, configError } = getGateState(rawConfig as Record<string, unknown>);
         if (configError) return { error: configError };
         if (!config.recipientAddress) {
           return { error: "gate not configured: set recipientAddress (your wallet) in plugin config" };
@@ -211,19 +254,17 @@ export default definePluginEntry({
           return { error: e instanceof Error ? e.message : String(e) };
         }
       },
-    });
-
-    api.registerTool({
+    }),
+    tool({
       name: "x402_verify",
+      label: "x402 Verify",
       description:
         "Verify a submitted X-Payment header for a resource. With requireOnChain=true " +
         "the payment must be confirmed settled on Solana. If the caller presents a " +
         "capability token from a prior payment, access is reused within its scope.",
-      parameters: {
-        header: { type: "string", description: "The base64 X-Payment header the caller sent" },
-        resource: { type: "string", description: "The resource being accessed (must match the challenge)" },
-      },
-      async handler(params: Record<string, unknown>) {
+      parameters: VerifyParams,
+      async execute(params, rawConfig) {
+        const { config, secret, configError, replayStore } = getGateState(rawConfig as Record<string, unknown>);
         try {
           if (configError) return { valid: false, error: configError };
           if (!config.recipientAddress) {
@@ -354,6 +395,6 @@ export default definePluginEntry({
           return { valid: false, error: `x402_verify internal error: ${e instanceof Error ? e.message : String(e)}` };
         }
       },
-    });
-  },
+    }),
+  ],
 });

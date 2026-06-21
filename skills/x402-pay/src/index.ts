@@ -17,12 +17,14 @@
  *
  * Non-custodial and spend-capped: the agent signs with its own wallet, and no
  * single payment can exceed the configured USDC cap.
+ *
+ * Plugin contract: defined with `defineToolPlugin` against the real OpenClaw SDK
+ * (TypeBox `parameters` + `execute(params, config, context)`); registration is
+ * handled by the SDK at plugin startup.
  */
 
-// Provided by the host OpenClaw runtime at load time (declared as a peer
-// dependency), same pattern as @parad0x_labs/openclaw-context-capsule.
-// definePluginEntry is a runtime value, not a type-only import.
-import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { Type } from "typebox";
+import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 
 import { fetchWithX402, quoteX402, needsApproval } from "./client";
 import { resolveNullName, isNullName } from "./resolve";
@@ -102,46 +104,59 @@ function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
   };
 }
 
-export default definePluginEntry({
+/** Plugin config schema. Lenient by design — host configs commonly arrive as
+ *  strings (env/JSON), and readConfig() does the robust coercion + safe defaults
+ *  above. additionalProperties stays open so an unknown host key is never rejected. */
+const ConfigSchema = Type.Object(
+  {
+    maxAmountUsdc: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    allowMainnet: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+    maxTotalUsdc: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    allowedRecipients: Type.Optional(Type.Array(Type.String())),
+    maxDistinctRecipients: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    rpcUrl: Type.Optional(Type.String()),
+    spendLedgerPath: Type.Optional(Type.String()),
+    allowInternalHosts: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+    requireApproval: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+  },
+  { additionalProperties: true },
+);
+
+const PayParams = Type.Object({
+  url: Type.String({
+    description: 'The x402-gated resource URL, OR a .null name (e.g. "myagent.null") to pay by name.',
+  }),
+  method: Type.Optional(Type.String({ description: "HTTP method (default GET)" })),
+  approved: Type.Optional(
+    Type.Boolean({
+      description:
+        "Host-set only. When requireApproval is enabled, the host sets this true after the " +
+        "owner confirms the payment; the model should not set it.",
+    }),
+  ),
+});
+
+export default defineToolPlugin({
   id: "x402-pay",
   name: "x402 Pay",
   description:
     "Let your agent pay for x402-gated APIs, data, and other agents on Solana " +
     "mainnet. Bring your own signer — the skill never holds a private key — with " +
     "a hard USDC spend cap. Set allowMainnet=true to enable real-money mainnet payments.",
-  register(api: {
-    registerTool: (tool: {
-      name: string;
-      description: string;
-      parameters: Record<string, unknown>;
-      handler: (params: Record<string, unknown>) => Promise<unknown>;
-    }) => void;
-    config?: Record<string, unknown>;
-  }) {
-    const config = readConfig(api.config);
-
-    api.registerTool({
+  configSchema: ConfigSchema,
+  tools: (tool) => [
+    tool({
       name: "pay_x402",
+      label: "Pay x402",
       description:
         "Fetch a URL or a .null name; if it returns HTTP 402, pay the demanded USDC " +
         "on Solana (within the configured cap and network) and return the resource. " +
         "A name.null resolves on mainnet to its published x402 endpoint (pay-by-name). " +
         "Refuses any payment over the configured USDC cap.",
-      parameters: {
-        url: {
-          type: "string",
-          description:
-            "The x402-gated resource URL, OR a .null name (e.g. \"myagent.null\") to pay by name.",
-        },
-        method: { type: "string", description: "HTTP method (default GET)" },
-        approved: {
-          type: "boolean",
-          description:
-            "Host-set only. When requireApproval is enabled, the host sets this true " +
-            "after the owner confirms the payment; the model should not set it.",
-        },
-      },
-      async handler(params: Record<string, unknown>) {
+      parameters: PayParams,
+      async execute(params, rawConfig) {
+        const config = readConfig(rawConfig as Record<string, unknown>);
+
         if (!activeSigner) {
           return {
             ok: false,
@@ -173,7 +188,7 @@ export default definePluginEntry({
           if (!r.x402Endpoint) {
             return {
               ok: false,
-              error: `x402: ${url} resolves (owner ${r.owner}) but has no x402 endpoint published yet — the owner must set one (UPDATE_ENDPOINT) before it can be paid by name.`,
+              error: `x402: ${url} resolves (owner ${r.owner}) but has no x402 endpoint published yet — the owner must set one before it can be paid by name.`,
               resolved: { name: r.name, pda: r.pda, owner: r.owner },
             };
           }
@@ -229,6 +244,6 @@ export default definePluginEntry({
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
       },
-    });
-  },
+    }),
+  ],
 });
