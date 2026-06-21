@@ -244,6 +244,62 @@ export interface FetchWithX402Options {
   init?: RequestInit;
 }
 
+/** Whether pay_x402 must hand off to host approval before paying: opt-in via
+ *  config.requireApproval, unless the host has already granted approval this
+ *  call. Pure + host-free so the gate decision is unit-testable. */
+export function needsApproval(config: X402PayConfig, approved: boolean): boolean {
+  return config.requireApproval === true && approved !== true;
+}
+
+/** A read-only x402 quote — what we WOULD pay, with nothing signed or broadcast. */
+export interface X402Quote {
+  /** True if the URL answered 402 and a payable requirement was selected. */
+  paymentRequired: boolean;
+  status: number;
+  /** Present when paymentRequired is false — the free resource body. */
+  body?: string;
+  /** Present when paymentRequired is true — the requirement we would pay. */
+  requirement?: X402PaymentRequirement;
+  amountUsdc?: number;
+  network?: SolanaNetwork;
+}
+
+/**
+ * Fetch `url` and, if it answers 402, parse the challenge and select the
+ * requirement we WOULD pay — WITHOUT building, signing, or broadcasting any
+ * transaction. Backs the approval-handoff flow (config.requireApproval): the
+ * host inspects this quote, confirms with the user, then re-invokes the payment
+ * with approval granted. Reuses the SAME SSRF guard, byte caps, and selection
+ * rules as the payment path, so a quote can never name something the payment
+ * path would refuse. `selectRequirement` throws if nothing is payable within the
+ * caps / mainnet opt-in — surface that as the approval error.
+ */
+export async function quoteX402(
+  url: string,
+  opts: { config: X402PayConfig; init?: RequestInit },
+): Promise<X402Quote> {
+  const { config, init } = opts;
+  assertSafeUrl(url, config.allowInternalHosts ?? false);
+
+  const res = await fetch(url, init);
+  if (res.status !== 402) {
+    return {
+      paymentRequired: false,
+      status: res.status,
+      body: await readCappedText(res, MAX_RESOURCE_BYTES),
+    };
+  }
+  const challenge = parseChallenge(await readCappedText(res, MAX_CHALLENGE_BYTES));
+  const requirement = selectRequirement(challenge, config);
+  return {
+    paymentRequired: true,
+    status: 402,
+    requirement,
+    amountUsdc: atomicToUsdc(Number(requirement.maxAmountRequired)),
+    network: requirement.network,
+  };
+}
+
 /**
  * Fetch `url`; if it returns 402, pay and retry once with the X-Payment header.
  * Returns the resource body plus payment metadata. Never pays more than the cap,

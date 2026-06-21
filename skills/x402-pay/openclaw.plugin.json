@@ -44,6 +44,10 @@
       "allowInternalHosts": {
         "type": "boolean",
         "description": "Allow fetching internal/loopback/link-local/private hosts (turns OFF the SSRF guard). Default false. Set true ONLY for local-dev testing against a localhost gate — never on a production wallet host."
+      },
+      "requireApproval": {
+        "type": "boolean",
+        "description": "Require explicit host-side approval before any payment. Default false (auto-pay within caps). When true, pay_x402 returns a structured approval_required quote first; the host confirms with the owner and re-invokes with approved:true. See APPROVAL_INTEGRATION.md."
       }
     }
   },

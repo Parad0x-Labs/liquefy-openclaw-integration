@@ -24,7 +24,7 @@
 // definePluginEntry is a runtime value, not a type-only import.
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
-import { fetchWithX402 } from "./client";
+import { fetchWithX402, quoteX402, needsApproval } from "./client";
 import type { X402PayConfig, X402Signer } from "./types";
 
 export * from "./constants";
@@ -96,6 +96,7 @@ function readConfig(raw: Record<string, unknown> | undefined): X402PayConfig {
         ? cfg.spendLedgerPath
         : undefined,
     allowInternalHosts: readBool(cfg.allowInternalHosts, false),
+    requireApproval: readBool(cfg.requireApproval, false),
   };
 }
 
@@ -126,6 +127,12 @@ export default definePluginEntry({
       parameters: {
         url: { type: "string", description: "The x402-gated resource URL to fetch" },
         method: { type: "string", description: "HTTP method (default GET)" },
+        approved: {
+          type: "boolean",
+          description:
+            "Host-set only. When requireApproval is enabled, the host sets this true " +
+            "after the owner confirms the payment; the model should not set it.",
+        },
       },
       async handler(params: Record<string, unknown>) {
         if (!activeSigner) {
@@ -140,6 +147,40 @@ export default definePluginEntry({
         if (!url) return { ok: false, error: "url is required" };
 
         const init = params.method ? { method: String(params.method) } : undefined;
+
+        // Approval handoff (opt-in): when requireApproval is set, do NOT pay on the
+        // first call — return a structured quote the host gates through its own
+        // confirmation (e.g. OpenClaw exec_approval). The host re-invokes with
+        // approved:true once the owner consents. See APPROVAL_INTEGRATION.md.
+        const approved = params.approved === true;
+        if (needsApproval(config, approved)) {
+          try {
+            const quote = await quoteX402(url, { config, init });
+            if (!quote.paymentRequired) {
+              // Free resource — nothing to approve; return it.
+              return { ok: true, status: quote.status, body: quote.body };
+            }
+            return {
+              ok: false,
+              approval_required: true,
+              quote: {
+                url,
+                amount_usdc: quote.amountUsdc,
+                pay_to: quote.requirement?.payTo,
+                network: quote.network,
+                resource: quote.requirement?.resource,
+                description: quote.requirement?.description,
+              },
+              contract:
+                "Re-invoke pay_x402 with approved:true once the owner confirms this payment. " +
+                "The host MUST gate this approval (e.g. via OpenClaw exec_approval) — the approved " +
+                "flag is set by the host after user consent, not by the model.",
+            };
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) };
+          }
+        }
+
         try {
           return await fetchWithX402(url, { signer: activeSigner, config, init });
         } catch (err) {

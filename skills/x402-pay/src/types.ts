@@ -103,4 +103,10 @@ export interface X402PayConfig {
   /** Allow fetching internal/loopback/link-local hosts (SSRF guard off). Default
    *  false; set true ONLY for local-dev testing against a localhost gate. */
   allowInternalHosts?: boolean;
+  /** Require an explicit host-side approval before any payment. Default false
+   *  (existing auto-pay path unchanged). When true, pay_x402 returns a structured
+   *  `approval_required` quote BEFORE signing; the host confirms with the user
+   *  (e.g. via OpenClaw's exec_approval lifecycle) and re-invokes with the
+   *  approval granted. See APPROVAL_INTEGRATION.md. */
+  requireApproval?: boolean;
 }

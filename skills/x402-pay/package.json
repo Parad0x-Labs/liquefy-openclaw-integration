@@ -7,6 +7,7 @@
   "files": [
     "src/",
     "openclaw.plugin.json",
+    "APPROVAL_INTEGRATION.md",
     "README.md",
     "LICENSE"
   ],
@@ -47,6 +48,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --import ./test/register.mjs --test test/approval.test.mjs",
     "audit": "npm audit --omit=dev --omit=peer --audit-level=high",
     "prepublishOnly": "npm audit --omit=dev --omit=peer --audit-level=high && tsc --noEmit -p tsconfig.json"
   },

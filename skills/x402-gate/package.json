@@ -47,6 +47,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test",
     "audit": "npm audit --omit=dev --omit=peer --audit-level=high",
     "prepublishOnly": "npm audit --omit=dev --omit=peer --audit-level=high && tsc --noEmit -p tsconfig.json"
   },
