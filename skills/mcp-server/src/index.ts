@@ -15,6 +15,10 @@ import {
   canSubmitWrite,
 } from "./scope.js";
 import { resolveNullName } from "./resolve.js";
+import { buildAnchorIx, deriveBucketPda, bucketIdForUnix } from "./anchor.js";
+import { generateWallet, resolveWalletPath } from "./wallet.js";
+import { writeFileSync, existsSync, mkdirSync, chmodSync } from "fs";
+import { dirname } from "path";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -246,15 +250,21 @@ async function anchorReceipt(
   // Zero-trust write-guard: a key is present, but do NOT submit unless the
   // operator enabled writes on THIS machine AND the call is authorized — either
   // by a per-call confirm:true or a prior session consent (grant_write_consent).
+  // Pin the hourly bucket client-side so the derived bucket PDA always matches
+  // the one the program writes (the no-bucket form risks an hour-boundary drift).
+  const bucketId = bucketIdForUnix(Math.floor(Date.now() / 1000));
+
   const decision = canSubmitWrite({ allowWrite: ALLOW_WRITE, confirm, consented });
   if (!decision.allowed) {
     return {
       preview: true,
       would_submit: {
         program: PROGRAMS.receipt_anchor,
-        instruction: "anchor(0x00)",
+        instruction: "anchor v1 (version 0x01, pinned hourly bucket)",
         receipt_hash_hex: receiptHashHex,
         fee_payer: keypair.publicKey.toBase58(),
+        bucket_id: bucketId.toString(),
+        bucket_pda: deriveBucketPda(bucketId, PROGRAMS.receipt_anchor).toBase58(),
       },
       blocked_reason: decision.blockedReason,
       note: "No transaction was sent. This is a preview of exactly what WOULD be submitted.",
@@ -263,20 +273,14 @@ async function anchorReceipt(
 
   try {
     const connection = new Connection(rpcUrl, "confirmed");
-    const programId = new PublicKey(PROGRAMS.receipt_anchor);
 
-    // Instruction data: [0x00 (anchor discriminator), <32 bytes hash>]
-    const hashBytes = new Uint8Array(Buffer.from(receiptHashHex, "hex"));
-    const data = new Uint8Array(33);
-    data[0] = 0x00;
-    data.set(hashBytes, 1);
-
-    const ix = new TransactionInstruction({
-      keys: [
-        { pubkey: keypair.publicKey, isSigner: true, isWritable: true },
-      ],
-      programId,
-      data: Buffer.from(data),
+    // receipt_anchor single-anchor, 42-byte pinned-bucket form (verified ABI):
+    // data [0x01][0x01][32B hash][u64 LE bucket_id]; keys payer + bucket PDA + system.
+    const ix = buildAnchorIx({
+      payer: keypair.publicKey.toBase58(),
+      receiptHashHex,
+      programId: PROGRAMS.receipt_anchor,
+      bucketId,
     });
 
     const tx = new Transaction().add(ix);
@@ -855,6 +859,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "create_wallet",
+        description:
+          "Generate a NEW non-custodial Solana wallet on THIS machine for the agent/owner. Writes the secret key to a local file (default ~/.config/solana/web0-agent.json) and returns ONLY the public key + path — the secret is never shown to the model. Refuses to overwrite an existing file. Preview by default; pass confirm:true to actually generate + write.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            label: {
+              type: "string",
+              description: "Filename label for the default path (~/.config/solana/<label>.json). Default: web0-agent.",
+            },
+            path: {
+              type: "string",
+              description: "Explicit keypair file path (overrides label). A leading ~ is expanded to your home dir.",
+            },
+            confirm: {
+              type: "boolean",
+              description: "Must be true to generate + write the key file. Without it, returns a preview only.",
+            },
+          },
+        },
+      },
+      {
         name: "resolve_null",
         description:
           "Resolve a .null name on Solana mainnet → its owner, published x402 endpoint (pay-by-name), stealth meta-address, and Arweave content. Read-only: derives the NullDomain PDA on the live registrar and reads it. Returns payable_by_name=true when an x402 endpoint is set.",
@@ -996,6 +1022,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }),
           consented: sessionConsent.has("private_compute"),
         });
+        break;
+      }
+
+      case "create_wallet": {
+        const { label, path: wpath, confirm: wconfirm } = args as {
+          label?: string;
+          path?: string;
+          confirm?: boolean;
+        };
+        const target = resolveWalletPath({ path: wpath, label });
+        if (existsSync(target)) {
+          result = { error: `Refusing to overwrite an existing keypair at ${target}. Choose a different label or path.` };
+          break;
+        }
+        if (wconfirm !== true) {
+          result = {
+            preview: true,
+            would_create_at: target,
+            note: "No wallet created. Pass confirm:true to generate + write a new keypair here. The secret key is written only to this file on your machine and is NEVER shown to the model.",
+          };
+          break;
+        }
+        try {
+          const w = generateWallet();
+          mkdirSync(dirname(target), { recursive: true });
+          writeFileSync(target, JSON.stringify(w.secretKey), { mode: 0o600 });
+          try {
+            chmodSync(target, 0o600);
+          } catch {
+            /* best-effort on platforms without POSIX perms */
+          }
+          result = {
+            created: true,
+            public_key: w.publicKey,
+            keypair_path: target,
+            funded: false,
+            next_steps: [
+              "Fund this address with a little SOL (for transaction fees) and USDC (to spend).",
+              "Point your signer at this file (e.g. SOLANA_KEYPAIR or your wallet config) to pay / register / anchor.",
+              "BACK IT UP — this file is the only copy of the key; losing it loses the funds.",
+            ],
+            security: "The secret key was written only to the file above on this machine. It was NOT returned to the model.",
+          };
+        } catch (err: unknown) {
+          result = { error: `Failed to create wallet: ${err instanceof Error ? err.message : String(err)}` };
+        }
         break;
       }
 

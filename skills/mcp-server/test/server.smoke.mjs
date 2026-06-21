@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { Keypair } from "@solana/web3.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -94,7 +96,7 @@ test("server boots, lists consent tools, gates writes (read-only scope)", async 
     for (const t of ["get_scope_status", "grant_write_consent", "revoke_write_consent"]) {
       assert.ok(names.includes(t), `tools/list missing ${t}`);
     }
-    for (const t of ["x402_get_quote", "anchor_receipt", "private_compute", "get_stack_status", "resolve_null"]) {
+    for (const t of ["x402_get_quote", "anchor_receipt", "private_compute", "get_stack_status", "resolve_null", "create_wallet"]) {
       assert.ok(names.includes(t), `tools/list missing tool ${t}`);
     }
 
@@ -112,6 +114,32 @@ test("server boots, lists consent tools, gates writes (read-only scope)", async 
     assert.equal(anchor.preview, true, "write must be blocked to a preview");
     assert.match(anchor.blocked_reason, /PARAD0X_MCP_ALLOW_WRITE=1/);
     assert.ok(!anchor.solana_tx, "no transaction signature should be returned");
+
+    // create_wallet: preview writes nothing; confirm writes a key file + returns
+    // ONLY the public key (the secret must never appear in the tool result).
+    const walletPath = join(tmpdir(), `web0-smoke-wallet-${process.pid}.json`);
+    rmSync(walletPath, { force: true });
+    const wprev = toolResult(await request("tools/call", { name: "create_wallet", arguments: { path: walletPath } }));
+    assert.equal(wprev.preview, true);
+    assert.ok(!existsSync(walletPath), "preview must not write a key file");
+
+    const wmade = toolResult(
+      await request("tools/call", { name: "create_wallet", arguments: { path: walletPath, confirm: true } }),
+    );
+    try {
+      assert.equal(wmade.created, true);
+      assert.ok(wmade.public_key, "must return the public key");
+      assert.ok(existsSync(walletPath), "confirm must write the key file");
+      const secret = JSON.parse(readFileSync(walletPath, "utf8"));
+      assert.equal(secret.length, 64, "key file holds a 64-byte secret");
+      // the secret-key array must NOT be present anywhere in the tool result
+      assert.ok(
+        !JSON.stringify(wmade).includes(JSON.stringify(secret)),
+        "secret key must never appear in the tool result",
+      );
+    } finally {
+      rmSync(walletPath, { force: true });
+    }
   } finally {
     child.kill();
   }
