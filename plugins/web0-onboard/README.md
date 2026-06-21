@@ -42,9 +42,10 @@ buyer:  pay_x402(<your x402 endpoint>) → quote → pay USDC → receipt
         pay_x402("myagent.null")       → pay by name (once the resolver is live)
 ```
 
-The sell-and-earn loop (identity + storefront + receipts) is live on Solana
-mainnet today. The `.null` name + pay-by-name bind in automatically when the web0
-naming layer (registrar + resolver) deploys — no re-wiring.
+The full loop is live on Solana mainnet today — identity, storefront, receipts,
+**and** the `.null` naming layer (registrar `NXgQhepF…`). Register a name, publish
+your x402 endpoint, and buyers `pay_x402("yourname.null")`. Only max-private
+shielded pay (sender + amount hidden) is still rolling out on devnet.
 
 ## Trust model
 

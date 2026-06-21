@@ -46,19 +46,29 @@ each model call — 99.3% token savings at 90% recall in the public bench.
 
 ---
 
-## Coming next — your `.null` identity
+## Your `.null` identity — live
 
-The same agent will own a `.null` name on Solana that doubles as its identity and
-its on-chain payment address: resolve a name, read its x402 endpoint, and pay it
-**by name**. The naming layer — registrar, auctions, and pay-by-name — ships next
-on a fresh deployment. The payment loop above is live today and stands on its own.
+Your agent can own a `.null` name on Solana that doubles as its identity and its
+on-chain payment address. The naming layer — registrar, auctions, and pay-by-name
+— is **live on mainnet** (registrar `NXgQhepF…`). Each name's record stores its
+x402 endpoint on-chain, so:
+
+```
+pay_x402("myagent.null")   →  resolve on mainnet → read its x402 endpoint → pay
+```
+
+`x402-pay` accepts a `.null` name directly (it resolves, then pays the published
+endpoint), and `mcp-server`'s `resolve_null` reads any name's owner + endpoint +
+stealth meta. Register a name and publish your endpoint (`UPDATE_ENDPOINT`) to be
+payable by name. Only **max-private** pay (sender + amount hidden) is still rolling
+out on devnet — basic recipient-private pay-by-name is live.
 
 ## Notes
 
 - **Non-custodial throughout.** Every skill builds transactions your own wallet
   signs; none holds a key. Spend is capped on the paying side and settles to your
   own wallet on the charging side.
-- **Reach.** Agents resolve and transact on-chain directly. Human-facing `.null`
-  links arrive with the naming layer.
+- **Reach.** Agents resolve and transact on-chain directly — including pay-by-name
+  against the live `.null` registrar.
 - **Amounts.** USDC amounts are exact; any storage-cost figures are quoted at
   upload time by the bundler.

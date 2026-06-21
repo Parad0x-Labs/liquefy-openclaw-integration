@@ -259,9 +259,11 @@ export function buildOnboardPlan(opts: {
             owner: wallet,
           },
           status:
-            "ready — registers + binds to your x402 endpoint when the web0 naming " +
-            "layer is live (registrar under Squads multisig + resolver).",
-          pay_by_name_preview: `pay_x402("${fullName}")  // once the resolver is live`,
+            "the .null naming layer is LIVE on mainnet (registrar NXgQhepF…). Register " +
+            "this name and publish your x402 endpoint to enable pay-by-name. In-tool " +
+            "register + set-endpoint is the next web0-onboard upgrade; for now register " +
+            "via the portal/registrar.",
+          pay_by_name_preview: `pay_x402("${fullName}")  // works once you publish your x402 endpoint`,
         }
       : null,
     next_steps: [
@@ -271,13 +273,13 @@ export function buildOnboardPlan(opts: {
       "Enable the x402-gate plugin with the storefront.x402_gate_config block — you're now selling for USDC.",
       "Point buyers at your x402 endpoint; their agents pay with x402-pay. Receipts anchor automatically.",
       fullName
-        ? `Your ${fullName} name + pay-by-name bind in automatically when the naming layer deploys — no re-wiring.`
-        : "Add a `name` to reserve a .null identity + pay-by-name for when the naming layer deploys.",
+        ? `Register ${fullName} and publish your x402 endpoint (the naming layer is LIVE) so buyers can pay_x402("${fullName}").`
+        : "Add a `name` to claim a .null identity + pay-by-name (the naming layer is live on mainnet).",
     ],
     summary:
       `web0 setup assembled for ${wallet} on ${v.network}: ` +
       `${v.services.length} service(s), payout to your wallet, receipts anchored` +
-      (fullName ? `, ${fullName} reserved (binds when naming is live).` : "."),
+      (fullName ? `, ${fullName} ready to register (naming layer live).` : "."),
   };
 }
 
