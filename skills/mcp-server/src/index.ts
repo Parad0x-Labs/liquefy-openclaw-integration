@@ -8,12 +8,18 @@ import {
 import { createHash, createHmac, randomBytes, createCipheriv, createSecretKey } from "crypto";
 import { deflateSync } from "zlib";
 import { Connection, PublicKey, Keypair, Transaction, TransactionInstruction } from "@solana/web3.js";
+import {
+  WRITE_TOOLS,
+  READ_TOOLS,
+  assertNotSeized,
+  canSubmitWrite,
+} from "./scope.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-// Live on Solana mainnet-beta — verified against evidence/mainnet + evidence/zk.
+// Live on Solana mainnet — verified against evidence/mainnet + evidence/zk.
 // Full private-reputation stack live as of 2026-06-07 (reputation gate + commitment tree launched).
 // WARNING: dark_x402_access_gate and dark_nullifier_record are SEIZED pre-incident IDs —
 // deployer key F6Fr… stolen 2026-06-14; attacker holds upgrade authority. Do not call them.
@@ -106,42 +112,10 @@ function loadKeypair(): Keypair | null {
 const ALLOW_WRITE = process.env.PARAD0X_MCP_ALLOW_WRITE === "1";
 
 // Per-session consent registry — tracks which write operations the operator has
-// explicitly consented to this session (beyond ALLOW_WRITE env flag).
+// explicitly consented to this session (beyond the ALLOW_WRITE env flag).
 // Keys are tool names; value is the ISO timestamp when consent was granted.
+// The scope/seized decision logic lives in ./scope.ts so it is unit-testable.
 const sessionConsent = new Map<string, string>();
-
-const WRITE_TOOLS = new Set(["anchor_receipt", "private_compute"]);
-const READ_TOOLS = new Set([
-  "x402_get_quote",
-  "get_stack_status",
-  "lookup_passport",
-  "check_nullifier",
-  "compress_receipts",
-  "build_outcome_receipt",
-  "get_scope_status",
-  "grant_write_consent",
-  "revoke_write_consent",
-]);
-
-function hasConsent(toolName: string): boolean {
-  if (!WRITE_TOOLS.has(toolName)) return true; // read tools always allowed
-  if (!ALLOW_WRITE) return false;
-  return sessionConsent.has(toolName);
-}
-
-const SEIZED_PROGRAMS = new Set<string>([
-  "EepqzVBNuzCgD6XGiB19pDDhzFG3gUL4z1nabBYxpfjS",
-  "24tmjEd1DhPW2QuPV6BzkFFHrq2PtELoLqv5cuv2Xu65",
-]);
-
-function assertNotSeized(programId: string, name: string): void {
-  if (SEIZED_PROGRAMS.has(programId)) {
-    throw new Error(
-      `${name} (${programId}) is a SEIZED pre-incident program — upgrade authority is under hostile control. ` +
-      `Do not call this program. Post-redeploy IDs will be updated here after the trusted-setup ceremony.`
-    );
-  }
-}
 
 const SECRET_FIELD =
   /(^|_)(key_hex|secret|secret_key|private_key|privatekey|mnemonic|seed|keypair|signing_key)($|_)/i;
@@ -247,7 +221,8 @@ async function x402GetQuote(
 async function anchorReceipt(
   receiptHashHex: string,
   rpcUrl = DEFAULT_RPC,
-  confirm = false
+  confirm = false,
+  consented = false
 ): Promise<object> {
   if (!/^[0-9a-fA-F]{64}$/.test(receiptHashHex)) {
     return { error: "receipt_hash_hex must be exactly 64 hex characters (32 bytes)" };
@@ -268,8 +243,10 @@ async function anchorReceipt(
   }
 
   // Zero-trust write-guard: a key is present, but do NOT submit unless the
-  // operator enabled writes on THIS machine AND the agent confirmed this call.
-  if (!ALLOW_WRITE || !confirm) {
+  // operator enabled writes on THIS machine AND the call is authorized — either
+  // by a per-call confirm:true or a prior session consent (grant_write_consent).
+  const decision = canSubmitWrite({ allowWrite: ALLOW_WRITE, confirm, consented });
+  if (!decision.allowed) {
     return {
       preview: true,
       would_submit: {
@@ -278,9 +255,7 @@ async function anchorReceipt(
         receipt_hash_hex: receiptHashHex,
         fee_payer: keypair.publicKey.toBase58(),
       },
-      blocked_reason: !ALLOW_WRITE
-        ? "writes disabled — operator must set PARAD0X_MCP_ALLOW_WRITE=1 on this machine"
-        : "confirm:true required to submit a real transaction",
+      blocked_reason: decision.blockedReason,
       note: "No transaction was sent. This is a preview of exactly what WOULD be submitted.",
     };
   }
@@ -512,8 +487,9 @@ async function privateCompute(params: {
   encryption_key_hex?: string;
   anchor?: boolean;
   rpc_url?: string;
+  consented?: boolean;
 }): Promise<object> {
-  const { plaintext_input, executor_endpoint, encryption_key_hex, anchor, rpc_url } = params;
+  const { plaintext_input, executor_endpoint, encryption_key_hex, anchor, rpc_url, consented } = params;
 
   // Step 1: Generate or use provided 32-byte AES-256 key
   let rawKeyBytes: Uint8Array;
@@ -578,7 +554,9 @@ async function privateCompute(params: {
 
     const anchorResult = await anchorReceipt(
       commitmentHex,
-      rpc_url ?? process.env.SOLANA_RPC_URL ?? DEFAULT_RPC
+      rpc_url ?? process.env.SOLANA_RPC_URL ?? DEFAULT_RPC,
+      false,
+      consented === true
     ) as Record<string, unknown>;
 
     if (anchorResult.solana_tx) {
@@ -737,7 +715,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             rpc_url: {
               type: "string",
-              description: "Solana RPC URL (default: mainnet-beta public RPC)",
+              description: "Solana RPC URL (default: publicnode public mainnet RPC)",
             },
             confirm: {
               type: "boolean",
@@ -830,7 +808,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             rpc_url: {
               type: "string",
-              description: "Solana RPC URL (default: mainnet-beta). Use a devnet RPC to check the devnet stack.",
+              description: "Solana RPC URL (default: publicnode mainnet). Use a devnet RPC to check the devnet stack.",
             },
           },
           required: ["nullifier"],
@@ -869,7 +847,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             rpc_url: {
               type: "string",
-              description: "Solana RPC URL (default: mainnet-beta public RPC)",
+              description: "Solana RPC URL (default: publicnode public mainnet RPC)",
             },
           },
           required: ["plaintext_input", "executor_endpoint"],
@@ -938,7 +916,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await anchorReceipt(
           receipt_hash_hex,
           rpc_url ?? process.env.SOLANA_RPC_URL ?? DEFAULT_RPC,
-          confirm === true
+          confirm === true,
+          sessionConsent.has("anchor_receipt")
         );
         break;
       }
@@ -987,15 +966,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "private_compute": {
-        result = await privateCompute(
-          args as {
+        result = await privateCompute({
+          ...(args as {
             plaintext_input: string;
             executor_endpoint: string;
             encryption_key_hex?: string;
             anchor?: boolean;
             rpc_url?: string;
-          }
-        );
+          }),
+          consented: sessionConsent.has("private_compute"),
+        });
         break;
       }
 
