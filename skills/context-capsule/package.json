@@ -1,13 +1,14 @@
 {
   "name": "@parad0x_labs/openclaw-context-capsule",
-  "version": "1.4.0",
-  "description": "Self-contained OpenClaw context engine that compresses long agent session history (> 20 messages) into a compact capsule before the model call, keeping the last 10 messages verbatim. Cuts token cost on long chats with any model. No external runtime dependencies; no network, file, or on-chain access.",
+  "version": "1.6.0",
+  "description": "Self-contained OpenClaw context engine that compresses older agent session history into a bounded extractive capsule, preserving decisions, tasks, errors, files, links, and durable facts while keeping recent messages verbatim.",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "files": [
-    "src/",
+    "dist/",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "SKILL.md"
   ],
   "keywords": [
     "openclaw",
@@ -20,13 +21,10 @@
   ],
   "openclaw": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.js"
     ],
-    "compat": {
-      "pluginApi": "1.x"
-    },
     "build": {
-      "openclawVersion": ">=1.0.0"
+      "openclawVersion": ">=2026.6.0"
     }
   },
   "devDependencies": {
@@ -34,7 +32,11 @@
     "typescript": "^5.6.0"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build && npm test",
+    "test": "npm run build && node test/compression-smoke.mjs && node test/quality.test.mjs && node test/supersession-bench.mjs && node test/hardening-bench.mjs && node test/secret-bench.mjs"
   },
   "engines": {
     "node": ">=22"
