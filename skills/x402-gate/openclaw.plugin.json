@@ -1,5 +1,6 @@
 {
   "id": "x402-gate",
+  "minOpenClawVersion": "2026.6.1",
   "activation": {
     "onStartup": false
   },

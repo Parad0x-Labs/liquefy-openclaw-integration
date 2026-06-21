@@ -1,5 +1,6 @@
 {
   "id": "x402-pay",
+  "minOpenClawVersion": "2026.6.1",
   "activation": {
     "onStartup": false
   },
@@ -44,6 +45,12 @@
         "type": "boolean",
         "description": "Allow fetching internal/loopback/link-local/private hosts (turns OFF the SSRF guard). Default false. Set true ONLY for local-dev testing against a localhost gate — never on a production wallet host."
       }
+    }
+  },
+  "secrets": {
+    "solanaSignerKeypair": {
+      "description": "Solana signing keypair as a JSON byte array. Declared here so the host runtime can manage it via SecretRef without exposing it to the model context. The skill itself uses the host-provided X402Signer interface — this field is for runtimes that supply a raw keypair.",
+      "required": false
     }
   }
 }

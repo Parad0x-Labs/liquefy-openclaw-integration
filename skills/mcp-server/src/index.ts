@@ -15,8 +15,12 @@ import { Connection, PublicKey, Keypair, Transaction, TransactionInstruction } f
 
 // Live on Solana mainnet-beta — verified against evidence/mainnet + evidence/zk.
 // Full private-reputation stack live as of 2026-06-07 (reputation gate + commitment tree launched).
+// WARNING: dark_x402_access_gate and dark_nullifier_record are SEIZED pre-incident IDs —
+// deployer key F6Fr… stolen 2026-06-14; attacker holds upgrade authority. Do not call them.
 const PROGRAMS = {
+  // SEIZED — pre-incident; attacker holds upgrade authority. Replaced by post-redeploy IDs (pending ceremony).
   dark_x402_access_gate: "EepqzVBNuzCgD6XGiB19pDDhzFG3gUL4z1nabBYxpfjS",
+  // SEIZED — pre-incident; attacker holds upgrade authority. Replaced by post-redeploy IDs (pending ceremony).
   dark_nullifier_record: "24tmjEd1DhPW2QuPV6BzkFFHrq2PtELoLqv5cuv2Xu65",
   dark_reputation_gate: "9nN7UTTT5hgKnc2LZTqr3qaLLSt5PxWUrDbpUTGYHRxp",
   receipt_commitment_tree: "8jC8QGiDJRRxhbPXMX5wJnGUq89xJZ2LsHMdbn2urCas",
@@ -36,7 +40,7 @@ const DEVNET_PROGRAMS = {
 } as const;
 
 const EXPLORER_BASE = "https://explorer.solana.com";
-const DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
+const DEFAULT_RPC = "https://solana-rpc.publicnode.com";
 
 function explorerTx(sig: string): string {
   return `${EXPLORER_BASE}/tx/${sig}`;
@@ -100,6 +104,44 @@ function loadKeypair(): Keypair | null {
 // ---------------------------------------------------------------------------
 
 const ALLOW_WRITE = process.env.PARAD0X_MCP_ALLOW_WRITE === "1";
+
+// Per-session consent registry — tracks which write operations the operator has
+// explicitly consented to this session (beyond ALLOW_WRITE env flag).
+// Keys are tool names; value is the ISO timestamp when consent was granted.
+const sessionConsent = new Map<string, string>();
+
+const WRITE_TOOLS = new Set(["anchor_receipt", "private_compute"]);
+const READ_TOOLS = new Set([
+  "x402_get_quote",
+  "get_stack_status",
+  "lookup_passport",
+  "check_nullifier",
+  "compress_receipts",
+  "build_outcome_receipt",
+  "get_scope_status",
+  "grant_write_consent",
+  "revoke_write_consent",
+]);
+
+function hasConsent(toolName: string): boolean {
+  if (!WRITE_TOOLS.has(toolName)) return true; // read tools always allowed
+  if (!ALLOW_WRITE) return false;
+  return sessionConsent.has(toolName);
+}
+
+const SEIZED_PROGRAMS = new Set<string>([
+  "EepqzVBNuzCgD6XGiB19pDDhzFG3gUL4z1nabBYxpfjS",
+  "24tmjEd1DhPW2QuPV6BzkFFHrq2PtELoLqv5cuv2Xu65",
+]);
+
+function assertNotSeized(programId: string, name: string): void {
+  if (SEIZED_PROGRAMS.has(programId)) {
+    throw new Error(
+      `${name} (${programId}) is a SEIZED pre-incident program — upgrade authority is under hostile control. ` +
+      `Do not call this program. Post-redeploy IDs will be updated here after the trusted-setup ceremony.`
+    );
+  }
+}
 
 const SECRET_FIELD =
   /(^|_)(key_hex|secret|secret_key|private_key|privatekey|mnemonic|seed|keypair|signing_key)($|_)/i;
@@ -355,6 +397,7 @@ async function checkNullifier(
   nullifier: string,
   rpcUrl = DEFAULT_RPC
 ): Promise<object> {
+  assertNotSeized(PROGRAMS.dark_nullifier_record, "dark_nullifier_record");
   // Accept a 64-char hex string OR a decimal BN254 field element.
   const s = nullifier.trim();
   let hex: string;
@@ -563,6 +606,8 @@ async function privateCompute(params: {
 }
 
 function getStackStatus(): object {
+  assertNotSeized(PROGRAMS.dark_x402_access_gate, "dark_x402_access_gate");
+  assertNotSeized(PROGRAMS.dark_nullifier_record, "dark_nullifier_record");
   return {
     programs: [
       {
@@ -830,6 +875,43 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["plaintext_input", "executor_endpoint"],
         },
       },
+      {
+        name: "get_scope_status",
+        description:
+          "Show the current permission scope for this MCP session — which tools require elevated consent, which are currently consented, and whether write mode is enabled by the operator.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "grant_write_consent",
+        description:
+          "Explicitly consent to a write operation for this session. Must be called before anchor_receipt or private_compute if confirm:true alone is not sufficient. The operator must have set PARAD0X_MCP_ALLOW_WRITE=1.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            tool_name: {
+              type: "string",
+              enum: ["anchor_receipt", "private_compute"],
+              description: "Which write tool to grant session consent for",
+            },
+          },
+          required: ["tool_name"],
+        },
+      },
+      {
+        name: "revoke_write_consent",
+        description: "Revoke session consent for a write tool — it will require re-confirmation.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            tool_name: {
+              type: "string",
+              enum: ["anchor_receipt", "private_compute"],
+              description: "Which write tool to revoke consent for",
+            },
+          },
+          required: ["tool_name"],
+        },
+      },
     ],
   };
 });
@@ -914,6 +996,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             rpc_url?: string;
           }
         );
+        break;
+      }
+
+      case "get_scope_status": {
+        result = {
+          write_mode_enabled: ALLOW_WRITE,
+          read_tools: [...READ_TOOLS].sort(),
+          write_tools: [...WRITE_TOOLS].map((t) => ({
+            tool: t,
+            consented: sessionConsent.has(t),
+            consented_at: sessionConsent.get(t) ?? null,
+          })),
+          note: ALLOW_WRITE
+            ? "Write mode active. Call grant_write_consent to pre-approve a specific tool, or pass confirm:true per-call."
+            : "Write mode disabled (PARAD0X_MCP_ALLOW_WRITE not set). Read-only tools available.",
+        };
+        break;
+      }
+      case "grant_write_consent": {
+        const { tool_name } = args as { tool_name: string };
+        if (!WRITE_TOOLS.has(tool_name)) {
+          result = { error: `${tool_name} is not a write tool` };
+        } else if (!ALLOW_WRITE) {
+          result = { error: "Cannot grant consent — PARAD0X_MCP_ALLOW_WRITE=1 required on this machine" };
+        } else {
+          sessionConsent.set(tool_name, new Date().toISOString());
+          result = { granted: true, tool: tool_name, consented_at: sessionConsent.get(tool_name) };
+        }
+        break;
+      }
+      case "revoke_write_consent": {
+        const { tool_name: revokeTarget } = args as { tool_name: string };
+        const had = sessionConsent.delete(revokeTarget);
+        result = { revoked: had, tool: revokeTarget };
         break;
       }
 

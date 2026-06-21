@@ -6,7 +6,7 @@ paste-and-go checklist so a publish session is mechanical.
 
 > npm scope: `@parad0x_labs` (public). Log in once: `npm login`.
 
-## State today (verified 2026-06-11)
+## State today (verified 2026-06-21)
 
 | Package | On npm | Local / canonical | Action |
 |---|---|---|---|
@@ -60,6 +60,13 @@ In this repo's `README.md`, change the affected `Install` cells from
 The three OpenClaw plugins (`x402-pay`, `x402-gate`, `context-capsule`) carry
 ClawHub-format `SKILL.md`. List them on ClawHub so claw-family agents discover
 them in-client.
+
+## Pre-publish checklist (added 2026-06-21)
+- [ ] mcp-server: confirm `PARAD0X_MCP_ALLOW_WRITE` is documented in README
+- [ ] mcp-server: confirm `solana-rpc.publicnode.com` is the default RPC (not api.mainnet-beta.solana.com)
+- [ ] x402-pay / x402-gate: confirm `minOpenClawVersion: 2026.6.1` is in openclaw.plugin.json
+- [ ] All packages: verify `npm run typecheck` passes before publish
+- [ ] Smoke test: `npx @parad0x_labs/mcp-server` starts without errors on Node >= 22
 
 ---
 

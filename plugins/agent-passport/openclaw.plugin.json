@@ -1,0 +1,30 @@
+{
+  "id": "agent-passport",
+  "minOpenClawVersion": "2026.6.1",
+  "activation": {
+    "onStartup": true
+  },
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "solanaWallet": {
+        "type": "string",
+        "description": "Agent's Solana wallet address (base58 public key). Used to look up on-chain identity records."
+      },
+      "ethAddress": {
+        "type": "string",
+        "description": "Agent's ETH address (hex, optional). Used to look up secp256k1 identity binding."
+      },
+      "nullName": {
+        "type": "string",
+        "description": "Agent's .null name (e.g. myagent.null). Used for identity display and routing."
+      },
+      "rpcUrl": {
+        "type": "string",
+        "description": "Solana RPC URL override. Defaults to solana-rpc.publicnode.com."
+      }
+    }
+  }
+}
