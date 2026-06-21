@@ -5,11 +5,21 @@
   "type": "module",
   "main": "./src/index.ts",
   "files": ["src/", "openclaw.plugin.json", "SKILL.md", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test",
+    "prepublishOnly": "npm run build"
+  },
   "dependencies": {
     "@solana/web3.js": "^1.98.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
   },
   "engines": { "node": ">=22" },
   "license": "MIT",
