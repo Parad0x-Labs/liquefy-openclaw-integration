@@ -15,6 +15,7 @@ paste-and-go checklist so a publish session is mechanical.
 | `@parad0x_labs/mcp-server` | not published | this repo `skills/mcp-server` @ 0.1.0 | **publish** |
 | `@parad0x_labs/openclaw-x402-pay` | not published | this repo `skills/x402-pay` @ 1.1.0 | **publish** |
 | `@parad0x_labs/openclaw-x402-gate` | not published | this repo `skills/x402-gate` @ 1.1.0 | **publish** |
+| `@parad0x_labs/openclaw-agent-passport` | not published | this repo `plugins/agent-passport` @ 0.1.0 | **publish** |
 
 ## 1. Republish null-mcp 0.6.0 (most urgent — kills the stale 0.2.0)
 
@@ -35,7 +36,7 @@ cd <openclaw-skills>/skills/mcp-server
 npm install --ignore-scripts   # never run third-party lifecycle scripts on a host holding the npm token or any key
 npm run build           # tsc → dist/ (verified clean)
 npm publish --access public
-# smoke: npx @parad0x_labs/mcp-server  → should start an MCP stdio server (8 tools)
+# smoke: npx @parad0x_labs/mcp-server  → should start an MCP stdio server (11 tools: 8 stack + get_scope_status / grant_write_consent / revoke_write_consent)
 ```
 
 ## 3. Publish the x402 skills
@@ -49,6 +50,18 @@ cd <openclaw-skills>/skills/x402-gate && npm publish --access public
 no build step, the `files` field ships `src/`. Any local install of these uses
 `npm install --ignore-scripts`, and the published READMEs tell consumers the same.)
 
+## 3b. Publish agent-passport (on-chain identity plugin)
+
+```bash
+cd <openclaw-skills>/plugins/agent-passport
+npm install --ignore-scripts
+npm test                # builds + runs the hermetic passport tests (11 green)
+npm publish --access public
+```
+
+(Read-only identity plugin: `get_agent_passport` + `verify_agent_identity`, public
+RPC only, no seized program IDs. Ships `src/` like the x402 skills.)
+
 ## 4. After publishing — flip the catalog to live
 
 In this repo's `README.md`, change the affected `Install` cells from
@@ -61,12 +74,14 @@ The three OpenClaw plugins (`x402-pay`, `x402-gate`, `context-capsule`) carry
 ClawHub-format `SKILL.md`. List them on ClawHub so claw-family agents discover
 them in-client.
 
-## Pre-publish checklist (added 2026-06-21)
-- [ ] mcp-server: confirm `PARAD0X_MCP_ALLOW_WRITE` is documented in README
-- [ ] mcp-server: confirm `solana-rpc.publicnode.com` is the default RPC (not api.mainnet-beta.solana.com)
-- [ ] x402-pay / x402-gate: confirm `minOpenClawVersion: 2026.6.1` is in openclaw.plugin.json
-- [ ] All packages: verify `npm run typecheck` passes before publish
-- [ ] Smoke test: `npx @parad0x_labs/mcp-server` starts without errors on Node >= 22
+## Pre-publish checklist (verified 2026-06-21)
+- [x] mcp-server: `solana-rpc.publicnode.com` is the default RPC (not api.mainnet-beta.solana.com)
+- [x] mcp-server: consent registry is live — `grant_write_consent` actually gates writes (`canSubmitWrite`), seized program IDs guarded
+- [x] x402-pay / x402-gate / agent-passport: `minOpenClawVersion: 2026.6.1` in openclaw.plugin.json
+- [x] All four packages: `npm run typecheck` clean
+- [x] All four packages: `npm test` green (mcp-server 11, x402-pay 7, x402-gate 2, agent-passport 11 = 31)
+- [x] CI: skills-ts.yml runs typecheck + test per module (incl. agent-passport)
+- [ ] Smoke test after publish: `npx @parad0x_labs/mcp-server` starts the stdio server on Node ≥ 22
 
 ---
 
