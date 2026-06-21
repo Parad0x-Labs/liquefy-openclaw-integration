@@ -7,13 +7,28 @@
  * from older history. This is still lossy, but it preserves the material that
  * usually matters in long agent sessions while keeping prompt tokens bounded.
  *
- * Dependencies: Node.js built-ins only — `node:zlib` (deflate) and
- * `node:crypto` (SHA-256). No network, file I/O, dynamic imports, or
- * third-party packages.
+ * Crypto/compression run through a platform shim (./platform): the Node build
+ * uses `node:zlib` + `node:crypto`; a browser build aliases it to
+ * ./platform.browser (@noble/hashes + pako) so this exact source also runs in a
+ * browser tab. The SHA-256 path is byte-identical across backends, so a capsule's
+ * merkleRoot / capsuleId / injected memory are identical in a browser and in Node
+ * (the audit blob is round-trip-identical) — see test/platform-parity.test.mjs.
+ * No network, file I/O, or dynamic imports.
  */
 
-import { createHash } from "node:crypto";
-import { deflateSync } from "node:zlib";
+// Crypto/compression go through the platform shim so this exact source runs in
+// Node (node:crypto + node:zlib) AND in a browser tab (a browser build aliases
+// ./platform to ./platform.browser — @noble/hashes + pako; SHA-256 byte-identical,
+// so the merkle root / capsule id / injected memory match across backends).
+import {
+  sha256Bytes,
+  sha256Hex,
+  sha256Concat,
+  deflate,
+  utf8ByteLength,
+  zeroBytes,
+  bytesToHex,
+} from "./platform.js";
 
 export interface Message {
   role: string;
@@ -249,7 +264,7 @@ function boundedMessages(messages: Message[]): Message[] {
 //   [REDACTED_<TYPE>#<first 8 hex of sha256(secret)>]
 // ----------------------------------------------------------------------------
 function fingerprint(secret: string): string {
-  return createHash("sha256").update(secret, "utf8").digest("hex").slice(0, 8);
+  return sha256Hex(secret).slice(0, 8);
 }
 function redactTag(type: string, secret: string): string {
   return `[REDACTED_${type}#${fingerprint(secret)}]`;
@@ -422,26 +437,26 @@ function isInjectionLine(text: string): boolean {
   return INJECTION_PATTERNS.some((re) => re.test(text));
 }
 
-/** SHA-256 of a UTF-8 string -> Buffer. */
-function sha256(data: string): Buffer {
-  return createHash("sha256").update(data, "utf8").digest();
+/** SHA-256 of a UTF-8 string -> 32 bytes. */
+function sha256(data: string): Uint8Array {
+  return sha256Bytes(data);
 }
 
 /**
- * Build a SHA-256 Merkle root over an ordered list of leaf buffers.
- * Empty -> 32-byte zero buffer. Single leaf -> that leaf. Odd node duplicates.
+ * Build a SHA-256 Merkle root over an ordered list of leaf hashes.
+ * Empty -> 32-byte zero. Single leaf -> that leaf. Odd node duplicates.
  */
-function buildMerkleRoot(leaves: Buffer[]): Buffer {
-  if (leaves.length === 0) return Buffer.alloc(32, 0);
+function buildMerkleRoot(leaves: Uint8Array[]): Uint8Array {
+  if (leaves.length === 0) return zeroBytes(32);
   if (leaves.length === 1) return leaves[0];
 
-  let level: Buffer[] = leaves;
+  let level: Uint8Array[] = leaves;
   while (level.length > 1) {
-    const next: Buffer[] = [];
+    const next: Uint8Array[] = [];
     for (let i = 0; i < level.length; i += 2) {
       const left = level[i];
       const right = i + 1 < level.length ? level[i + 1] : level[i];
-      next.push(createHash("sha256").update(left).update(right).digest());
+      next.push(sha256Concat(left, right));
     }
     level = next;
   }
@@ -477,10 +492,7 @@ function extractTopics(messages: Message[], maxTopics = 8): string[] {
 
 /** Deterministic capsule ID: sha256(sessionId + createdAt + merkleRoot). */
 function buildCapsuleId(sessionId: string, createdAt: number, merkleRoot: string): string {
-  return createHash("sha256")
-    .update(`${sessionId}:${createdAt}:${merkleRoot}`)
-    .digest("hex")
-    .slice(0, 32);
+  return sha256Hex(`${sessionId}:${createdAt}:${merkleRoot}`).slice(0, 32);
 }
 
 function splitSentences(line: string): string[] {
@@ -1107,12 +1119,10 @@ export function compressContext(messages: Message[], opts: CompressOptions = {})
   // audit blob carries trapdoor tags in place of credentials — never the raw
   // secret. Token/byte stats are computed on the same redacted view.
   const jsonl = redacted.map((m) => JSON.stringify(m)).join("\n");
-  const compressed = deflateSync(Buffer.from(jsonl, "utf8"), { level: 9 });
-  const compressedBase64 = compressed.toString("base64");
+  const { base64: compressedBase64, bytes: compressedBytes } = deflate(jsonl);
 
   const originalTokenEstimate = estimateTokens(jsonl);
-  const originalBytes = Buffer.byteLength(jsonl, "utf8");
-  const compressedBytes = compressed.length;
+  const originalBytes = utf8ByteLength(jsonl);
   const compressionRatio = `${(originalBytes / Math.max(1, compressedBytes)).toFixed(1)}x`;
 
   // INPUT-BUDGET CAPS: every extraction/regex pass below runs on this bounded
@@ -1131,7 +1141,7 @@ export function compressContext(messages: Message[], opts: CompressOptions = {})
   const { facts, dropped } = extractFacts(analyzed, maxFacts);
 
   const leaves = redacted.map((m) => sha256(JSON.stringify(m)));
-  const merkleRoot = buildMerkleRoot(leaves).toString("hex");
+  const merkleRoot = bytesToHex(buildMerkleRoot(leaves));
   const capsuleId = buildCapsuleId(sessionId, createdAt, merkleRoot);
 
   return {
