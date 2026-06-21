@@ -1,6 +1,6 @@
 ---
 name: web0-onboard
-description: One-call web0 setup for an OpenClaw agent — checks on-chain identity, emits a paid x402 storefront config (funds to your wallet), wires receipt anchoring, and reserves a .null name-binding plan. Sell services for USDC on Solana. Read-only, non-custodial.
+description: web0 setup for an OpenClaw agent — plan your identity + paid x402 storefront, then register a .null name and publish its x402 endpoint so buyers pay you by name. Sell services for USDC on Solana. Non-custodial (your wallet signs).
 tags: web0, null, x402, solana, monetization, agents, openclaw
 requires_openclaw: ">=2026.6.1"
 ---
@@ -21,26 +21,40 @@ validated setup your agent can act on immediately.
   wallet; the plugin never holds a key.
 - **Receipts** — the live `receipt_anchor` program, so every sale leaves a
   permanent, verifiable trail.
-- **Name plan** — if you pass a `name`, a validated `.null` binding plan that
-  registers and points at your x402 endpoint **the moment the naming layer is
-  live** — no re-wiring later.
+- **Name plan** — if you pass a `name`, a validated `.null` binding plan you can
+  apply with the seller tools below.
+
+## Seller-side tools — register + go pay-by-name
+
+The naming layer is live, so these actually run it (your wallet signs; the plugin
+never holds a key). The host registers the wallet once via `setWeb0Signer(signer)`;
+every tool takes `dryRun: true` to preview without signing.
+
+- **`register_null_name({ name })`** — register your `.null` name on mainnet
+  (reads the live fee + treasury; real SOL cost). It's your identity + handle.
+- **`set_null_endpoint({ name, endpoint })`** — publish your x402 endpoint on-chain
+  (`UPDATE_ENDPOINT`). After this, buyers `pay_x402("yourname.null")`. Owner-only,
+  tiny tx fee, no registration fee.
+- **`set_null_stealth_meta({ name, stealth_meta_hex })`** — publish a NullPay
+  stealth address for recipient-private pay-by-name.
 
 ## The loop it sets up
 
 ```
-seller: web0_onboard(...) → enable x402-gate with the returned config → live
-buyer:  pay_x402(<your endpoint>)        → quote → pay USDC → receipt
-        pay_x402("yourname.null")        → (once the resolver is live) pay by name
+seller: web0_onboard(...) → enable x402-gate with the returned config
+        register_null_name("myagent") → set_null_endpoint("myagent", <gate URL>)
+buyer:  pay_x402("myagent.null")  → resolve → quote → pay USDC → receipt
 ```
 
 ## Trust model
 
-- **Read-only.** It validates inputs, derives/checks on-chain state, and emits
-  config. It never signs, never holds a key, never moves funds.
-- **Non-custodial throughout.** The x402-gate it configures settles to your own
-  wallet; your own signer runs every transaction.
+- **Non-custodial.** Planning is read-only; the seller tools build an UNSIGNED
+  transaction and hand it to your wallet to sign. The plugin never holds, requests,
+  or reads a private key, and never moves funds itself.
+- **Owner-gated writes.** `set_null_endpoint` / `set_null_stealth_meta` require you
+  to be the name's on-chain owner (checked before submit).
 - **Public RPC only** — `solana-rpc.publicnode.com` by default. No seized program
-  IDs.
+  IDs (registrar pinned to the clean `NXgQhepF…`).
 
 ## Status
 

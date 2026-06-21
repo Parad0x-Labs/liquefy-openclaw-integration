@@ -15,14 +15,29 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 import { buildOnboardTools, readConfig } from "./onboard.js";
+import { buildRegistrarTools } from "./registrar.js";
+import type { Web0Signer } from "./registrar.js";
+
+export type { Web0Signer } from "./registrar.js";
+
+/**
+ * The host registers the owner's wallet here at startup — a live signing
+ * capability, never a serialized secret. The seller-side write tools
+ * (register_null_name / set_null_endpoint / set_null_stealth_meta) build an
+ * unsigned transaction and hand it to this signer; the plugin never holds a key.
+ */
+let activeSigner: Web0Signer | null = null;
+export function setWeb0Signer(signer: Web0Signer): void {
+  activeSigner = signer;
+}
 
 export default definePluginEntry({
   id: "web0-onboard",
   name: "web0 Onboard",
   description:
-    "Set up an agent on web0 in one call — identity, a paid x402 storefront, " +
-    "receipt anchoring, and a .null name-binding plan. Sell services for USDC on " +
-    "Solana; funds settle to your own wallet. Non-custodial, read-only orchestration.",
+    "Set up an agent on web0 — identity, a paid x402 storefront, receipt anchoring, " +
+    "and a .null name: register it, publish your x402 endpoint, get paid by name. " +
+    "Sell services for USDC on Solana; funds settle to your own wallet. Non-custodial.",
 
   register(api: {
     registerTool: (tool: {
@@ -33,7 +48,9 @@ export default definePluginEntry({
     }) => void;
     config?: Record<string, unknown>;
   }) {
-    for (const tool of buildOnboardTools(readConfig(api.config))) {
+    const cfg = readConfig(api.config);
+    for (const tool of buildOnboardTools(cfg)) api.registerTool(tool);
+    for (const tool of buildRegistrarTools({ solanaWallet: cfg.solanaWallet }, () => activeSigner)) {
       api.registerTool(tool);
     }
   },
