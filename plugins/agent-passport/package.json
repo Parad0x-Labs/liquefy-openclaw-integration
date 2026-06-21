@@ -12,7 +12,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.98.0"
+    "@solana/web3.js": "^1.98.0",
+    "typebox": "1.1.39"
   },
   "peerDependencies": {
     "openclaw": ">=2026.6.1"

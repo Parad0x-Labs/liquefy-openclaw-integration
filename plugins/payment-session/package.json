@@ -22,6 +22,9 @@
     "test": "npm run build && node --test",
     "prepublishOnly": "npm run build"
   },
+  "dependencies": {
+    "typebox": "1.1.39"
+  },
   "peerDependencies": {
     "openclaw": ">=2026.6.1"
   },
