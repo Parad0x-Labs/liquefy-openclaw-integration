@@ -17,12 +17,29 @@ verify the payment, then serve — funds settle straight to your own Solana wall
   checks alone don't prove settlement. Turn it on for revenue-grade gating.
 - You expected the skill to hold a balance for you. It doesn't, by design.
 
-## The two tools
+## Tools
 
 - `x402_challenge({ resource, description? })` → a 402 challenge body to send an
   unpaid caller. The price is seller config (`priceUsdc`), never a caller input.
 - `x402_verify({ header, resource })` → validates the payment; with
   `requireOnChain: true`, confirms the transaction settled on Solana first.
+- `x402_rep_challenge()` → the reputation bar a caller must prove (see below).
+- `x402_rep_verify({ proof, publicSignals, expectedAgentCommitment? })` → verifies a
+  private reputation proof against your policy.
+
+## Gate on private reputation (zk-rep)
+
+Instead of (or alongside) charging per call, gate on **proven track record**: admit a
+caller who proves it holds `>= repMinCount` settled receipts totalling `>= repMinVolume`
+within `repWindowSeconds`, in an anchored receipt tree — **learning no individual amount,
+counterparty, or wallet**. Set the bar in config (`repMinCount`, `repMinVolume`,
+`repWindowSeconds`, `repTrustedRoots`); the caller answers with a Groth16 proof from
+`x402-pay`'s `prove_reputation`.
+
+Verification is fail-closed on every seam: the proof must cryptographically verify, clear
+your policy floor, build on a **trusted** anchored root, carry a **single-use** nullifier,
+and (when you pass `expectedAgentCommitment`) match the caller's bound identity. Runs
+off-chain today; a multi-party ceremony and on-chain trustless verification are next.
 
 ## Safety
 

@@ -1,8 +1,12 @@
 /**
  * openclaw-x402-pay — self-custody x402 payments for OpenClaw agents.
  *
- * Gives an agent one tool, `pay_x402`, that fetches an x402-gated URL and, if it
- * answers HTTP 402, pays for it on Solana and returns the resource.
+ * Tools:
+ *   - `pay_x402`        fetch an x402-gated URL (or .null name) and pay on Solana if 402.
+ *   - `rep_identity`    return the agent's public reputation commitment (for gate binding).
+ *   - `prove_reputation` generate a PRIVATE proof of track record (>= minCount receipts
+ *                       totalling >= minVolume in-window) for an x402 gate's x402_rep_verify,
+ *                       revealing no amount, counterparty, or wallet. See ./prover.ts.
  *
  * Trust model (v1.1.0):
  *   - BRING YOUR OWN SIGNER. The host supplies an X402Signer (wallet adapter,
@@ -28,6 +32,12 @@ import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 
 import { fetchWithX402, quoteX402, needsApproval } from "./client";
 import { resolveNullName, isNullName } from "./resolve";
+import {
+  proveReputation,
+  agentCommitment as computeAgentCommitment,
+  getReputationKey,
+  type WitnessReceipt,
+} from "./prover";
 import type { X402PayConfig, X402Signer } from "./types";
 
 export * from "./constants";
@@ -35,6 +45,7 @@ export * from "./types";
 export * from "./signer";
 export * from "./client";
 export * from "./resolve";
+export * from "./prover";
 
 const DEFAULT_MAX_USDC = 1.0;
 
@@ -46,6 +57,10 @@ let activeSigner: X402Signer | null = null;
 export function setX402Signer(signer: X402Signer): void {
   activeSigner = signer;
 }
+
+// The agent's PRIVATE reputation key is registered via setReputationKey (re-exported from
+// ./prover). Same rule as the signer: a secret is a live capability, never serialized JSON
+// config. The secret stays inside ./prover; only the public agent_commitment + proofs leave.
 
 /** Parse a config boolean robustly — a real boolean or common true/false strings
  *  (case-insensitive). Unrecognized junk falls back to the default, but explicit
@@ -118,6 +133,10 @@ const ConfigSchema = Type.Object(
     spendLedgerPath: Type.Optional(Type.String()),
     allowInternalHosts: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
     requireApproval: Type.Optional(Type.Union([Type.Boolean(), Type.String()])),
+    // zk-rep prover artifacts (track_record.circom). Not bundled — host them (e.g. on
+    // Arweave via web0) and point here, or pass per-call in prove_reputation.
+    repWasmPath: Type.Optional(Type.String()),
+    repZkeyPath: Type.Optional(Type.String()),
   },
   { additionalProperties: true },
 );
@@ -136,13 +155,46 @@ const PayParams = Type.Object({
   ),
 });
 
+const FieldStrOrNum = Type.Union([Type.String(), Type.Number()]);
+
+/** One settled receipt with its inclusion proof against the anchored tree root. The host
+ *  fills this from the receipt-dag / anchored-tree indexer — not the model freehand. */
+const RepReceiptSchema = Type.Object({
+  amount: FieldStrOrNum,
+  timestamp: FieldStrOrNum,
+  counterparty: FieldStrOrNum,
+  nonce: FieldStrOrNum,
+  leafIndex: FieldStrOrNum,
+  pathElements: Type.Array(Type.String()),
+  pathIndex: Type.Array(Type.Number()),
+});
+
+const ProveRepParams = Type.Object({
+  epoch: Type.Union([Type.String(), Type.Number()], {
+    description: "Reputation epoch — rotates the single-use nullifier (e.g. a day or week index).",
+  }),
+  root: Type.String({ description: "Anchored receipt-tree root the gate trusts (decimal field element)." }),
+  minCount: Type.Number({ description: "Receipt-count bar to advertise (0..4 in v1)." }),
+  minVolume: Type.Union([Type.String(), Type.Number()], {
+    description: "Total-volume bar to advertise (atomic units). The proof shows the real total >= this.",
+  }),
+  windowStart: Type.Number({ description: "Earliest receipt timestamp to prove (unix seconds)." }),
+  receipts: Type.Array(RepReceiptSchema, {
+    description: "Exactly 4 receipts with inclusion paths, ordered by strictly increasing leafIndex (v1).",
+  }),
+  wasmPath: Type.Optional(Type.String({ description: "Path/URL to track_record.wasm (else config.repWasmPath)." })),
+  zkeyPath: Type.Optional(Type.String({ description: "Path/URL to track_record_final.zkey (else config.repZkeyPath)." })),
+});
+
 export default defineToolPlugin({
   id: "x402-pay",
   name: "x402 Pay",
   description:
     "Let your agent pay for x402-gated APIs, data, and other agents on Solana " +
     "mainnet. Bring your own signer — the skill never holds a private key — with " +
-    "a hard USDC spend cap. Set allowMainnet=true to enable real-money mainnet payments.",
+    "a hard USDC spend cap. Set allowMainnet=true to enable real-money mainnet payments. " +
+    "Also proves PRIVATE reputation (prove_reputation): show you hold enough settled " +
+    "receipts to clear a gate without revealing any amount, counterparty, or wallet.",
   configSchema: ConfigSchema,
   tools: (tool) => [
     tool({
@@ -241,6 +293,99 @@ export default defineToolPlugin({
           const result = await fetchWithX402(targetUrl, { signer: activeSigner, config, init });
           return resolvedName ? { ...result, resolved_name: resolvedName } : result;
         } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    }),
+
+    // ── zk-rep (private reputation) ────────────────────────────────────────────────
+    tool({
+      name: "rep_identity",
+      label: "Reputation identity",
+      description:
+        "Return this agent's PUBLIC reputation commitment (agent_commitment = " +
+        "Poseidon(secret, agent_id)). Hand it to an x402 gate as expectedAgentCommitment so " +
+        "a reputation proof is bound to this agent and cannot be transplanted by another. " +
+        "Reveals nothing secret. Requires the host to have called setReputationKey first.",
+      parameters: Type.Object({}),
+      async execute() {
+        const key = getReputationKey();
+        if (!key) {
+          return {
+            ok: false,
+            error: "No reputation key. The host must call setReputationKey({secret, agentId}) first.",
+          };
+        }
+        try {
+          return { ok: true, agent_commitment: computeAgentCommitment(key.secret, key.agentId) };
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    }),
+
+    tool({
+      name: "prove_reputation",
+      label: "Prove reputation (zk)",
+      description:
+        "Generate a PRIVATE reputation proof: prove this agent holds >= minCount settled " +
+        "receipts totalling >= minVolume since windowStart, in an anchored receipt tree — " +
+        "revealing NO individual amount, counterparty, or wallet. Returns a Groth16 proof + " +
+        "public signals to send to a gate's x402_rep_verify. The host supplies the receipts " +
+        "with inclusion paths (from the receipt-dag indexer) and the proving artifacts. " +
+        "Requires setReputationKey first; the secret never leaves the skill.",
+      parameters: ProveRepParams,
+      async execute(params, rawConfig) {
+        const key = getReputationKey();
+        if (!key) {
+          return {
+            ok: false,
+            error: "No reputation key. The host must call setReputationKey({secret, agentId}) first.",
+          };
+        }
+        const cfg = (rawConfig ?? {}) as Record<string, unknown>;
+        const wasmPath =
+          (typeof params.wasmPath === "string" && params.wasmPath) ||
+          (typeof cfg.repWasmPath === "string" ? cfg.repWasmPath : "");
+        const zkeyPath =
+          (typeof params.zkeyPath === "string" && params.zkeyPath) ||
+          (typeof cfg.repZkeyPath === "string" ? cfg.repZkeyPath : "");
+        if (!wasmPath || !zkeyPath) {
+          return {
+            ok: false,
+            error:
+              "prove_reputation needs the proving artifacts: set params.wasmPath/zkeyPath or " +
+              "config.repWasmPath/repZkeyPath. Host them (e.g. on Arweave via web0) — they are not bundled.",
+          };
+        }
+        try {
+          const res = await proveReputation(
+            {
+              epoch: params.epoch,
+              root: String(params.root),
+              minCount: Number(params.minCount),
+              minVolume: params.minVolume,
+              windowStart: Number(params.windowStart),
+              receipts: params.receipts as unknown as WitnessReceipt[],
+              wasmPath,
+              zkeyPath,
+            },
+            key,
+          );
+          return {
+            ok: true,
+            proof: res.proof,
+            public_signals: res.publicSignals,
+            agent_commitment: res.agentCommitment,
+            reputation_nullifier: res.reputationNullifier,
+            root: res.root,
+            proving_ms: res.provingMs,
+            note:
+              "Send proof + public_signals to the gate's x402_rep_verify. Bind with " +
+              "expectedAgentCommitment = agent_commitment so the proof is non-transferable.",
+          };
+        } catch (err) {
+          // proveReputation never echoes secret/amount values; pass its label-only message through.
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
       },

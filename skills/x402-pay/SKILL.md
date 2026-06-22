@@ -29,11 +29,33 @@ Solana — without ever handing the skill a private key.
 > **Non-custodial and spend-capped by design** — your agent signs with its own
 > wallet; no single payment exceeds your cap.
 
-## The tool
+## Tools
 
-`pay_x402({ url, method? })` → fetches the URL; on HTTP 402, pays within your cap
-and network, then returns the resource plus `{ paymentSignature, receiptHash,
-amountUsdc }`.
+- `pay_x402({ url, method? })` → fetches the URL; on HTTP 402, pays within your cap
+  and network, then returns the resource plus `{ paymentSignature, receiptHash,
+  amountUsdc }`. `url` may be a `name.null` to pay by name.
+- `rep_identity()` → your agent's public reputation commitment, to bind a proof to
+  this agent (hand it to a gate as `expectedAgentCommitment`). Reveals nothing secret.
+- `prove_reputation({ root, minCount, minVolume, windowStart, epoch, receipts })` →
+  a private proof of track record (see below).
+
+## Private reputation (zk-rep)
+
+Prove you hold **enough settled receipts to clear a gate** — `>= minCount` receipts
+totalling `>= minVolume` since `windowStart`, in an anchored receipt tree — **without
+revealing any individual amount, counterparty, or wallet**. A Groth16 proof
+(`track_record.circom`, BN254) the gate verifies with `x402_rep_verify`.
+
+- **Secret stays put.** Register your reputation key with `setReputationKey({ secret,
+  agentId })` — a live capability, like the signer, never serialized into config. It
+  never appears in a proof, a return value, a log, or an error.
+- **Single-use.** Each proof carries a per-epoch nullifier the gate spends once.
+- **Bind it.** Pass `expectedAgentCommitment` so a proof can't be transplanted to
+  another agent.
+
+Proving artifacts (the circuit `wasm`/`zkey`) are hosted and passed by path/URL
+(`repWasmPath`/`repZkeyPath`), not bundled. Off-chain verification runs today; a
+multi-party ceremony and on-chain trustless verification are coming next.
 
 ## Pairs with
 

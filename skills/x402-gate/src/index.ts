@@ -42,6 +42,7 @@ import {
   issueCapability,
   verifyCapability,
 } from "./auth";
+import { verifyReputationProof, repChallenge, type RepPolicy } from "./rep";
 
 export * from "./constants";
 export * from "./types";
@@ -49,6 +50,7 @@ export * from "./gate";
 export * from "./onchain";
 export * from "./replay";
 export * from "./auth";
+export * from "./rep";
 
 interface GateConfig {
   recipientAddress: string;
@@ -63,6 +65,11 @@ interface GateConfig {
   challengeSecret?: string;
   replayStorePath?: string;
   rpcUrl?: string;
+  // zk-rep (private reputation) policy — the bar a caller must prove.
+  repMinCount?: number;
+  repMinVolume?: string;
+  repWindowSeconds?: number;
+  repTrustedRoots?: string[];
 }
 
 function readConfig(raw: Record<string, unknown> | undefined): GateConfig {
@@ -83,6 +90,17 @@ function readConfig(raw: Record<string, unknown> | undefined): GateConfig {
     challengeSecret: typeof c.challengeSecret === "string" ? c.challengeSecret : undefined,
     replayStorePath: typeof c.replayStorePath === "string" ? c.replayStorePath : undefined,
     rpcUrl: typeof c.rpcUrl === "string" ? c.rpcUrl : undefined,
+    repMinCount: typeof c.repMinCount === "number" ? c.repMinCount : undefined,
+    repMinVolume:
+      typeof c.repMinVolume === "string"
+        ? c.repMinVolume
+        : typeof c.repMinVolume === "number"
+          ? String(c.repMinVolume)
+          : undefined,
+    repWindowSeconds: typeof c.repWindowSeconds === "number" ? c.repWindowSeconds : undefined,
+    repTrustedRoots: Array.isArray(c.repTrustedRoots)
+      ? c.repTrustedRoots.filter((x): x is string => typeof x === "string")
+      : undefined,
   };
 }
 
@@ -184,6 +202,19 @@ function getGateState(rawConfig: Record<string, unknown> | undefined): GateState
   return gateState;
 }
 
+/** Build the zk-rep policy from gate config, or null if zk-rep is not configured. */
+function repPolicyFromConfig(config: GateConfig): RepPolicy | null {
+  if (config.repMinCount == null || config.repMinVolume == null) return null;
+  const windowSeconds = config.repWindowSeconds && config.repWindowSeconds > 0 ? config.repWindowSeconds : 90 * 86400;
+  return {
+    minCount: config.repMinCount,
+    minVolume: config.repMinVolume,
+    windowStartFloor: Math.floor(Date.now() / 1000) - windowSeconds,
+    trustedRoots: config.repTrustedRoots,
+    requireTrustedRoot: true,
+  };
+}
+
 const ConfigSchema = Type.Object(
   {
     recipientAddress: Type.Optional(Type.String()),
@@ -198,6 +229,10 @@ const ConfigSchema = Type.Object(
     challengeSecret: Type.Optional(Type.String()),
     replayStorePath: Type.Optional(Type.String()),
     rpcUrl: Type.Optional(Type.String()),
+    repMinCount: Type.Optional(Type.Number()),
+    repMinVolume: Type.Optional(Type.Union([Type.String(), Type.Number()])),
+    repWindowSeconds: Type.Optional(Type.Number()),
+    repTrustedRoots: Type.Optional(Type.Array(Type.String())),
   },
   { additionalProperties: true },
 );
@@ -394,6 +429,58 @@ export default defineToolPlugin({
         } catch (e) {
           return { valid: false, error: `x402_verify internal error: ${e instanceof Error ? e.message : String(e)}` };
         }
+      },
+    }),
+    tool({
+      name: "x402_rep_challenge",
+      label: "x402 Reputation Challenge",
+      description:
+        "Issue a private-reputation challenge: the bar a caller must prove (>= N receipts, " +
+        ">= total volume, since a time window) against a trusted anchored receipt root — " +
+        "revealing no amounts or counterparties.",
+      parameters: Type.Object({}),
+      async execute(_params, rawConfig) {
+        const { config, configError } = getGateState(rawConfig as Record<string, unknown>);
+        if (configError) return { error: configError };
+        const policy = repPolicyFromConfig(config);
+        if (!policy) {
+          return { error: "zk-rep not configured: set repMinCount + repMinVolume (+ repTrustedRoots) in plugin config" };
+        }
+        return repChallenge(policy);
+      },
+    }),
+    tool({
+      name: "x402_rep_verify",
+      label: "x402 Reputation Verify",
+      description:
+        "Verify a submitted private-reputation Groth16 proof against this gate's policy. " +
+        "Accepts only a cryptographically valid proof whose proven bars meet the policy, " +
+        "whose receipt root is trusted, and whose nullifier is unused (single-use). The gate " +
+        "learns no amount, counterparty, or wallet — only the aggregate bars + agent commitment.",
+      parameters: Type.Object({
+        proof: Type.Unknown({ description: "the snarkjs Groth16 proof object" }),
+        publicSignals: Type.Array(Type.String(), {
+          description: "the 6 public signals: root, min_count, min_volume, window_start, nullifier, agent_commitment",
+        }),
+        expectedAgentCommitment: Type.Optional(
+          Type.String({
+            description:
+              "bind the proof to this agent identity (e.g. the session's access-proof commitment); " +
+              "rejects a reputation proof transplanted from another agent",
+          }),
+        ),
+      }),
+      async execute(params, rawConfig) {
+        const { config, configError, replayStore } = getGateState(rawConfig as Record<string, unknown>);
+        if (configError) return { valid: false, error: configError };
+        const policy = repPolicyFromConfig(config);
+        if (!policy) {
+          return { valid: false, error: "zk-rep not configured: set repMinCount + repMinVolume (+ repTrustedRoots) in plugin config" };
+        }
+        return verifyReputationProof(params.proof, params.publicSignals, policy, {
+          consumeNullifier: (k) => replayStore.consume(k),
+          expectedAgentCommitment: params.expectedAgentCommitment,
+        });
       },
     }),
   ],
