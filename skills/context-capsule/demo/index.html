@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Context Capsule — in-browser demo</title>
+<!--
+  Zero-install proof: the SAME context-capsule core that runs in NULLA (Node)
+  runs here in the browser tab. No bundler, no install — serve the folder and the
+  capsule compresses + redacts + builds its merkle root entirely on-device. The
+  capsule lane needs ZERO network: @noble/hashes + pako are vendored under
+  ./vendor (see the import map below), so history never leaves the tab. Only the
+  optional local-LLM lane fetches anything (the WebLLM runtime + model weights).
+
+  Two lanes:
+    1. CAPSULE (always available, no GPU): compress a transcript in-tab. This is
+       the privacy front door — history is redacted + compressed before anything
+       could leave the device. Proven byte-identical to the Node backend on the
+       integrity path (merkle root / capsuleId / injected memory) by
+       test/platform-parity.test.mjs.
+    2. LOCAL LLM (optional, needs WebGPU): load a small q4 model with WebLLM and
+       answer using ONLY the injected capsule as context — a fully local agent in
+       a webpage. Downloads model weights on first use.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "@noble/hashes/sha2.js": "./vendor/noble-hashes/sha2.js",
+    "pako": "./vendor/pako.esm.mjs",
+    "@mlc-ai/web-llm": "https://esm.sh/@mlc-ai/web-llm@0.2.79"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: dark; --bg:#0b0d10; --panel:#12161b; --ink:#d8e0e6; --muted:#8a98a5; --gold:#e8c469; --teal:#5fd1c4; --line:#222a31; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; padding:24px; }
+  h1 { font-size:18px; margin:0 0 4px; color:var(--gold); letter-spacing:.5px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:860px){ .grid{ grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .panel h2 { font-size:13px; margin:0 0 10px; color:var(--teal); text-transform:uppercase; letter-spacing:1px; }
+  textarea { width:100%; height:220px; background:#0a0c0f; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:10px; font:12px/1.45 ui-monospace,monospace; resize:vertical; }
+  button { background:var(--gold); color:#0a0c0f; border:0; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; margin-top:10px; }
+  button.ghost { background:transparent; color:var(--teal); border:1px solid var(--teal); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  pre { white-space:pre-wrap; word-break:break-word; background:#0a0c0f; border:1px solid var(--line); border-radius:6px; padding:10px; margin:10px 0 0; font-size:12px; max-height:340px; overflow:auto; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin-top:10px; font-size:12px; }
+  .kv b { color:var(--muted); font-weight:400; }
+  .kv span { color:var(--gold); word-break:break-all; }
+  .note { color:var(--muted); font-size:12px; margin-top:10px; }
+  .ok { color:var(--teal); } .warn { color:var(--gold); }
+  #llmStatus { min-height:18px; }
+</style>
+</head>
+<body>
+  <h1>Context Capsule — running in your browser</h1>
+  <p class="sub">Same core as NULLA (Node). Nothing installed, nothing sent. Redaction + compression + merkle root happen in this tab.</p>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>1 · Transcript → Capsule (no GPU)</h2>
+      <textarea id="input"></textarea>
+      <button id="compress">Compress in-tab →</button>
+      <div class="kv" id="meta"></div>
+      <pre id="injected">Injected memory (what the model sees) appears here.</pre>
+    </div>
+
+    <div class="panel">
+      <h2>2 · Answer with a local LLM (WebGPU)</h2>
+      <p class="note" id="gpuNote">Checking WebGPU…</p>
+      <button id="loadModel" class="ghost" disabled>Load Qwen2.5-0.5B (q4, ~350MB)</button>
+      <p class="note" id="llmStatus"></p>
+      <textarea id="question" style="height:60px" placeholder="Ask about the session above…">What port is the deploy on, and what was abandoned?</textarea>
+      <button id="ask" disabled>Ask (capsule-grounded) →</button>
+      <pre id="answer">The model answers using ONLY the injected capsule as context.</pre>
+    </div>
+  </div>
+
+  <p class="note">Capsule integrity is byte-identical to the Node backend (SHA-256 path). The audit blob is round-trip-identical. Verified by <code>test/platform-parity.test.mjs</code>.</p>
+
+<script type="module">
+import { compressContext, injectCapsule } from './compression.js';
+
+const SAMPLE = [
+  { role: 'user', content: 'Set up the deploy. Registrar is NXgQhepFpDCu935H1D4g34g59ZYbo1jR4tBCZWhV8Np, run it on port 8096.' },
+  { role: 'assistant', content: 'Decision: use the publicnode RPC, never api.mainnet-beta. TODO: wire a Windows .bat launcher for the daemon.' },
+  { role: 'user', content: 'Forget the totem approach — switch to the WebLLM front door instead. (My key sk-live-9f8e7d6c5b4a3 — redact it.)' },
+  { role: 'tool', content: '{"tool":"deploy","result":{"error":"timeout connecting to host"}}' },
+  { role: 'assistant', content: 'Noted. See core/local_inference_autopilot.py:721 for the GPU lane and https://docs.c0mpute.ai for the spec.' },
+];
+
+const $ = (id) => document.getElementById(id);
+$('input').value = JSON.stringify(SAMPLE, null, 2);
+
+let lastInjected = '';
+
+$('compress').onclick = () => {
+  let msgs;
+  try { msgs = JSON.parse($('input').value); }
+  catch (e) { $('meta').innerHTML = `<b>error</b><span class="warn">invalid JSON: ${e.message}</span>`; return; }
+  const t0 = performance.now();
+  const cap = compressContext(msgs, { sessionId: 'browser-demo' });
+  const injected = injectCapsule(cap);
+  const ms = (performance.now() - t0).toFixed(1);
+  lastInjected = injected;
+  $('meta').innerHTML = `
+    <b>capsuleId</b><span>${cap.capsuleId}</span>
+    <b>merkleRoot</b><span>${cap.merkleRoot.slice(0, 32)}…</span>
+    <b>compression</b><span>${cap.compressionRatio} (orig≈${cap.originalTokenEstimate}t)</span>
+    <b>superseded</b><span>${cap.superseded.join(', ') || '—'}</span>
+    <b>built in</b><span class="ok">${ms} ms, on-device</span>`;
+  $('injected').textContent = injected;
+};
+$('compress').click();
+
+// ---- Optional local-LLM lane (WebGPU) -------------------------------------
+const hasGPU = !!navigator.gpu;
+$('gpuNote').innerHTML = hasGPU
+  ? '<span class="ok">WebGPU available.</span> Loading the model downloads weights once, then runs fully offline.'
+  : '<span class="warn">No WebGPU in this browser.</span> The capsule lane (left) still works everywhere; the local-LLM lane needs WebGPU (Chrome/Edge or Safari Technology Preview).';
+if (hasGPU) $('loadModel').disabled = false;
+
+let engine = null;
+$('loadModel').onclick = async () => {
+  $('loadModel').disabled = true;
+  $('llmStatus').textContent = 'Loading WebLLM…';
+  try {
+    const webllm = await import('@mlc-ai/web-llm');
+    engine = await webllm.CreateMLCEngine('Qwen2.5-0.5B-Instruct-q4f16_1-MLC', {
+      initProgressCallback: (p) => { $('llmStatus').textContent = p.text; },
+    });
+    $('llmStatus').innerHTML = '<span class="ok">Model ready — running locally.</span>';
+    $('ask').disabled = false;
+  } catch (e) {
+    $('llmStatus').innerHTML = `<span class="warn">Load failed: ${e.message}</span>`;
+    $('loadModel').disabled = false;
+  }
+};
+
+$('ask').onclick = async () => {
+  if (!engine) return;
+  $('answer').textContent = '…';
+  const system = `You are a local assistant. Answer using ONLY this compressed session memory:\n\n${lastInjected}`;
+  try {
+    const reply = await engine.chat.completions.create({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: $('question').value },
+      ],
+      temperature: 0.2,
+    });
+    $('answer').textContent = reply.choices[0].message.content;
+  } catch (e) {
+    $('answer').textContent = `error: ${e.message}`;
+  }
+};
+</script>
+</body>
+</html>
