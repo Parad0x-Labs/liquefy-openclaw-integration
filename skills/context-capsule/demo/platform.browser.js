@@ -2,7 +2,7 @@
  * Browser implementation of the platform primitives — pure JS, no Node builtins,
  * no secure-context requirement (runs on file://, http-localhost, in Web Workers).
  *
- *   SHA-256  -> @noble/hashes (audited, sync) — byte-identical to node:crypto
+ *   SHA-256  -> @noble/hashes (sync, pure-JS) — byte-identical to node:crypto
  *   deflate  -> pako level 9 (zlib port)       — interoperable with node:zlib
  *
  * Parity with the Node backend is enforced by test/platform-parity.test.mjs: a
