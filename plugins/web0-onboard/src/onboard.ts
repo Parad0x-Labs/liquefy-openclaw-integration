@@ -95,6 +95,30 @@ export function isValidNullLabel(name: string): boolean {
   return true;
 }
 
+/**
+ * Suggest a registerable .null label from the agent's setup when the caller
+ * didn't pick one — prefer a slug of the first service, else a wallet-derived
+ * handle. 4+ chars only (1–3 char names are premium / auction-only, not directly
+ * registerable). Returns null if nothing valid can be formed.
+ */
+export function suggestNullLabel(services: ServiceInput[], wallet?: string): string | null {
+  for (const s of services) {
+    if (s && typeof s.name === "string") {
+      const slug = normalizeName(s.name)
+        .replace(/[^a-z0-9-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      if (slug.length >= 4 && isValidNullLabel(slug)) return slug;
+    }
+  }
+  if (wallet) {
+    const tail = wallet.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 6);
+    const cand = `agent-${tail}`;
+    if (isValidNullLabel(cand)) return cand;
+  }
+  return null;
+}
+
 export function isValidWallet(wallet: string): boolean {
   try {
     // eslint-disable-next-line no-new
@@ -205,6 +229,7 @@ export function buildOnboardPlan(opts: {
   const wallet = v.wallet!;
   const passportPda = derivePassportPda(wallet);
   const fullName = v.name ? `${v.name}.null` : null;
+  const suggested = fullName ? null : suggestNullLabel(v.services, wallet);
 
   // Recommend a gate config keyed off the first/cheapest service price.
   const defaultPrice = v.services.reduce(
@@ -259,27 +284,45 @@ export function buildOnboardPlan(opts: {
             owner: wallet,
           },
           status:
-            "the .null naming layer is LIVE on mainnet (registrar NXgQhepF…). Register " +
-            "this name and publish your x402 endpoint to enable pay-by-name. In-tool " +
-            "register + set-endpoint is the next web0-onboard upgrade; for now register " +
-            "via the portal/registrar.",
-          pay_by_name_preview: `pay_x402("${fullName}")  // works once you publish your x402 endpoint`,
+            `the .null naming layer is LIVE on mainnet (registrar NXgQhepF…). Claim ${fullName} now: ` +
+            `call register_null_name({ name: "${v.name}", dryRun: true }) to preview the PDA + fee, then run ` +
+            `it again to sign. Follow with set_null_endpoint to publish your x402 URL — pay-by-name is live the moment you do.`,
+          claim_preview: `register_null_name({ name: "${v.name}", dryRun: true })`,
+          pay_by_name_preview: `pay_x402("${fullName}")  // live once you register + publish your endpoint`,
         }
       : null,
+    name_suggestion: suggested
+      ? {
+          suggested: `${suggested}.null`,
+          claim_preview: `register_null_name({ name: "${suggested}", dryRun: true })`,
+          note:
+            `no name set — "${suggested}.null" is derived from your setup. Claim it (or pass your own) ` +
+            `to give this agent a pay-by-name identity. The naming layer is LIVE on mainnet.`,
+        }
+      : null,
+    // claim first: the name is the agent's identity + pay-by-name address, so it
+    // leads the checklist (not an afterthought). register/endpoint are live tools.
     next_steps: [
+      fullName
+        ? `Claim ${fullName} now — register_null_name({ name: "${v.name}", dryRun: true }) to preview, then run it again to sign. This is your agent's identity + pay-by-name address.`
+        : suggested
+          ? `Claim your .null name now — register_null_name({ name: "${suggested}", dryRun: true }) previews "${suggested}.null" (or pass your own). It's your agent's identity + pay-by-name address.`
+          : `Pick a .null name and claim it — register_null_name({ name: "<yourname>", dryRun: true }) previews it. It's your agent's identity + pay-by-name address.`,
+      `Publish your x402 endpoint on the name — set_null_endpoint({ name: "${v.name ?? suggested ?? "<yourname>"}", endpoint: "<your x402-gate URL>" }) — now buyers pay_x402("${fullName ?? (suggested ? `${suggested}.null` : "<yourname>.null")}").`,
+      "Enable the x402-gate plugin with the storefront.x402_gate_config block — you're selling for USDC, funds to your own wallet.",
       identityRegistered
         ? "Identity is on-chain — nothing to do."
-        : "Bind your identity with the agent-passport plugin (optional but recommended).",
-      "Enable the x402-gate plugin with the storefront.x402_gate_config block — you're now selling for USDC.",
-      "Point buyers at your x402 endpoint; their agents pay with x402-pay. Receipts anchor automatically.",
-      fullName
-        ? `Register ${fullName} and publish your x402 endpoint (the naming layer is LIVE) so buyers can pay_x402("${fullName}").`
-        : "Add a `name` to claim a .null identity + pay-by-name (the naming layer is live on mainnet).",
+        : "Optionally bind your identity with the agent-passport plugin (recommended for verifiable counterparties).",
+      "Point buyers at your x402 endpoint; their agents pay with x402-pay and receipts anchor automatically.",
     ],
     summary:
       `web0 setup assembled for ${wallet} on ${v.network}: ` +
       `${v.services.length} service(s), payout to your wallet, receipts anchored` +
-      (fullName ? `, ${fullName} ready to register (naming layer live).` : "."),
+      (fullName
+        ? `, claim ${fullName} now (register_null_name) to turn on pay-by-name.`
+        : suggested
+          ? `, claim "${suggested}.null" (register_null_name) to turn on pay-by-name.`
+          : "."),
   };
 }
 

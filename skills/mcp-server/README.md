@@ -32,7 +32,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
       "command": "npx",
       "args": ["-y", "@parad0x_labs/mcp-server"],
       "env": {
-        "SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com",
+        "SOLANA_RPC_URL": "https://solana-rpc.publicnode.com",
         "SOLANA_KEYPAIR": "[1,2,3,...]"
       }
     }
@@ -53,7 +53,7 @@ Add to `.cursor/mcp.json` or `.windsurf/mcp.json` in your project root:
       "command": "npx",
       "args": ["-y", "@parad0x_labs/mcp-server"],
       "env": {
-        "SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com"
+        "SOLANA_RPC_URL": "https://solana-rpc.publicnode.com"
       }
     }
   }
@@ -73,7 +73,7 @@ npm start
 
 | Variable | Default | Description |
 |---|---|---|
-| `SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana RPC endpoint |
+| `SOLANA_RPC_URL` | `https://solana-rpc.publicnode.com` | Solana RPC endpoint |
 | `SOLANA_KEYPAIR` | _(unset)_ | JSON array of 64 bytes — enables real transaction submission |
 
 ## Programs (mainnet)

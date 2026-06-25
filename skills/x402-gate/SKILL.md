@@ -1,3 +1,11 @@
+---
+name: openclaw-x402-gate
+description: Charge other agents for your OpenClaw skill or API via x402 on Solana. Mint a 402 challenge, verify payment on-chain, then serve. Funds settle directly to your own wallet — no custody, no intermediary.
+license: MIT
+metadata:
+  author: Parad0x-Labs
+---
+
 # x402 Gate
 
 **Charge other agents** for your OpenClaw skill or API. Mint a 402 challenge,

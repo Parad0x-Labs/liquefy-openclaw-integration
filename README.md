@@ -19,14 +19,18 @@ non-custodial, with a hard spend cap. Drop these into an OpenClaw agent:
 #   skills/x402-gate  — charge other agents for your skill/API
 
 # Receipts + status MCP server (any MCP client)
-npx @parad0x_labs/mcp-server                    # → skills/mcp-server (from source until published)
+npx @parad0x_labs/mcp-server                    # → skills/mcp-server
+
+# .null identity + one-call web0 setup (live on mainnet)
+npx @parad0x_labs/null-mcp                      # resolve / verify ownership / pay a .null name (any MCP client)
+npm i @parad0x_labs/openclaw-web0-onboard       # one call: identity + x402 storefront + register your .null name
 
 # Keep long paid sessions cheap
 npm i @parad0x_labs/openclaw-context-capsule
 ```
 
 Walk it end to end: **[The Web0 agent loop →](./docs/WEB0_AGENT_LOOP.md)**.
-Your agent's **`.null` identity + pay-by-name** ship next on a fresh deployment.
+Your agent's **`.null` identity + pay-by-name** are live on Solana mainnet — `openclaw-web0-onboard` registers the name and publishes your x402 endpoint, so buyers `pay_x402("yourname.null")`.
 
 ## The catalog
 

@@ -18,6 +18,7 @@ import {
   readConfig,
   normalizeName,
   isValidNullLabel,
+  suggestNullLabel,
   isValidWallet,
   isValidPrice,
   validateOnboardInput,
@@ -145,6 +146,32 @@ test("buildOnboardPlan: no name → name section is null", () => {
   const plan = buildOnboardPlan({ validation, identityRegistered: true });
   assert.equal(plan.name, null);
   assert.equal(plan.identity.registered, true);
+});
+
+test("suggestNullLabel: service slug, wallet fallback, null when nothing valid", () => {
+  assert.equal(suggestNullLabel([{ name: "Summarize", priceUsdc: 1 }]), "summarize");
+  assert.ok(suggestNullLabel([{ name: "x", priceUsdc: 1 }], WALLET)?.startsWith("agent-")); // 1-char slug skipped → wallet handle
+  assert.equal(suggestNullLabel([{ name: "x", priceUsdc: 1 }]), null); // too short + no wallet
+});
+
+test("buildOnboardPlan: claiming the name is step 1 (live register tool), with a suggestion when omitted", () => {
+  const withName = buildOnboardPlan({
+    validation: validateOnboardInput({}, { solanaWallet: WALLET, name: "myagent", services: SERVICES }),
+    identityRegistered: false,
+  });
+  assert.match(withName.next_steps[0], /register_null_name/);
+  assert.match(withName.next_steps[0], /myagent\.null/);
+  assert.match(withName.name.status, /Claim myagent\.null now/);
+  assert.match(withName.name.claim_preview, /register_null_name/);
+  assert.doesNotMatch(withName.name.status, /next web0-onboard upgrade|via the portal/);
+
+  const noName = buildOnboardPlan({
+    validation: validateOnboardInput({}, { solanaWallet: WALLET, services: SERVICES }),
+    identityRegistered: false,
+  });
+  assert.equal(noName.name, null);
+  assert.equal(noName.name_suggestion.suggested, "summarize.null");
+  assert.match(noName.next_steps[0], /register_null_name/);
 });
 
 // ── tool factory ────────────────────────────────────────────────────────────────

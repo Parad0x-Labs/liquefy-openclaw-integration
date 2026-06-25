@@ -3,6 +3,9 @@ name: payment-session
 description: Streaming + recurring billing for OpenClaw agents over x402 — meter pay-as-you-go usage or run a subscription, settle in batches through pay_x402, with a hard per-session spend cap. Non-custodial.
 tags: x402, streaming-payments, subscription, metering, solana, agents, openclaw
 requires_openclaw: ">=2026.6.1"
+license: MIT
+metadata:
+  author: Parad0x-Labs
 ---
 
 # Payment Session

@@ -1,3 +1,11 @@
+---
+name: openclaw-x402-pay
+description: Pay x402-gated APIs and AI agents on Solana — builds an unsigned payment transaction, verifies settlement on-chain, and returns a receipt hash. Hard spend cap enforced before any transaction. BYO signer, no keys held.
+license: MIT
+metadata:
+  author: Parad0x-Labs
+---
+
 # x402 Pay
 
 Let your OpenClaw agent **pay for x402-gated APIs, data, and other agents** on

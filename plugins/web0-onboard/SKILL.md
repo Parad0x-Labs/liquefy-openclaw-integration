@@ -3,6 +3,9 @@ name: web0-onboard
 description: web0 setup for an OpenClaw agent — plan your identity + paid x402 storefront, then register a .null name and publish its x402 endpoint so buyers pay you by name. Sell services for USDC on Solana. Non-custodial (your wallet signs).
 tags: web0, null, x402, solana, monetization, agents, openclaw
 requires_openclaw: ">=2026.6.1"
+license: MIT
+metadata:
+  author: Parad0x-Labs
 ---
 
 # web0 Onboard

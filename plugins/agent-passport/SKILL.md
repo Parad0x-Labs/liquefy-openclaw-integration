@@ -3,6 +3,9 @@ name: Agent Passport
 description: On-chain identity for OpenClaw agents — .null name, ETH↔Solana binding, verifiable agent identity without touching private keys
 tags: identity, solana, web0, null, reputation, passport
 requires_openclaw: ">=2026.6.1"
+license: MIT
+metadata:
+  author: Parad0x-Labs
 ---
 
 # Agent Passport

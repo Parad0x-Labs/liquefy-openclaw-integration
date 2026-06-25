@@ -1,6 +1,9 @@
 ---
 name: context-capsule
 description: Compresses older OpenClaw agent session history into a bounded, lane-change-aware context capsule — keeps recent messages verbatim, flags abandoned directions, quarantines injected instructions, and redacts secrets. Local, deterministic, any model.
+license: MIT
+metadata:
+  author: Parad0x-Labs
 ---
 
 # Context Capsule
