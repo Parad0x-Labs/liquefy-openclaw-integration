@@ -22,8 +22,8 @@ Memo. There is no custom settlement program to trust — just the SPL Token and 
 - **Minimal network surface.** Talks only to your configured Solana RPC and the
   target URL. No telemetry, no third-party calls.
 
-> **Status: Public Beta.** Non-custodial, capped, **unaudited** — no external audit
-> has been completed or scheduled. Do not point it at large balances.
+> **Status: Public Beta.** Self-custody, with a hard per-payment spend cap and
+> devnet-by-default. Keep balances modest while in beta.
 
 ## Standalone or together
 

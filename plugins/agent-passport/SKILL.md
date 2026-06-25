@@ -53,7 +53,7 @@ No parameters required — reads from plugin config.
 Verifies a DIFFERENT agent's on-chain identity. Supply at least one of:
 - `target_solana_wallet` — base58 Solana public key
 - `target_eth_address` — hex ETH address
-- `target_null_name` — .null name (informational; not resolved on-chain yet)
+- `target_null_name` — .null name (passed through; this tool checks identity PDAs, not name resolution)
 
 Returns whether the ETH binding and/or Solana wallet PDAs are registered on-chain.
 

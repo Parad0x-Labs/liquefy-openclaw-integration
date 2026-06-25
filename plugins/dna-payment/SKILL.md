@@ -1,6 +1,6 @@
 ---
 name: dna-payment-bridge
-description: Bridges DNA x402 micropayment audit logs and signed receipts into Liquefy vaults as verifiable proof artifacts. Exports audit events, converts receipts to proof artifacts, and optionally anchors via Solana receipt_anchor.
+description: Bridges DNA x402 micropayment audit logs and signed receipts into Liquefy vaults as verifiable proof artifacts. Exports audit events, converts receipts to proof artifacts, and optionally anchors each receipt hash on Solana via an SPL Memo transaction.
 license: MIT
 metadata:
   author: Parad0x-Labs

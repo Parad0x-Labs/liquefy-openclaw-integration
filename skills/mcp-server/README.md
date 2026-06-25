@@ -10,7 +10,7 @@ Exposes the Parad0x Labs stack as MCP tools. Works with Claude Desktop, Cursor, 
 | `anchor_receipt` | Anchor a 32-byte receipt hash on Solana mainnet via `receipt_anchor` |
 | `lookup_passport` | Check if an ETH address or Solana wallet has a verified Dark Passport binding |
 | `build_outcome_receipt` | Build a signed outcome receipt with PnL, accuracy, or delivery result |
-| `compress_receipts` | Compress a batch of receipts (Liquefy format, 83x typical ratio) |
+| `compress_receipts` | Compress a batch of receipts (zlib deflate; Liquefy-format demo — the production columnar codec targets ~83x) |
 | `get_stack_status` | Discover all live Parad0x Labs mainnet program addresses |
 
 ## Install

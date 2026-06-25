@@ -25,7 +25,7 @@ import { dirname } from "path";
 // ---------------------------------------------------------------------------
 
 // Live on Solana mainnet — verified against evidence/mainnet + evidence/zk.
-// Full private-reputation stack live as of 2026-06-07 (reputation gate + commitment tree launched).
+// Private-reputation stack (reputation gate + commitment tree) is ZK-verified on devnet; mainnet clean redeploy pending the trusted-setup ceremony.
 // WARNING: dark_x402_access_gate and dark_nullifier_record are SEIZED pre-incident IDs —
 // deployer key F6Fr… stolen 2026-06-14; attacker holds upgrade authority. Do not call them.
 const PROGRAMS = {
@@ -589,24 +589,11 @@ async function privateCompute(params: {
 }
 
 function getStackStatus(): object {
-  assertNotSeized(PROGRAMS.dark_x402_access_gate, "dark_x402_access_gate");
-  assertNotSeized(PROGRAMS.dark_nullifier_record, "dark_nullifier_record");
+  // The pre-incident mainnet IDs for dark_x402_access_gate + dark_nullifier_record
+  // are seized (hostile upgrade authority) and are NOT listed here — see
+  // pending_clean_redeploy below. Never advertise a seized address as live.
   return {
     programs: [
-      {
-        name: "dark_x402_access_gate",
-        address: PROGRAMS.dark_x402_access_gate,
-        status: "live (mainnet) — VK single-party until the trusted-setup ceremony finalizes",
-        explorer_url: explorerAccount(PROGRAMS.dark_x402_access_gate),
-        description: "Groth16 BN254 access gate — prove funded + authorized WITHOUT revealing wallet or balance. On-chain verify via alt_bn128_pairing (~93k CU, ~$0.0007).",
-      },
-      {
-        name: "dark_nullifier_record",
-        address: PROGRAMS.dark_nullifier_record,
-        status: "live",
-        explorer_url: explorerAccount(PROGRAMS.dark_nullifier_record),
-        description: "Single-use / anti-replay — records a nullifier PDA so each proof is spendable exactly once.",
-      },
       {
         name: "receipt_anchor",
         address: PROGRAMS.receipt_anchor,
@@ -650,8 +637,14 @@ function getStackStatus(): object {
         description: "NULL SPL token — native currency of the Parad0x Labs protocol economy",
       },
     ],
+    pending_clean_redeploy: {
+      note: "Shielded x402 access gate + single-use nullifier: ZK-verified on devnet; mainnet clean redeploy pending the trusted-setup ceremony. Pre-incident mainnet program IDs are retired and withheld.",
+      status: "devnet — mainnet clean redeploy pending",
+      programs: ["dark_x402_access_gate", "dark_nullifier_record"],
+    },
     private_reputation_stack: {
-      note: "Private track-record proof — LIVE on mainnet as of 2026-06-07. Single-party VK until the trusted-setup ceremony finalizes (same status as the access gate).",
+      note: "Private track-record proof — ZK-verified on devnet; mainnet rolling out (single-party VK until the trusted-setup ceremony finalizes).",
+      status: "devnet — mainnet rolling out",
       dark_reputation_gate: PROGRAMS.dark_reputation_gate,
       receipt_commitment_tree: PROGRAMS.receipt_commitment_tree,
     },
@@ -787,7 +780,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "compress_receipts",
         description:
-          "Compress a batch of receipts using Liquefy columnar compression (83x typical ratio)",
+          "Compress a batch of receipts (zlib deflate level 9; Liquefy-format demonstration). The production Liquefy columnar codec targets ~83x; this tool ships the zlib reference path.",
         inputSchema: {
           type: "object",
           properties: {

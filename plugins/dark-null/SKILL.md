@@ -1,6 +1,6 @@
 ---
 name: dark-null-bridge
-description: Archive Dark NULL ZK settlement data into encrypted Liquefy TraceVaults with optional Solana mainnet anchoring via receipt_anchor. Bridges zero-knowledge proof outputs into a verifiable, tamper-evident vault.
+description: Archive Dark NULL ZK settlement data into encrypted Liquefy TraceVaults with optional Solana anchoring via an SPL Memo transaction. Bridges zero-knowledge proof outputs into a verifiable, tamper-evident vault.
 license: MIT
 metadata:
   author: Parad0x-Labs
@@ -9,14 +9,14 @@ metadata:
 # Dark NULL Bridge
 
 Archives Dark NULL Protocol ZK settlement data into encrypted TraceVaults.
-Optional on-chain anchoring via `receipt_anchor` (`6HSRGivdYR5D7yTDy1TFMCM8h3LzXxRtKU1RA3RnCMRN`)
-puts the vault root permanently on Solana mainnet.
+Optional on-chain anchoring writes the SHA-256 vault-root hash to Solana as an
+SPL Memo transaction — a timestamped, tamper-evident record.
 
 ## What it does
 
 - Exports Dark NULL ZK proof outputs and settlement events as Liquefy telemetry
 - Packs them into bit-perfect `.null` vaults with MRTV proofs
-- Optionally anchors the vault root hash on Solana mainnet via `receipt_anchor`
+- Optionally anchors the vault-root hash on Solana via an SPL Memo transaction
 - Prevents replay of already-settled proofs
 
 ## When to use

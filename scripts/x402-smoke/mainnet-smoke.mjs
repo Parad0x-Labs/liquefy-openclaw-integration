@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction, sendAndConfirmTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, createTransferCheckedInstruction, createAssociatedTokenAccountIdempotentInstruction, getAccount } from "@solana/spl-token";
 
-const RPC = process.env.SOLANA_MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
+const RPC = process.env.SOLANA_MAINNET_RPC_URL || "https://solana-rpc.publicnode.com";
 const USDC = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const MEMO = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const MEMO_PREFIX = "null-miner-v1";

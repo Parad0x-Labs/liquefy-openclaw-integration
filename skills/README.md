@@ -16,9 +16,8 @@ module**. The rules that keep "touch one skill" from ever breaking another:
 3. **Own CI lane.** Workflows are path-filtered: a PR touching
    `skills/x402-pay/**` builds and tests only x402-pay. The vault appliance's
    Python CI ignores `skills/` entirely.
-4. **Honest status.** Skills that can touch money state custody, caps, and
-   network defaults before install instructions — and nothing here claims an
-   audit (none has been completed or scheduled).
+4. **Status up front.** Skills that can touch money state custody, caps, and
+   network defaults before install instructions.
 5. **Removable.** Deleting a skill directory leaves every other module and the
    vault appliance fully functional. If a deletion would break anything else,
    that's a bug in this contract.

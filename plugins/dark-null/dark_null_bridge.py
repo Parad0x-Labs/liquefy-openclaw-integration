@@ -3,7 +3,7 @@ Dark Null Bridge Plugin
 =======================
 Archives Dark Null Protocol settlement data (ZK proofs, nullifier records,
 withdrawal events) into Liquefy TraceVaults and optionally anchors them on
-Solana via a memo-program receipt_anchor transaction.
+Solana via an SPL Memo transaction.
 
 Program addresses
 -----------------
@@ -120,7 +120,7 @@ def liquefy_vault_anchor(vault_path: Path, rpc_url: str | None = None) -> str:
         payer = Keypair.from_bytes(bytes(secret))
 
         rpc = rpc_url or os.environ.get(
-            "SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"
+            "SOLANA_RPC_URL", "https://solana-rpc.publicnode.com"
         )
 
         # --- fetch recent blockhash ----------------------------------------

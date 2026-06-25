@@ -61,8 +61,8 @@ PROOF_SCHEMA = "liquefy.vault-anchor.v1"
 
 MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
 
-SOLANA_MAINNET = "https://api.mainnet-beta.solana.com"
-SOLANA_DEVNET = "https://api.devnet.solana.com"
+SOLANA_MAINNET = "https://solana-rpc.publicnode.com"  # keyless public RPC — never api.mainnet-beta.solana.com (403s with an Origin header)
+SOLANA_DEVNET = "https://api.devnet.solana.com"  # devnet only
 
 
 def _file_sha256(path: Path) -> str:

@@ -21,8 +21,8 @@ from typing import Optional
 
 MAGICBLOCK_RPC: str = os.environ.get("MAGICBLOCK_RPC", "https://devnet.magicblock.app")
 
-# SPL Memo program — used to anchor archive hashes on-chain
-SPL_MEMO_PROGRAM = "6HSRGivdYR5D7yTDy1TFMCM8h3LzXxRtKU1RA3RnCMRN"
+# SPL Memo program — used to anchor archive hashes on-chain as a memo transaction
+SPL_MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
 
 
 # ---------------------------------------------------------------------------
