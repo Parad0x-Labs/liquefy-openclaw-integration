@@ -1,6 +1,6 @@
 ---
 name: magicblock-archive
-description: Archive MagicBlock Ephemeral Rollup session transaction logs — compresses ER sessions into Liquefy vaults and optionally anchors each archive hash on Solana via an SPL Memo transaction (devnet by default; set an RPC for mainnet). Fills the MagicBlock auditability gap. x402 session playback pricing included.
+description: Archive MagicBlock Ephemeral Rollup session transaction logs — compresses ER sessions into Liquefy vaults and optionally folds a per-session commitment into the on-chain receipt_anchor accumulator on Solana mainnet. Fills the MagicBlock auditability gap. x402 session playback pricing included.
 license: MIT
 metadata:
   author: Parad0x-Labs
@@ -9,9 +9,9 @@ metadata:
 # MagicBlock Archive
 
 Compresses MagicBlock Ephemeral Rollup (ER) session logs into Liquefy vaults,
-optionally anchoring each archive hash on Solana via an SPL Memo transaction.
-Fills the MagicBlock auditability gap by keeping a verifiable, tamper-evident
-record of every ER session.
+optionally folding a per-session commitment into the on-chain receipt_anchor
+accumulator on Solana mainnet. Fills the MagicBlock auditability gap by keeping
+a verifiable, tamper-evident record of every ER session.
 
 x402 session playback pricing is included — charge per replay access.
 

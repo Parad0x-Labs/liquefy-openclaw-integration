@@ -3,8 +3,9 @@ magicblock_archive.py — MagicBlock Ephemeral Rollup session archiving plugin f
 
 Gap filled: MagicBlock Ephemeral Rollups commit final state to Solana but produce no durable
 transaction log. Sessions are described as "auditable" but nothing is archived. This plugin
-archives ER session logs: compresses, optionally encrypts, hashes, and anchors on Solana via
-SPL Memo. x402 session playback pricing is included.
+archives ER session logs: compresses, optionally encrypts, hashes, and folds a 32-byte
+session commitment into the on-chain receipt_anchor accumulator. x402 session playback
+pricing is included.
 """
 
 from __future__ import annotations
@@ -21,8 +22,14 @@ from typing import Optional
 
 MAGICBLOCK_RPC: str = os.environ.get("MAGICBLOCK_RPC", "https://devnet.magicblock.app")
 
-# SPL Memo program — used to anchor archive hashes on-chain as a memo transaction
-SPL_MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+# receipt_anchor program (web0/Parad0x, mainnet-beta) — folds a 32-byte session
+# commitment into a rolling on-chain accumulator: root_n = sha256(root_{n-1} || anchor_n).
+RECEIPT_ANCHOR_PROGRAM = "6HSRGivdYR5D7yTDy1TFMCM8h3LzXxRtKU1RA3RnCMRN"
+
+# Hour-bucket accumulator parameters (mirror programs/receipt_anchor processor.rs).
+BUCKET_WINDOW_SECONDS = 3600
+INSTRUCTION_VERSION_V1 = 0x01
+FLAG_HAS_BUCKET_ID = 0x01
 
 
 # ---------------------------------------------------------------------------
@@ -176,8 +183,9 @@ def archive_session(
         32-byte key for AES-256-GCM encryption.  If ``None`` the archive is
         stored unencrypted.
     anchor:
-        When ``True`` post the archive hash to Solana via SPL Memo so it
-        becomes immutably timestamped on-chain.
+        When ``True`` fold a 32-byte commitment binding the session id and
+        archive hash into the on-chain ``receipt_anchor`` accumulator so it
+        becomes immutably timestamped on Solana.
     er_rpc_url:
         Override ER RPC endpoint.
     output_dir:
@@ -187,7 +195,10 @@ def archive_session(
     -------
     dict
         ``session_id``, ``action_count``, ``compressed_bytes``,
-        ``archive_hash``, ``archive_path``, ``solana_tx`` (str or None).
+        ``archive_hash``, ``archive_path``, ``solana_tx`` (str or None), and —
+        when anchored — ``anchor_commitment`` (hex of the 32-byte value folded
+        on-chain) and ``anchor_bucket_id`` (int) so the anchor can be
+        reproduced and verified against the live bucket.
     """
     try:
         import zstandard as zstd
@@ -224,9 +235,12 @@ def archive_session(
 
     # --- optionally anchor on Solana ---
     solana_tx: Optional[str] = None
+    anchor_commitment: Optional[str] = None
+    anchor_bucket_id: Optional[int] = None
     if anchor:
-        memo = f"openclaw-vault:session:{session_id}:sha256:{archive_hash}"
-        solana_tx = _anchor_memo(memo)
+        commitment = _session_commitment(session_id, archive_hash)
+        anchor_commitment = commitment.hex()
+        solana_tx, anchor_bucket_id = _anchor_receipt(commitment)
 
     return {
         "session_id": session_id,
@@ -235,6 +249,8 @@ def archive_session(
         "archive_hash": archive_hash,
         "archive_path": str(archive_path),
         "solana_tx": solana_tx,
+        "anchor_commitment": anchor_commitment,
+        "anchor_bucket_id": anchor_bucket_id,
     }
 
 
@@ -364,15 +380,66 @@ def _aes256_gcm_decrypt(key: bytes, blob: bytes) -> bytes:
     return plaintext
 
 
-def _anchor_memo(memo: str, solana_rpc: str = "https://api.devnet.solana.com") -> str:
-    """Post *memo* to Solana via SPL Memo using the system fee-payer.
+def _session_commitment(session_id: str, archive_hash: str) -> bytes:
+    """Return the 32-byte commitment anchored on-chain for a session.
 
-    In a production deployment the fee-payer keypair would be loaded from an
-    environment variable or secrets manager.  Here we use the ``solders`` /
-    ``solana-py`` stack when available and raise a clear error otherwise.
+    Binds the session id and the archive's SHA-256 so the anchored value is
+    reproducible by anyone who knows both::
 
-    Returns the transaction signature string.
+        commitment = sha256("openclaw-vault:session:{session_id}:sha256:{archive_hash}")
+
+    receipt_anchor stores only this 32-byte value (it is opaque on-chain); a
+    verifier reproduces it from ``session_id`` + ``archive_hash`` and checks it
+    against the bucket's ordered anchor list.
     """
+    preimage = f"openclaw-vault:session:{session_id}:sha256:{archive_hash}"
+    return hashlib.sha256(preimage.encode()).digest()
+
+
+def _build_anchor_single_data(anchor32: bytes, bucket_id: int) -> bytes:
+    """Encode a receipt_anchor ``AnchorSingle`` instruction.
+
+    Native program — no Anchor 8-byte discriminator. Layout mirrors
+    ``programs/receipt_anchor`` instruction.rs::
+
+        version(1) | flags(1) | anchor32(32) | bucket_id(u64 LE)   # 42 bytes
+
+    The explicit bucket id (``FLAG_HAS_BUCKET_ID``) makes the client-derived PDA
+    and the program's stored bucket id agree, avoiding an hour-boundary race.
+    """
+    if len(anchor32) != 32:
+        raise ValueError("anchor must be exactly 32 bytes")
+    return (
+        bytes([INSTRUCTION_VERSION_V1, FLAG_HAS_BUCKET_ID])
+        + anchor32
+        + int(bucket_id).to_bytes(8, "little")
+    )
+
+
+def _anchor_receipt(
+    anchor32: bytes,
+    solana_rpc: str = "https://solana-rpc.publicnode.com",
+) -> tuple[str, int]:
+    """Fold *anchor32* into the live mainnet ``receipt_anchor`` accumulator.
+
+    Builds the ``AnchorSingle`` instruction for the current hour bucket and
+    submits it with the env-supplied fee-payer.  After it lands, the bucket root
+    becomes ``sha256(prevRoot || anchor32)``.
+
+    In a production deployment the fee-payer keypair would be loaded from a
+    secrets manager.  Here we read it from ``SOLANA_FEE_PAYER_KEY_HEX`` and use
+    the ``solders`` / ``solana-py`` stack when available, raising a clear error
+    otherwise.
+
+    Returns
+    -------
+    tuple[str, int]
+        The transaction signature and the hour bucket id the anchor was folded
+        into (needed, with the bucket's ordered anchor list, to later verify
+        inclusion against the live bucket).
+    """
+    import time
+
     try:
         from solders.keypair import Keypair  # type: ignore
         from solders.pubkey import Pubkey  # type: ignore
@@ -381,33 +448,44 @@ def _anchor_memo(memo: str, solana_rpc: str = "https://api.devnet.solana.com") -
         from solders.message import Message  # type: ignore
         from solana.rpc.api import Client  # type: ignore
         from solana.rpc.types import TxOpts  # type: ignore
-
-        raw_key_hex = os.environ.get("SOLANA_FEE_PAYER_KEY_HEX", "")
-        if not raw_key_hex:
-            raise EnvironmentError(
-                "Set SOLANA_FEE_PAYER_KEY_HEX (64-byte hex) to anchor on Solana."
-            )
-        raw_key = bytes.fromhex(raw_key_hex)
-        payer = Keypair.from_bytes(raw_key)
-
-        memo_program = Pubkey.from_string(SPL_MEMO_PROGRAM)
-        ix = Instruction(
-            program_id=memo_program,
-            accounts=[AccountMeta(pubkey=payer.pubkey(), is_signer=True, is_writable=False)],
-            data=memo.encode(),
-        )
-
-        client = Client(solana_rpc)
-        blockhash_resp = client.get_latest_blockhash()
-        recent_blockhash = blockhash_resp.value.blockhash
-
-        msg = Message.new_with_blockhash([ix], payer.pubkey(), recent_blockhash)
-        tx = Transaction([payer], msg, recent_blockhash)
-        result = client.send_transaction(tx, opts=TxOpts(skip_preflight=False))
-        return str(result.value)
-
     except ImportError as exc:
         raise ImportError(
             "Solana anchoring requires 'solders' and 'solana': "
             "pip install solders solana"
         ) from exc
+
+    raw_key_hex = os.environ.get("SOLANA_FEE_PAYER_KEY_HEX", "")
+    if not raw_key_hex:
+        raise EnvironmentError(
+            "Set SOLANA_FEE_PAYER_KEY_HEX (64-byte hex) to anchor on Solana."
+        )
+    payer = Keypair.from_bytes(bytes.fromhex(raw_key_hex))
+
+    # Hour bucket for "now"; passed explicitly so the derived PDA and the
+    # program's stored bucket id agree (mirrors agent-reputation's WRITE path).
+    bucket_id = int(time.time()) // BUCKET_WINDOW_SECONDS
+
+    program_id = Pubkey.from_string(RECEIPT_ANCHOR_PROGRAM)
+    bucket_pda, _bump = Pubkey.find_program_address(
+        [b"bucket", bucket_id.to_bytes(8, "little")], program_id
+    )
+    system_program = Pubkey.from_string("11111111111111111111111111111111")
+
+    ix = Instruction(
+        program_id=program_id,
+        accounts=[
+            # Payer must be a writable signer: it pays fees and funds bucket
+            # rent on first use of the hour bucket.
+            AccountMeta(pubkey=payer.pubkey(), is_signer=True, is_writable=True),
+            AccountMeta(pubkey=bucket_pda, is_signer=False, is_writable=True),
+            AccountMeta(pubkey=system_program, is_signer=False, is_writable=False),
+        ],
+        data=_build_anchor_single_data(anchor32, bucket_id),
+    )
+
+    client = Client(solana_rpc)
+    recent_blockhash = client.get_latest_blockhash().value.blockhash
+    msg = Message.new_with_blockhash([ix], payer.pubkey(), recent_blockhash)
+    tx = Transaction([payer], msg, recent_blockhash)
+    result = client.send_transaction(tx, opts=TxOpts(skip_preflight=False))
+    return str(result.value), bucket_id
