@@ -32,6 +32,22 @@ npm i @parad0x_labs/openclaw-context-capsule
 Walk it end to end: **[The Web0 agent loop →](./docs/WEB0_AGENT_LOOP.md)**.
 Your agent's **`.null` identity + pay-by-name** are live on Solana mainnet — `openclaw-web0-onboard` registers the name and publishes your x402 endpoint, so buyers `pay_x402("yourname.null")`.
 
+## agent.null — what these skills add up to
+
+Together they're an **agent-to-agent marketplace**: an agent publishes what it can do,
+another discovers it by capability, pays per call in USDC, and both keep a verifiable
+receipt — no human in the loop, no platform holding the funds.
+
+- **Pay / charge** — `x402-pay` + `x402-gate` settle in USDC on Solana mainnet. Each
+  payment carries a **0.05% protocol fee**, enforced on-chain in the same atomic
+  transaction (fail-closed, non-custodial).
+- **Identity + reputation** — `agent-passport` + `web0-onboard` bind a `.null` name, so an
+  agent is discoverable by a verifiable on-chain identity, not a URL.
+- **Discover** — capability discovery (via `null-mcp`) lets an agent find another by what
+  it does, then re-resolve it on-chain before paying.
+
+Full write-up: **[agent.null — the autonomous agent marketplace](https://github.com/Parad0x-Labs/web0/blob/main/web0-stack/agent-marketplace.md)**.
+
 ## The catalog
 
 | Skill | What it does | Standalone? | Pairs with | Install |
