@@ -50,7 +50,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test",
+    "test": "node --import ./test/register.mjs --test 'test/*.test.mjs' 'test/*.test.mts'",
     "audit": "npm audit --omit=dev --omit=peer --audit-level=high",
     "prepublishOnly": "npm audit --omit=dev --omit=peer --audit-level=high && tsc --noEmit -p tsconfig.json",
     "build": "tsc -p tsconfig.json && cp src/track_record_vk.json dist/"

@@ -25,9 +25,17 @@ Solana mainnet**.
   only after its transaction is **confirmed settled on Solana** — not just a
   well-formed header. The check binds to the unique receipt hash in the tx memo,
   so proofs can't be replayed against a different charge.
+- **Enforced protocol fee.** Every settled payment carries a **0.05% (5 bps)**
+  protocol-fee leg to the network treasury (a Squads multisig) in the *same atomic
+  transaction* as your seller payment. `requireOnChain` verifies both legs and
+  refuses to serve if the fee is missing or short — fail-closed. The fee amount and
+  treasury are pinned in code on both the paying and gating sides, never read from
+  the challenge, so it can't be zeroed or redirected. Still non-custodial: the fee
+  settles directly on-chain, no one holds it.
 
-> **Non-custodial.** Payments settle straight to your own wallet; the skill holds
-> no keys and signs nothing.
+> **Non-custodial.** Payments settle straight to your own wallet (less the pinned
+> 0.05% protocol fee, which settles directly to the treasury); the skill holds no
+> keys and signs nothing.
 
 ## Standalone or together
 

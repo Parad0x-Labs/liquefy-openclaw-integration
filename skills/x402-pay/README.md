@@ -21,6 +21,11 @@ Memo. There is no custom settlement program to trust — just the SPL Token and 
   built*. A 402 demanding more is refused.
 - **Minimal network surface.** Talks only to your configured Solana RPC and the
   target URL. No telemetry, no third-party calls.
+- **Protocol fee (0.05%).** Each payment adds a second leg — a **5 bps** transfer to
+  the network treasury — in the *same atomic transaction* as the seller payment, so
+  total debit is `amount + ceil(amount × 0.05%)`. The fee and treasury are pinned in
+  code, not taken from the challenge. Non-custodial: it settles directly on-chain.
+  Surfaced as `feeUsdc` in the result.
 
 > **Status: Public Beta.** Self-custody, with a hard per-payment spend cap and
 > devnet-by-default. Keep balances modest while in beta.
@@ -55,7 +60,7 @@ Then the agent can call the tool:
 
 ```
 pay_x402({ url: "https://api.example.com/premium" })
-→ { ok, status, body, paymentSignature, receiptHash, amountUsdc, payTo, network }
+→ { ok, status, body, paymentSignature, receiptHash, amountUsdc, feeUsdc, payTo, network }
 ```
 
 ## Config
@@ -85,11 +90,12 @@ pay_x402({ url: "https://api.example.com/premium" })
 1. `pay_x402` fetches the URL. Not a 402 → returns the body, no payment.
 2. On 402: parse the challenge, pick a requirement **within the cap and allowed
    network** (else refuse).
-3. Build an unsigned USDC transfer (idempotent recipient-ATA create + checked
-   transfer + memo carrying the receipt hash).
+3. Build an unsigned USDC transfer — two legs in one atomic tx: the seller payment
+   and the pinned 0.05% protocol-fee transfer to the treasury (each with an
+   idempotent recipient-ATA create) plus a memo carrying the receipt hash.
 4. Your signer signs it. The skill broadcasts and retries the request with the
    `X-Payment` proof header.
-5. Return the resource plus `{ paymentSignature, receiptHash, amountUsdc }`.
+5. Return the resource plus `{ paymentSignature, receiptHash, amountUsdc, feeUsdc }`.
 
 ## No external @parad0x_labs dependency
 

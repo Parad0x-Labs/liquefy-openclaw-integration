@@ -460,11 +460,11 @@ export async function fetchWithX402(
   // persist the recheck marker + count the spend + record the recipient in ONE
   // durable write. So a throw or crash during broadcast can never lose the signature
   // (a retry would re-check it, not re-pay) and can never re-arm the caps.
-  let signature: string, receiptHash: string, amountUsdc: number, status: "confirmed" | "pending";
+  let signature: string, receiptHash: string, amountUsdc: number, feeUsdc: number, status: "confirmed" | "pending";
   let recorded = false;
   const recipientWasNew = !led.hasRecipient(req.payTo);
   try {
-    ({ signature, receiptHash, amountUsdc, status } = await payWithSigner(
+    ({ signature, receiptHash, amountUsdc, feeUsdc, status } = await payWithSigner(
       connection,
       signer,
       req,
@@ -553,6 +553,7 @@ export async function fetchWithX402(
     paymentSignature: signature,
     receiptHash,
     amountUsdc,
+    feeUsdc,
     payTo: req.payTo,
     network,
     capability: capToken ?? undefined,

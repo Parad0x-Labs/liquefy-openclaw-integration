@@ -10,7 +10,13 @@
  *      not just confirmed, so it can't be rolled back after you've served).
  *   2. The recipient's token balance for the expected mint went UP by at least
  *      the required amount (the real proof that money moved).
- *   3. The transaction's memo carries the unique receipt hash, binding the
+ *   3. The protocol treasury's balance for the expected mint went UP by at least
+ *      the pinned protocol fee (5 bps of the required amount) in the SAME tx — the
+ *      fee leg. Fail-closed: a missing or under-funded fee leg is rejected, so a
+ *      buyer cannot redeem the resource while skipping the protocol fee. The fee
+ *      amount + treasury are pinned LOCALLY here, never read from the challenge, so
+ *      a greedy seller can't zero the fee nor a malicious challenge redirect it.
+ *   4. The transaction's memo carries the unique receipt hash, binding the
  *      payment to THIS charge (payer + recipient + amount + resource + nonce),
  *      so a payment for one resource can't be presented for another.
  *
@@ -24,7 +30,7 @@
 
 import bs58 from "bs58";
 import type { Connection, PublicKey } from "@solana/web3.js";
-import { MEMO_PREFIX, MEMO_PROGRAM_ID } from "./constants";
+import { MEMO_PREFIX, MEMO_PROGRAM_ID, PROTOCOL_FEE_TREASURY, protocolFeeAtomic } from "./constants";
 
 export interface OnChainExpect {
   /** unique receipt hash for this charge (must appear in the tx memo) */
@@ -43,6 +49,8 @@ export interface OnChainResult {
   slot?: number;
   /** atomic units actually credited to the recipient (for logging/receipts) */
   receivedAtomic?: string;
+  /** atomic units actually credited to the protocol treasury (the fee leg) */
+  feeReceivedAtomic?: string;
 }
 
 type TokenBal = {
@@ -172,6 +180,31 @@ export async function confirmOnChain(
       confirmed: false,
       reason: `payment short or absent: recipient credited ${delta} of required ${required} (mint ${expect.asset})`,
       receivedAtomic: delta.toString(),
+    };
+  }
+
+  // (3) Enforce the protocol fee leg — the treasury must have been credited at least
+  //     the pinned 5 bps fee of the required amount, in this same atomic tx. Fee +
+  //     treasury are pinned LOCALLY (never from the challenge), so the gate refuses to
+  //     serve a payment that skips or underpays the fee — a greedy buyer/seller cannot
+  //     bypass it. Computed on the REQUIRED amount (the charge), not the credited delta,
+  //     so overpaying the seller never lowers the fee owed.
+  const feeRequired = protocolFeeAtomic(required);
+  if (feeRequired > 0n) {
+    const feeDelta = recipientDelta(pre, post, PROTOCOL_FEE_TREASURY, expect.asset);
+    if (feeDelta < feeRequired) {
+      return {
+        confirmed: false,
+        reason: `protocol fee short or absent: treasury credited ${feeDelta} of required ${feeRequired} (mint ${expect.asset})`,
+        receivedAtomic: delta.toString(),
+        feeReceivedAtomic: feeDelta.toString(),
+      };
+    }
+    return {
+      confirmed: true,
+      slot: tx.slot,
+      receivedAtomic: delta.toString(),
+      feeReceivedAtomic: feeDelta.toString(),
     };
   }
 

@@ -21,6 +21,40 @@ export const USDC_DECIMALS = 6;
 /** $NULL token mint (Token-2022, mainnet) */
 export const NULL_TOKEN = "8EeDdvCRmFAzVD4takkBrNNwkeUTUQh4MscRK5Fzpump";
 
+/**
+ * Protocol fee, in basis points (1 bp = 0.01%). 5 bps = 0.05%, captured on every
+ * marketplace payment as a SECOND transfer leg in the same atomic tx.
+ *
+ * PINNED here — NEVER read from the (untrusted) 402 challenge `extra.platformFeePct`.
+ * A greedy seller can't zero it from the challenge, and a malicious challenge can't
+ * inflate or redirect it. MUST stay byte-identical to the gate side (which enforces
+ * the same fee at settlement), or a payment this side builds would be rejected there.
+ */
+export const PROTOCOL_FEE_BPS = 5;
+
+/** Basis-point denominator (10000 bps = 100%). */
+export const BPS_DENOMINATOR = 10_000;
+
+/**
+ * Protocol-fee treasury — the Squads multisig that receives the fee leg directly
+ * on-chain. Non-custodial: funds settle straight to this address in the buyer's own
+ * atomic tx; no intermediary ever holds them. PINNED on both sides, NEVER taken from
+ * the challenge `extra.platformWallet`.
+ */
+export const PROTOCOL_FEE_TREASURY = "9M949AfyYCHp9hUk7crZZx3N6Y8sigyWBN6RM6tFq1q5";
+
+/**
+ * Protocol fee (atomic USDC units) for a payment of `amountAtomic`. Rounded UP, so a
+ * positive payment ALWAYS carries a positive fee (>= 1 atomic unit) — the fee can
+ * never round to zero and become a free ride. BigInt-exact (no float drift).
+ */
+export function protocolFeeAtomic(amountAtomic: bigint): bigint {
+  if (amountAtomic <= 0n) return 0n;
+  const bps = BigInt(PROTOCOL_FEE_BPS);
+  const denom = BigInt(BPS_DENOMINATOR);
+  return (amountAtomic * bps + (denom - 1n)) / denom; // ceil(amount * bps / 10000)
+}
+
 /** x402 protocol version this skill speaks */
 export const X402_VERSION = 1;
 
@@ -48,9 +82,11 @@ export const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
  *  challenge, so a malicious server cannot inflate the payer's SOL fee. */
 export const DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS = 50_000;
 
-/** Compute-unit cap for a payment tx (ATA-create + transfer + memo), so the
- *  priority fee stays bounded and predictable. */
-export const PAYMENT_COMPUTE_UNIT_LIMIT = 120_000;
+/** Compute-unit cap for a payment tx — now two legs: 2× idempotent ATA-create +
+ *  2× transferChecked (seller + protocol-fee treasury) + memo — so the priority fee
+ *  stays bounded and predictable. Headroom over the worst case (both ATAs needing
+ *  creation); the priority fee is price × this limit, ~0.00001 SOL, negligible. */
+export const PAYMENT_COMPUTE_UNIT_LIMIT = 200_000;
 
 /** USDC atomic-unit conversions */
 export function usdcToAtomic(usdc: number): number {

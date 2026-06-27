@@ -67,6 +67,8 @@ export interface X402PayResult {
   /** SHA-256 receipt hash (hex) of the payment */
   receiptHash?: string;
   amountUsdc?: number;
+  /** Protocol fee (USDC) paid to the treasury in the same atomic tx as the seller leg. */
+  feeUsdc?: number;
   payTo?: string;
   network?: SolanaNetwork;
   error?: string;

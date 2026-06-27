@@ -34,6 +34,8 @@ import {
   atomicToUsdc,
   DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS,
   PAYMENT_COMPUTE_UNIT_LIMIT,
+  PROTOCOL_FEE_TREASURY,
+  protocolFeeAtomic,
 } from "./constants";
 import type { X402PaymentRequirement, X402Signer } from "./types";
 
@@ -68,6 +70,12 @@ export interface UnsignedPayment {
   receiptHash: string;
   amountUsdc: number;
   payTo: string;
+  /** Protocol fee paid to the treasury in the SAME atomic tx (atomic units, string). */
+  feeAtomic: string;
+  /** Protocol fee in USDC (for logging / total-cost display). */
+  feeUsdc: number;
+  /** Treasury that received the fee leg (the pinned protocol treasury). */
+  feeTo: string;
   /** Blockhash + height the tx is bound to — used to confirm within the window. */
   blockhash: string;
   lastValidBlockHeight: number;
@@ -75,8 +83,19 @@ export interface UnsignedPayment {
 
 /**
  * Build the unsigned USDC payment transaction for a 402 requirement.
- * Adds an idempotent destination-ATA create (so paying a fresh recipient does
- * not fail), the checked USDC transfer, and a memo carrying the receipt hash.
+ *
+ * The tx carries TWO transfer legs in one atomic unit:
+ *   1. the seller leg — the checked USDC transfer of `req.maxAmountRequired` to payTo;
+ *   2. the protocol-fee leg — a checked USDC transfer of the pinned 5 bps fee to the
+ *      protocol treasury (a Squads multisig), settled directly on-chain.
+ * Each leg is preceded by an idempotent ATA-create (so a fresh recipient/treasury
+ * account never fails the pay), and a single memo carries the receipt hash.
+ *
+ * Because both legs share one atomic tx, the buyer CANNOT pay the seller without also
+ * paying the fee: either both settle or neither does. The fee amount and treasury are
+ * pinned LOCALLY (PROTOCOL_FEE_BPS / PROTOCOL_FEE_TREASURY) and never read from the
+ * untrusted challenge — a greedy seller can't zero the fee, nor a malicious challenge
+ * redirect it. The gate enforces the matching fee leg at settlement (confirmOnChain).
  *
  * ⚠️ UNGUARDED low-level builder. It does NOT enforce the spend cap, mainnet
  * opt-in, USDC-only asset, recipient allowlist, or distinct-recipient cap — all of
@@ -98,6 +117,12 @@ export async function buildUnsignedPayment(
   // The vendored deriver always allows an off-curve owner, so a PDA /
   // Squads-multisig recipient is payable (the ATA address is the same either way).
   const payToAta = getAssociatedTokenAddressSync(usdcMint, payToPk);
+
+  // Protocol-fee leg — pinned 5 bps to the pinned treasury, in the SAME tx. The fee
+  // is computed from the LOCAL constant, never from req.extra.platformFeePct.
+  const treasuryPk = new PublicKey(PROTOCOL_FEE_TREASURY);
+  const treasuryAta = getAssociatedTokenAddressSync(usdcMint, treasuryPk);
+  const feeAtomic = protocolFeeAtomic(amountAtomic);
 
   const receiptHash = receiptHashFor(payer, req);
 
@@ -122,6 +147,7 @@ export async function buildUnsignedPayment(
     // malicious server cannot inflate the SOL fee charged to the payer's wallet.
     ComputeBudgetProgram.setComputeUnitLimit({ units: PAYMENT_COMPUTE_UNIT_LIMIT }),
     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: DEFAULT_PRIORITY_FEE_MICRO_LAMPORTS }),
+    // --- seller leg ---
     // idempotent: no-op if the recipient already has a USDC account
     createAssociatedTokenAccountIdempotentInstruction(payerPk, payToAta, payToPk, usdcMint),
     createTransferCheckedInstruction(
@@ -132,8 +158,27 @@ export async function buildUnsignedPayment(
       amountAtomic,
       USDC_DECIMALS,
     ),
-    memoIx,
   );
+
+  // --- protocol-fee leg --- same atomic tx, so paying the seller necessarily pays
+  // the fee. feeAtomic is >= 1 for any positive payment (ceil rounding), but guard
+  // defensively against a 0 leg (degenerate amount) which would be a pointless ix.
+  if (feeAtomic > 0n) {
+    tx.add(
+      createAssociatedTokenAccountIdempotentInstruction(payerPk, treasuryAta, treasuryPk, usdcMint),
+      createTransferCheckedInstruction(
+        payerAta,
+        usdcMint,
+        treasuryAta,
+        payerPk,
+        feeAtomic,
+        USDC_DECIMALS,
+      ),
+    );
+  }
+
+  // single receipt memo (the gate requires exactly one) — added last
+  tx.add(memoIx);
 
   const txBase64 = tx
     .serialize({ requireAllSignatures: false, verifySignatures: false })
@@ -144,6 +189,9 @@ export async function buildUnsignedPayment(
     receiptHash,
     amountUsdc: atomicToUsdc(Number(amountAtomic)),
     payTo: req.payTo,
+    feeAtomic: feeAtomic.toString(),
+    feeUsdc: atomicToUsdc(Number(feeAtomic)),
+    feeTo: PROTOCOL_FEE_TREASURY,
     blockhash,
     lastValidBlockHeight,
   };
@@ -242,7 +290,7 @@ export async function payWithSigner(
   signer: X402Signer,
   req: X402PaymentRequirement,
   onBeforeBroadcast?: (signature: string, lastValidBlockHeight: number) => void | Promise<void>,
-): Promise<{ signature: string; receiptHash: string; amountUsdc: number; status: "confirmed" | "pending" }> {
+): Promise<{ signature: string; receiptHash: string; amountUsdc: number; feeUsdc: number; status: "confirmed" | "pending" }> {
   const unsigned = await buildUnsignedPayment(connection, signer.publicKey, req);
   const signedTxBase64 = await signer.signTransaction(unsigned.txBase64);
   const signature = signatureOf(signedTxBase64); // known before any network send
@@ -254,5 +302,5 @@ export async function payWithSigner(
     unsigned.blockhash,
     unsigned.lastValidBlockHeight,
   );
-  return { signature, receiptHash: unsigned.receiptHash, amountUsdc: unsigned.amountUsdc, status };
+  return { signature, receiptHash: unsigned.receiptHash, amountUsdc: unsigned.amountUsdc, feeUsdc: unsigned.feeUsdc, status };
 }
