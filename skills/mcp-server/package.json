@@ -1,11 +1,16 @@
 {
   "name": "@parad0x_labs/mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for the Parad0x Labs stack — x402 payments, receipt anchoring, agent identity, Liquefy compression",
   "type": "module",
-  "bin": { "parad0x-mcp": "./dist/index.js" },
+  "bin": {
+    "parad0x-mcp": "./dist/index.js"
+  },
   "main": "./dist/index.js",
-  "files": ["dist/", "README.md"],
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -21,9 +26,13 @@
   "devDependencies": {
     "typescript": "^5.6.3"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "license": "MIT",
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Parad0x-Labs/openclaw-skills",
