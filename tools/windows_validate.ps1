@@ -59,6 +59,10 @@ if (-not (Test-Path $Python)) {
     throw "Missing venv Python: $Python"
 }
 
+Invoke-Checked "Windows validation test dependencies" {
+    & $Python -m pip install --quiet pytest==8.4.2
+}
+
 Invoke-Checked "CMD launcher" { .\liquefy.cmd openclaw --version --json }
 Invoke-Checked "PowerShell launcher" {
     powershell -NoProfile -ExecutionPolicy Bypass -File .\liquefy.ps1 openclaw --version --json

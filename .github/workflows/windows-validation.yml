@@ -1,0 +1,52 @@
+name: Windows Validation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-validation.yml"
+      - "setup.ps1"
+      - "setup.bat"
+      - "liquefy.cmd"
+      - "liquefy.ps1"
+      - "tools/windows_validate.ps1"
+      - "tools/**"
+      - "api/**"
+      - "tests/test_cli_contracts.py"
+      - "tests/test_liquefy_openclaw_cli.py"
+      - "tests/test_repo_wrapper.py"
+      - "tests/test_history_guard.py"
+      - "tests/test_windows_runtime_paths.py"
+      - "tests/test_windows_validation_contract.py"
+      - "docs/WINDOWS_OPENCLAW_SKILLS.md"
+  push:
+    branches: ["main", "master"]
+    paths:
+      - ".github/workflows/windows-validation.yml"
+      - "setup.ps1"
+      - "setup.bat"
+      - "liquefy.cmd"
+      - "liquefy.ps1"
+      - "tools/windows_validate.ps1"
+      - "tools/**"
+      - "api/**"
+      - "tests/test_cli_contracts.py"
+      - "tests/test_liquefy_openclaw_cli.py"
+      - "tests/test_repo_wrapper.py"
+      - "tests/test_history_guard.py"
+      - "tests/test_windows_runtime_paths.py"
+      - "tests/test_windows_validation_contract.py"
+      - "docs/WINDOWS_OPENCLAW_SKILLS.md"
+  workflow_dispatch:
+
+jobs:
+  source-validation:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Run Windows source validation
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_validate.ps1 -SkipFullPython -SkipNode

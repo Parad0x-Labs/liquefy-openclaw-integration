@@ -108,6 +108,10 @@ One-command Windows validation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\windows_validate.ps1
 ```
 
+The PR gate for this path is `.github\workflows\windows-validation.yml`, which
+runs the same validator on `windows-latest` with the full Python and Node matrix
+disabled for CI speed.
+
 For a faster local check after the full suite already passed:
 
 ```powershell
