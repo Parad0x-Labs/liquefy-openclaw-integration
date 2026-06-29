@@ -165,8 +165,12 @@ make quick DIR=~/openclaw/sessions
 git clone https://github.com/Parad0x-Labs/openclaw-skills
 cd openclaw-skills
 .\setup.ps1
-.venv\Scripts\python tools\tracevault_pack.py .\your\data --org default --out .\vault\output --json
+.\liquefy.cmd openclaw --version --json
+.\liquefy.cmd openclaw --workspace "$env:USERPROFILE\.openclaw" --out .\vault --json
 ```
+
+For OpenClaw plugin use on Windows, set `LIQUEFY_OPENCLAW_BIN` to the absolute
+path of `liquefy.cmd`. See `docs/WINDOWS_OPENCLAW_SKILLS.md`.
 
 **pip install (add to existing project):**
 ```bash
@@ -422,6 +426,13 @@ Release binaries include `SHA256SUMS.txt`. Verify downloads before running them:
 ### Windows (PowerShell)
 ```powershell
 .\liquefy decompress archive.null restored.log
+```
+
+The source checkout also includes native Windows launchers:
+
+```powershell
+.\liquefy.cmd self-test --json
+.\liquefy.ps1 openclaw --version --json
 ```
 
 ---

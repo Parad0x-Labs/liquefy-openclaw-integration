@@ -14,6 +14,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,8 +24,14 @@ from typing import Any, Dict, List, Optional
 SKILL_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SKILL_DIR.parent.parent
 ARCHIVER_SCRIPT = REPO_ROOT / "tools" / "liquefy_archiver.py"
-PID_FILE = Path(os.environ.get("LIQUEFY_ARCHIVER_PID", "/tmp/liquefy_archiver.pid"))
-STATE_FILE = Path(os.environ.get("LIQUEFY_ARCHIVER_STATE", "/tmp/liquefy_archiver_state.json"))
+
+
+def _default_runtime_file(name: str) -> Path:
+    return Path(tempfile.gettempdir()) / name
+
+
+PID_FILE = Path(os.environ.get("LIQUEFY_ARCHIVER_PID", str(_default_runtime_file("liquefy_archiver.pid"))))
+STATE_FILE = Path(os.environ.get("LIQUEFY_ARCHIVER_STATE", str(_default_runtime_file("liquefy_archiver_state.json"))))
 RECAP_DIR = Path(os.environ.get("LIQUEFY_RECAP_DIR", str(REPO_ROOT / ".liquefy" / "recaps")))
 
 

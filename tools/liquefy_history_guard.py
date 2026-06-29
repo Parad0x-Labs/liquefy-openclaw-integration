@@ -24,6 +24,7 @@ import shlex
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -52,6 +53,10 @@ DEFAULT_RISKY_PATTERNS = [
     r"\brevoke\b",
     r"\bdisable\b",
 ]
+
+
+def _default_snapshot_root() -> Path:
+    return Path(tempfile.gettempdir()) / "liquefy-history-guard-snapshots"
 
 
 @dataclass
@@ -269,21 +274,30 @@ def _build_tracevault_pack_cmd(
 
 
 def _run_tracevault_pack(source_dir: Path, out_dir: Path, cfg: Dict[str, Any]) -> Dict[str, Any]:
-    out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / ".pack_result.json"
     cmd = _build_tracevault_pack_cmd(source_dir, out_dir, cfg, json_path)
-
     started = time.time()
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    duration_ms = int((time.time() - started) * 1000)
+    payload: Dict[str, Any] = {"pack_command": " ".join(shlex.quote(x) for x in cmd)}
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        payload.update(
+            {
+                "returncode": proc.returncode,
+                "stdout_tail": _compact_tail(proc.stdout),
+                "stderr_tail": _compact_tail(proc.stderr),
+            }
+        )
+    except Exception as exc:
+        payload.update(
+            {
+                "returncode": 1,
+                "stdout_tail": "",
+                "stderr_tail": str(exc),
+            }
+        )
 
-    payload: Dict[str, Any] = {
-        "pack_command": " ".join(shlex.quote(x) for x in cmd),
-        "returncode": proc.returncode,
-        "duration_ms": duration_ms,
-        "stdout_tail": _compact_tail(proc.stdout),
-        "stderr_tail": _compact_tail(proc.stderr),
-    }
+    payload["duration_ms"] = int((time.time() - started) * 1000)
 
     if json_path.exists():
         try:
@@ -323,10 +337,10 @@ def _run_tracevault_restore(vault_dir: Path, out_dir: Path) -> Dict[str, Any]:
 
 
 def _run_fallback_snapshot(workspace: Path, snapshot_dir: Path) -> Dict[str, Any]:
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
     archive_path = snapshot_dir / "workspace_snapshot.tar.gz"
     started = time.time()
     try:
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive_path, "w:gz") as tf:
             tf.add(str(workspace), arcname=workspace.name)
     except Exception as exc:
@@ -486,7 +500,7 @@ def _provider_vault_dir(workspace: Path, cfg: Dict[str, Any], provider_id: str, 
 
 
 def _snapshot_vault_dir(workspace: Path, cfg: Dict[str, Any], run_id: str) -> Path:
-    raw = str(cfg.get("snapshot_vault_root", "/tmp/liquefy-history-guard-snapshots")).strip()
+    raw = str(cfg.get("snapshot_vault_root", str(_default_snapshot_root()))).strip()
     root = Path(raw).expanduser()
     if not root.is_absolute():
         root = workspace / root
@@ -496,9 +510,9 @@ def _snapshot_vault_dir(workspace: Path, cfg: Dict[str, Any], run_id: str) -> Pa
         workspace_resolved = workspace.resolve()
         root_resolved = root.resolve()
         if workspace_resolved == root_resolved or workspace_resolved in root_resolved.parents:
-            root = Path("/tmp") / "liquefy-history-guard-snapshots"
+            root = _default_snapshot_root()
     except Exception:
-        root = Path("/tmp") / "liquefy-history-guard-snapshots"
+        root = _default_snapshot_root()
 
     return root / workspace.name / run_id
 
@@ -686,7 +700,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         "sign": True,
         "default_interval_seconds": 300,
         "vault_root": str(workspace / ".liquefy" / "history_vaults"),
-        "snapshot_vault_root": "/tmp/liquefy-history-guard-snapshots",
+        "snapshot_vault_root": str(_default_snapshot_root()),
         "export_root": str(workspace / ".liquefy" / "provider_exports"),
         "approval_env_var": "LIQUEFY_APPROVAL_TOKEN",
         "approval_token_sha256": "",
@@ -1223,7 +1237,7 @@ def _resolve_vault_root(workspace: Path, cfg: Dict[str, Any]) -> Path:
 
 
 def _resolve_snapshot_root(workspace: Path, cfg: Dict[str, Any]) -> Path:
-    raw = str(cfg.get("snapshot_vault_root", "/tmp/liquefy-history-guard-snapshots")).strip()
+    raw = str(cfg.get("snapshot_vault_root", str(_default_snapshot_root()))).strip()
     root = Path(raw).expanduser()
     if not root.is_absolute():
         root = workspace / root
@@ -1231,9 +1245,9 @@ def _resolve_snapshot_root(workspace: Path, cfg: Dict[str, Any]) -> Path:
         workspace_resolved = workspace.resolve()
         root_resolved = root.resolve()
         if workspace_resolved == root_resolved or workspace_resolved in root_resolved.parents:
-            root = Path("/tmp") / "liquefy-history-guard-snapshots"
+            root = _default_snapshot_root()
     except Exception:
-        root = Path("/tmp") / "liquefy-history-guard-snapshots"
+        root = _default_snapshot_root()
     return root / workspace.name
 
 

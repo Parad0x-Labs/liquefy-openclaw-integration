@@ -9,6 +9,7 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -79,7 +80,7 @@ def main():
 
     run(
         [sys.executable, "-m", "compileall", "api"],
-        env={"PYTHONPYCACHEPREFIX": "/tmp/pycache"},
+        env={"PYTHONPYCACHEPREFIX": str(Path(tempfile.gettempdir()) / "liquefy-pycache")},
     )
     run([sys.executable, "-m", "pytest", "tests", "-v"])
     run([sys.executable, "tools/smoke_e2e.py"])

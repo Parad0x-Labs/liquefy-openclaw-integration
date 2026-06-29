@@ -2,8 +2,22 @@ import { verifyReputationProof, repChallenge } from "../src/rep.ts";
 import * as snarkjs from "snarkjs";
 import { poseidon2, poseidon3, poseidon5 } from "poseidon-lite";
 import { randomBytes } from "node:crypto";
+import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-const ART = "/Users/sauliuskruopis/Desktop/dna-x402-redeploy.BACKUP-20260621-presync/sandbox/track-artifacts";
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const ART = resolve(process.env.X402_GATE_TRACK_ARTIFACTS || join(TEST_DIR, "..", "track-artifacts"));
+const WASM_PATH = join(ART, "track_record.wasm");
+const ZKEY_PATH = join(ART, "track_record_final.zkey");
+const missingArtifacts =
+  !existsSync(WASM_PATH) || !existsSync(ZKEY_PATH)
+    ? `missing proving artifacts; set X402_GATE_TRACK_ARTIFACTS or place track_record.wasm and track_record_final.zkey under ${ART}`
+    : false;
+
+test("private reputation proof accepts valid proof and rejects attacks", { skip: missingArtifacts }, async () => {
 const K = 4, DEPTH = 10, DOMAIN_REP = 7n;
 const P = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const randFr = () => BigInt("0x" + randomBytes(31).toString("hex")) % P;
@@ -25,7 +39,7 @@ const paths = idxs.map(pathOf);
 const min_count = 3n, min_volume = total - 1n;
 const input = { root: root.toString(), min_count: min_count.toString(), min_volume: min_volume.toString(), window_start: window_start.toString(), reputation_nullifier: reputation_nullifier.toString(), agent_commitment: agent_commitment.toString(), secret: secret.toString(), agent_id: agent_id.toString(), epoch: epoch.toString(), amount: receipts.map(r => r.amount.toString()), timestamp: receipts.map(r => r.timestamp.toString()), counterparty: receipts.map(r => r.counterparty.toString()), receipt_nonce: receipts.map(r => r.nonce.toString()), leaf_index: idxs.map(x => x.toString()), path_elements: paths.map(p => p.el.map(e => e.toString())), path_index: paths.map(p => p.ix.map(b => b.toString())) };
 
-const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, `${ART}/track_record.wasm`, `${ART}/track_record_final.zkey`);
+const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, WASM_PATH, ZKEY_PATH);
 const ROOT = publicSignals[0];
 const okFloor = { minCount: 3, minVolume: 10000, windowStartFloor: 1700000000, trustedRoots: [ROOT] };
 const mkStore = () => { const s = new Set<string>(); return (k: string) => { if (s.has(k)) return false; s.add(k); return true; }; };
@@ -83,4 +97,5 @@ check("HARDEN LOW bad policy fails clean", r10.valid === false && /policy\.minVo
 
 console.log(`\nchallenge sample: ${JSON.stringify(repChallenge(okFloor).require)}`);
 console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);
+assert.equal(fail, 0);
+});

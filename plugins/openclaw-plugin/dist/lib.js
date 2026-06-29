@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 
 export const DEFAULT_RISKY_PHRASE = "I UNDERSTAND THIS MAY LEAK SECRETS";
 export const PLUGIN_VERSION = "0.1.0-alpha";
@@ -8,6 +9,32 @@ const compatibilityCache = new Map();
 
 export function buildLiquefyExecutable(config = {}) {
   return config.binaryPath || process.env.LIQUEFY_OPENCLAW_BIN || "liquefy";
+}
+
+export function quoteWindowsCmdArg(value) {
+  const text = String(value);
+  if (text.length === 0) return "\"\"";
+  return `"${text.replace(/(["^&|<>()%!])/g, "^$1")}"`;
+}
+
+export function buildSpawnPlan(bin, args, platform = process.platform) {
+  if (platform !== "win32") {
+    return { command: bin, args, windowsCmdShim: false, windowsVerbatimArguments: false };
+  }
+
+  const ext = path.extname(String(bin)).toLowerCase();
+  const needsCmd = ext === ".cmd" || ext === ".bat" || ext === "";
+  if (!needsCmd) {
+    return { command: bin, args, windowsCmdShim: false, windowsVerbatimArguments: false };
+  }
+
+  const commandLine = `"${[bin, ...args].map(quoteWindowsCmdArg).join(" ")}"`;
+  return {
+    command: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/c", commandLine],
+    windowsCmdShim: true,
+    windowsVerbatimArguments: true,
+  };
 }
 
 function pushIf(args, flag, value) {
@@ -174,9 +201,11 @@ export function assessLiquefyCompatibility(cliVersion, minimumVersion = MIN_LIQU
 
 function runJsonCommand(bin, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, {
+    const plan = buildSpawnPlan(bin, args);
+    const child = spawn(plan.command, plan.args, {
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsVerbatimArguments: plan.windowsVerbatimArguments,
     });
 
     let out = "";
@@ -259,9 +288,11 @@ export async function runLiquefyOpenclaw(mode, input = {}, config = {}) {
   const compatibility = await getLiquefyCompatibility(config);
 
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, {
+    const plan = buildSpawnPlan(bin, args);
+    const child = spawn(plan.command, plan.args, {
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsVerbatimArguments: plan.windowsVerbatimArguments,
     });
 
     let out = "";

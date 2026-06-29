@@ -36,6 +36,7 @@ import os
 import platform
 import signal
 import sys
+import tempfile
 import textwrap
 import time
 from dataclasses import dataclass, field
@@ -67,8 +68,13 @@ DEFAULT_AGE_THRESHOLD_DAYS = 7
 DEFAULT_KEEP_ACTIVE = 5
 DEFAULT_POLL_SECONDS = 300  # 5 min
 
-PID_FILE = Path(os.environ.get("LIQUEFY_ARCHIVER_PID", "/tmp/liquefy_archiver.pid"))
-STATE_FILE = Path(os.environ.get("LIQUEFY_ARCHIVER_STATE", "/tmp/liquefy_archiver_state.json"))
+
+def _default_runtime_file(name: str) -> Path:
+    return Path(tempfile.gettempdir()) / name
+
+
+PID_FILE = Path(os.environ.get("LIQUEFY_ARCHIVER_PID", str(_default_runtime_file("liquefy_archiver.pid"))))
+STATE_FILE = Path(os.environ.get("LIQUEFY_ARCHIVER_STATE", str(_default_runtime_file("liquefy_archiver_state.json"))))
 
 
 @dataclass

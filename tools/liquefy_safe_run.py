@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -45,6 +46,7 @@ HEARTBEAT_INTERVAL = 5  # seconds
 
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", ".venv", "venv"}
 COST_SCAN_SKIP_DIRS = SKIP_DIRS | {".liquefy", ".liquefy-guard", ".liquefy-tokens", SNAPSHOT_DIR_NAME}
+WINDOWS_SHELL_TOKENS = ("&", "|", "<", ">", "\n", "\r")
 
 
 def _file_sha256(fpath: Path) -> str:
@@ -175,11 +177,27 @@ def _run_enforcer(workspace: Path, policy: Optional[str] = None, trace_id: Optio
 
     try:
         env = os.environ.copy()
-        env["PYTHONPATH"] = f"{TOOLS_DIR}:{API_DIR}:{env.get('PYTHONPATH', '')}"
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(TOOLS_DIR), str(API_DIR), env.get("PYTHONPATH", "")]
+        )
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=env)
         return json.loads(proc.stdout)
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def _prepare_child_command(command: str) -> tuple[str | List[str], bool]:
+    if os.name != "nt":
+        return command, True
+    if any(token in command for token in WINDOWS_SHELL_TOKENS):
+        return command, True
+    try:
+        argv = shlex.split(command, posix=True)
+    except ValueError:
+        return command, True
+    if not argv:
+        return command, True
+    return argv, False
 
 
 def _start_heartbeat(workspace: Path) -> Optional[int]:
@@ -488,8 +506,9 @@ def main():
             child_env.update(prime_result.get("env", {}))
         if context_gate_result and context_gate_result.get("ok"):
             child_env.update(context_gate_result.get("env", {}))
+        child_cmd, use_shell = _prepare_child_command(args.cmd)
         proc = subprocess.run(
-            args.cmd, shell=True, timeout=args.timeout,
+            child_cmd, shell=use_shell, timeout=args.timeout,
             capture_output=True, text=True, cwd=str(workspace), env=child_env,
         )
         exit_code = proc.returncode

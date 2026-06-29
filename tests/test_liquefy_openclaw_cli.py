@@ -247,7 +247,7 @@ class TestOpenClawRunWrapper:
         assert second["ok"] is True
         assert first_reduction == second_reduction
         assert first["defaults"]["replay_blocking_enabled"] is False
-        assert first["result"]["phases"]["prime_context"]["trace_dir"].endswith("/history")
+        assert Path(first["result"]["phases"]["prime_context"]["trace_dir"]).name == "history"
         assert second["result"]["phases"]["prime_context"]["replay_detected"] is True
 
     def test_run_blocks_exact_replay_by_default(self, tmp_path):

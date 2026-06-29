@@ -205,7 +205,7 @@ def test_history_guard_gate_action_rejects_wrong_token(tmp_path):
 
 
 def test_history_guard_gate_action_allows_with_token_and_avoids_recursive_snapshot(tmp_path):
-    workspace = Path(tempfile.mkdtemp(prefix="hg-allow-", dir="/tmp")) / "workspace"
+    workspace = Path(tempfile.mkdtemp(prefix="hg-allow-", dir=tempfile.gettempdir())) / "workspace"
     (workspace / "history" / "events.jsonl").parent.mkdir(parents=True, exist_ok=True)
     (workspace / "history" / "events.jsonl").write_text("{\"event\":1}\n", encoding="utf-8")
 
@@ -267,11 +267,10 @@ def test_history_guard_gate_action_allows_with_token_and_avoids_recursive_snapsh
 
     snapshot_vault = Path(result["snapshot"]["vault_dir"]).resolve()
     workspace_resolved = workspace.resolve()
+    expected_snapshot_root = (Path(tempfile.gettempdir()) / "liquefy-history-guard-snapshots").resolve()
     assert workspace_resolved != snapshot_vault
     assert workspace_resolved not in snapshot_vault.parents
-    assert str(snapshot_vault).startswith(
-        ("/tmp/liquefy-history-guard-snapshots", "/private/tmp/liquefy-history-guard-snapshots")
-    )
+    assert expected_snapshot_root == snapshot_vault or expected_snapshot_root in snapshot_vault.parents
 
 
 def test_history_guard_export_graph_json_contract(tmp_path):

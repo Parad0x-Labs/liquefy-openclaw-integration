@@ -21,10 +21,30 @@ Status:
 
 ### 1) Install Liquefy CLI locally (source bootstrap)
 
+macOS/Linux:
+
 ```bash
 git clone https://github.com/Parad0x-Labs/openclaw-skills.git && \
   cd openclaw-skills && \
   ./install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/Parad0x-Labs/openclaw-skills.git
+cd openclaw-skills
+.\setup.ps1
+$env:LIQUEFY_OPENCLAW_BIN = "$PWD\liquefy.cmd"
+```
+
+Windows CMD:
+
+```cmd
+git clone https://github.com/Parad0x-Labs/openclaw-skills.git
+cd openclaw-skills
+setup.bat
+set "LIQUEFY_OPENCLAW_BIN=%CD%\liquefy.cmd"
 ```
 
 ### 2) Install plugin in OpenClaw (pinned)
@@ -57,6 +77,9 @@ Resolution order:
 The plugin intentionally does not bundle the CLI binary. This keeps the wrapper
 auditable and lets operators pin/verify their Liquefy install separately.
 
+On Windows, prefer an absolute `binaryPath` or `LIQUEFY_OPENCLAW_BIN` pointing to
+`liquefy.cmd`. The wrapper has explicit `.cmd` launch handling for Windows.
+
 ## Security / trust posture
 
 - Safe default is scan-first (`liquefy_scan`)
@@ -72,6 +95,8 @@ auditable and lets operators pin/verify their Liquefy install separately.
 cd plugins/openclaw-plugin
 npm test
 ```
+
+Windows source workflow details live in `docs/WINDOWS_OPENCLAW_SKILLS.md`.
 
 ## Publish (npm)
 

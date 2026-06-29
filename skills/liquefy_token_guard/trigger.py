@@ -52,7 +52,9 @@ def _expanded_trace_dir(cfg: Dict[str, Any]) -> Path:
 def _run_ledger(*args: str) -> Dict[str, Any]:
     cmd = [sys.executable, str(LEDGER_SCRIPT), *args, "--json"]
     env = os.environ.copy()
-    env["HOME"] = str(Path.home())
+    home = str(Path.home())
+    env["HOME"] = home
+    env["USERPROFILE"] = home
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900, env=env)
     if proc.returncode != 0:
         try:
@@ -71,7 +73,9 @@ def _run_ledger(*args: str) -> Dict[str, Any]:
 def _run_capsule(*args: str) -> Dict[str, Any]:
     cmd = [sys.executable, str(CAPSULE_SCRIPT), *args, "--json"]
     env = os.environ.copy()
-    env["HOME"] = str(Path.home())
+    home = str(Path.home())
+    env["HOME"] = home
+    env["USERPROFILE"] = home
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900, env=env)
     if proc.returncode != 0:
         try:

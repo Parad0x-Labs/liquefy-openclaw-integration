@@ -1,14 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   DEFAULT_RISKY_PHRASE,
   MIN_LIQUEFY_OPENCLAW_VERSION,
   assessLiquefyCompatibility,
   buildOpenclawArgs,
+  buildSpawnPlan,
   compareLiquefyVersions,
   extractLiquefyVersion,
   parseLiquefyJson,
+  quoteWindowsCmdArg,
+  runLiquefyOpenclaw,
 } from "../dist/lib.js";
 
 test("buildOpenclawArgs scan uses safe defaults", () => {
@@ -17,6 +23,33 @@ test("buildOpenclawArgs scan uses safe defaults", () => {
   assert.ok(args.includes("--json"));
   assert.ok(args.includes("--dry-run"));
   assert.ok(!args.includes("--apply"));
+});
+
+test("buildSpawnPlan uses cmd.exe for Windows command shims", () => {
+  const plan = buildSpawnPlan(
+    "liquefy.cmd",
+    ["openclaw", "--workspace", "C:\\Users\\Test User\\.openclaw", "--json"],
+    "win32",
+  );
+  assert.equal(plan.windowsCmdShim, true);
+  assert.match(path.basename(plan.command).toLowerCase(), /^cmd(?:\.exe)?$/);
+  assert.deepEqual(plan.args.slice(0, 2), ["/d", "/c"]);
+  assert.match(plan.args[2], /liquefy\.cmd/);
+  assert.match(plan.args[2], /Test User/);
+});
+
+test("buildSpawnPlan leaves native executables direct on Windows", () => {
+  const plan = buildSpawnPlan("liquefy.exe", ["openclaw", "--json"], "win32");
+  assert.equal(plan.windowsCmdShim, false);
+  assert.equal(plan.command, "liquefy.exe");
+  assert.deepEqual(plan.args, ["openclaw", "--json"]);
+});
+
+test("quoteWindowsCmdArg escapes command metacharacters", () => {
+  const quoted = quoteWindowsCmdArg("C:\\tmp\\a & b\\liquefy.cmd");
+  assert.equal(quoted.startsWith("\""), true);
+  assert.equal(quoted.endsWith("\""), true);
+  assert.match(quoted, /\^&/);
 });
 
 test("buildOpenclawArgs apply includes explicit flags", () => {
@@ -86,4 +119,30 @@ test("extractLiquefyVersion reads runtime build version", () => {
     },
   });
   assert.equal(version, "1.1.0");
+});
+
+test("runLiquefyOpenclaw executes a Windows .cmd binaryPath", async (t) => {
+  if (process.platform !== "win32") {
+    t.skip("Windows-only process launch smoke");
+    return;
+  }
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "liquefy shim "));
+  const shim = path.join(dir, "fake-liquefy.cmd");
+  fs.writeFileSync(
+    shim,
+    [
+      "@echo off",
+      "echo {\"schema_version\":\"liquefy.openclaw.cli.v1\",\"tool\":\"liquefy_openclaw\",\"command\":\"version\",\"ok\":true,\"result\":{\"build\":{\"liquefy_version\":\"1.1.0\"}}}",
+      "",
+    ].join("\r\n"),
+  );
+
+  const payload = await runLiquefyOpenclaw(
+    "scan",
+    { out: path.join(dir, "vault out") },
+    { binaryPath: shim, workspace: path.join(dir, "workspace with spaces") },
+  );
+  assert.equal(payload.ok, true);
+  assert.equal(payload.compatibility.compatible, true);
 });
