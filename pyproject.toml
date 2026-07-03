@@ -7,7 +7,7 @@ name = "liquefy-openclaw"
 version = "1.1.0"
 description = "Entropy-native compression, auditing, and observability for AI agent runs"
 readme = "README.md"
-license = {text = "BUSL-1.1"}
+license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
     {name = "Parad0x Labs"},
@@ -40,16 +40,16 @@ api = [
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
     "pydantic>=2.5.0",
-    "cryptography>=41.0.0",
-    "python-multipart>=0.0.6",
+    "cryptography>=46.0.7",
+    "python-multipart>=0.0.27",
     "blake3>=0.4.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.0",
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.2",
     "sqlalchemy>=2.0.0",
     "pandas>=2.1.0",
     "scipy>=1.11.0",
-    "requests>=2.31.0",
+    "requests>=2.33.0",
     "tenacity>=8.2.0",
     "httpx>=0.25.0",
     "typer>=0.9.0",
@@ -69,9 +69,9 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration"
-Repository = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration"
-Issues = "https://github.com/Parad0x-Labs/liquefy-openclaw-integration/issues"
+Homepage = "https://github.com/Parad0x-Labs/openclaw-skills"
+Repository = "https://github.com/Parad0x-Labs/openclaw-skills"
+Issues = "https://github.com/Parad0x-Labs/openclaw-skills/issues"
 
 [project.scripts]
 liquefy-pack = "tools.tracevault_pack:main"

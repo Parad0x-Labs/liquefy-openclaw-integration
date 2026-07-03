@@ -58,7 +58,7 @@ Edit `config.json` or set via ClawHub skill settings:
 }
 ```
 
-## Honest Limits
+## Known Limits
 
 - Cost is **estimated API-equivalent cost** unless you wire exact provider billing elsewhere.
 - Subscription quota is **not** inferred from token math.

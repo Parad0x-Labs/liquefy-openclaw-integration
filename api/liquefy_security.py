@@ -29,7 +29,7 @@ DEFAULT_PBKDF2_ITERS = 300_000
 MAX_PBKDF2_ITERS = 2_000_000
 MAX_AUDIT_LEN = 1_048_576  # 1 MiB
 
-# No enforced usage limits in OSS/BUSL personal-use build.
+# No enforced usage limits — MIT-licensed, free for any use.
 
 class LiquefySecurity:
     def __init__(self, master_secret: Union[str, bytes, None] = None):

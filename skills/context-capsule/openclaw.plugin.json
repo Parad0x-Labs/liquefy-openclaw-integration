@@ -1,0 +1,40 @@
+{
+  "id": "context-capsule",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "minMessages": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Minimum session length (messages) before compression is applied. Default: 20."
+      },
+      "keepRecentMessages": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Number of most-recent messages kept verbatim after compression. Default: 10."
+      },
+      "maxCapsuleTokens": {
+        "type": "integer",
+        "minimum": 120,
+        "maximum": 4000,
+        "description": "Maximum tokens reserved for the injected extractive capsule. Default: 1400 (tuned for fidelity — near the knee of the recall/compression curve)."
+      },
+      "capsuleTokenRatio": {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 0.5,
+        "description": "When the host provides a model token budget, cap the capsule at this fraction of that budget. Default: 0.14."
+      },
+      "minCompressTokens": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Minimum estimated transcript tokens before compression is applied. Default: 900."
+      }
+    }
+  }
+}

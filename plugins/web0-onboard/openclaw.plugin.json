@@ -1,0 +1,31 @@
+{
+  "id": "web0-onboard",
+  "minOpenClawVersion": "2026.6.1",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "solanaWallet": {
+        "type": "string",
+        "description": "Default payout Solana wallet (base58 public key). Used when a web0_onboard call omits it. Public key only — the plugin never holds a key."
+      },
+      "name": {
+        "type": "string",
+        "description": "Default .null name (with or without the .null suffix), e.g. \"myagent\"."
+      },
+      "network": {
+        "type": "string",
+        "enum": ["solana-mainnet", "solana-devnet"],
+        "description": "Settlement network. Default: solana-mainnet."
+      },
+      "rpcUrl": {
+        "type": "string",
+        "description": "Solana RPC URL override. Defaults to solana-rpc.publicnode.com."
+      }
+    }
+  }
+}

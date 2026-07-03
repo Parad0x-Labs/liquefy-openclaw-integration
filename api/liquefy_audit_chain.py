@@ -1,11 +1,11 @@
 """
 liquefy_audit_chain.py
 ======================
-Tamper-proof append-only audit log with hash chain for compliance.
+Tamper-evident append-only audit log with hash chain for compliance.
 
 Every operation (compress, decompress, leak scan, prune, archive) is logged
 with a SHA-256 hash chain. Each entry includes the hash of the previous entry,
-creating an immutable sequence that detects any tampering.
+creating a sequence that detects any after-the-fact tampering.
 
 Designed for:
     - Enterprise compliance (SOC2, HIPAA audit requirements)

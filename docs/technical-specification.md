@@ -3,7 +3,7 @@ $NULL SOVEREIGN SDK - CORPORATE TECHNICAL SPECIFICATION [v3.5-STABLE]
 ================================================================================
 MISSION: Absolute Data Sovereignty + Maximum IP Protection
 ENTITY: Parad0x Labs
-STATUS: Production Verified / Enterprise Stable
+STATUS: Public Beta
 ================================================================================
 
 --- [ 1. PUBLIC INTERFACE & SECURITY POSTURE ] ---
@@ -21,14 +21,14 @@ STATUS: Production Verified / Enterprise Stable
 
 1.3 DOCUMENTATION & PROOF
     - Interface Contracts: Stable I/O definitions for automation.
-    - Verification Report: Audited 100% success rate across 23 engine paths.
-    - Proof-Pack: Hash-locked samples for local validation of Bit-Perfect Identity.
+    - Verification Report: self-tested round-trip success (UNAUDITED) across 23 engine paths.
+    - Proof-Pack: Hash-locked samples for local validation of bit-for-bit round-trip identity.
 
---- [ 2. WHAT IS SEALED (PRIVATE INTELLECTUAL PROPERTY) ] ---
+--- [ 2. WHAT IS PRIVATE (CLOSED-SOURCE INTELLECTUAL PROPERTY) ] ---
 
 2.1 AUTHENTICATED ENCRYPTION (THE FORTRESS)
     - Architecture: Multi-tenant isolated cryptographic envelope.
-    - Compliance: Designed for SOC 2 and FedRAMP grade data protection.
+    - Cryptography: uses AES-256-GCM + PBKDF2 + authenticated headers (not certified to any regime).
     - Verification: Mandatory authenticity check performed BEFORE decryption.
 
 2.2 CONDUCTION CONTAINER (THE VALVE)
@@ -53,5 +53,5 @@ STATUS: Production Verified / Enterprise Stable
     - Bitwise conduction logic for high-speed queries on compressed blobs.
 
 ================================================================================
-AUDIT COMPLETE. STATUS: ENTERPRISE READY / SEALED / BIT-PERFECT.
+STATUS: Public Beta / closed-source IP / self-tested bit-for-bit round-trip (UNAUDITED).
 ================================================================================

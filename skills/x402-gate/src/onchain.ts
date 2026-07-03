@@ -1,0 +1,212 @@
+/**
+ * On-chain settlement confirmation for revenue-grade gating.
+ *
+ * Structural verification (gate.ts) only proves the caller submitted a
+ * well-formed proof bound to the resource and amount. Before serving anything
+ * valuable, this confirms the payment ACTUALLY SETTLED — and proves it from the
+ * transaction itself, not from a memo the caller could forge:
+ *
+ *   1. The signature resolves to a FINALIZED, successful transaction (finalized,
+ *      not just confirmed, so it can't be rolled back after you've served).
+ *   2. The recipient's token balance for the expected mint went UP by at least
+ *      the required amount (the real proof that money moved).
+ *   3. The protocol treasury's balance for the expected mint went UP by at least
+ *      the pinned protocol fee (5 bps of the required amount) in the SAME tx — the
+ *      fee leg. Fail-closed: a missing or under-funded fee leg is rejected, so a
+ *      buyer cannot redeem the resource while skipping the protocol fee. The fee
+ *      amount + treasury are pinned LOCALLY here, never read from the challenge, so
+ *      a greedy seller can't zero the fee nor a malicious challenge redirect it.
+ *   4. The transaction's memo carries the unique receipt hash, binding the
+ *      payment to THIS charge (payer + recipient + amount + resource + nonce),
+ *      so a payment for one resource can't be presented for another.
+ *
+ * REPLAY: this verifier is stateless. To stop a buyer reusing one real payment
+ * for repeated access, the integrator MUST record consumed signatures (or the
+ * returned receiptHash) and reject repeats. Issue a unique `nullifierSeed` per
+ * challenge so each receiptHash is single-use.
+ *
+ * Isolated here so gate.ts stays network-free. Uses @solana/web3.js only.
+ */
+
+import bs58 from "bs58";
+import type { Connection, PublicKey } from "@solana/web3.js";
+import { MEMO_PREFIX, MEMO_PROGRAM_ID, PROTOCOL_FEE_TREASURY, protocolFeeAtomic } from "./constants";
+
+export interface OnChainExpect {
+  /** unique receipt hash for this charge (must appear in the tx memo) */
+  receiptHash: string;
+  /** recipient wallet — owner of the USDC token account that must be credited */
+  payTo: string;
+  /** expected token mint (USDC for the network) */
+  asset: string;
+  /** required amount in atomic units (string, e.g. "50000" = 0.05 USDC) */
+  amountAtomic: string;
+}
+
+export interface OnChainResult {
+  confirmed: boolean;
+  reason?: string;
+  slot?: number;
+  /** atomic units actually credited to the recipient (for logging/receipts) */
+  receivedAtomic?: string;
+  /** atomic units actually credited to the protocol treasury (the fee leg) */
+  feeReceivedAtomic?: string;
+}
+
+type TokenBal = {
+  accountIndex: number;
+  mint: string;
+  owner?: string;
+  uiTokenAmount?: { amount?: string };
+};
+
+/** Net change in `owner`'s total balance of `mint`, in atomic units, summed
+ *  across ALL of the owner's token accounts for that mint in the tx (a recipient
+ *  may hold more than one). Each post entry is paired to its own accountIndex pre
+ *  entry; a freshly created account has no pre-balance, correctly treated as 0. */
+function recipientDelta(
+  pre: TokenBal[],
+  post: TokenBal[],
+  owner: string,
+  mint: string,
+): bigint {
+  let delta = 0n;
+  for (const p of post) {
+    if (p.owner !== owner || p.mint !== mint) continue;
+    const preEntry = pre.find((b) => b.accountIndex === p.accountIndex);
+    const postAmt = BigInt(p.uiTokenAmount?.amount ?? "0");
+    const preAmt = preEntry ? BigInt(preEntry.uiTokenAmount?.amount ?? "0") : 0n;
+    delta += postAmt - preAmt;
+  }
+  return delta;
+}
+
+type CompiledIx = { programIdIndex: number; data: Uint8Array | string };
+
+/** Memo strings carried by instructions that are PROVABLY SPL-Memo-program calls
+ *  in this tx — program-attested, not a substring scan of the logs (which any
+ *  program can write). Walks BOTH top-level instructions and CPI inner instructions
+ *  (so a memo emitted inside a CPI still counts), and handles both legacy (base58
+ *  instruction data) and v0 (Uint8Array) message shapes. */
+function programAttestedMemos(tx: unknown): string[] {
+  const message = (tx as { transaction?: { message?: unknown } })?.transaction?.message as
+    | {
+        getAccountKeys?: (a?: { accountKeysFromLookups?: unknown }) => { get(i: number): PublicKey | undefined };
+        compiledInstructions?: CompiledIx[];
+        instructions?: CompiledIx[];
+      }
+    | undefined;
+  if (!message?.getAccountKeys) return [];
+  const meta = (tx as { meta?: { loadedAddresses?: unknown; innerInstructions?: { instructions: CompiledIx[] }[] } })
+    ?.meta;
+  let keys: { get(i: number): PublicKey | undefined };
+  try {
+    keys = message.getAccountKeys({ accountKeysFromLookups: meta?.loadedAddresses });
+  } catch {
+    try {
+      keys = message.getAccountKeys();
+    } catch {
+      return [];
+    }
+  }
+  const memos: string[] = [];
+  const collect = (list: CompiledIx[]) => {
+    for (const ix of list) {
+      const pid = keys.get(ix.programIdIndex);
+      if (!pid || pid.toBase58() !== MEMO_PROGRAM_ID) continue;
+      const bytes = typeof ix.data === "string" ? Buffer.from(bs58.decode(ix.data)) : Buffer.from(ix.data ?? []);
+      memos.push(bytes.toString("utf8"));
+    }
+  };
+  collect(message.compiledInstructions ?? message.instructions ?? []);
+  for (const group of meta?.innerInstructions ?? []) collect(group.instructions ?? []);
+  return memos;
+}
+
+export async function confirmOnChain(
+  connection: Connection,
+  signature: string,
+  expect: OnChainExpect,
+): Promise<OnChainResult> {
+  if (!signature) return { confirmed: false, reason: "no signature provided" };
+
+  let required: bigint;
+  try {
+    required = BigInt(expect.amountAtomic);
+  } catch {
+    return { confirmed: false, reason: "invalid expected amount" };
+  }
+  if (required <= 0n) return { confirmed: false, reason: "expected amount must be > 0" };
+
+  let tx;
+  try {
+    tx = await connection.getTransaction(signature, {
+      maxSupportedTransactionVersion: 0,
+      commitment: "finalized", // reorg-safe: only serve what can't be rolled back
+    });
+  } catch (e) {
+    return { confirmed: false, reason: `RPC error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  if (!tx) return { confirmed: false, reason: "transaction not finalized yet (or not found)" };
+  if (tx.meta?.err) {
+    return { confirmed: false, reason: `transaction failed on-chain: ${JSON.stringify(tx.meta.err)}` };
+  }
+
+  // (1) Bind to THIS charge — the tx must carry EXACTLY ONE receipt memo, emitted
+  //     by the SPL Memo program (program-attested, not just a string in the logs),
+  //     and it must be this charge's. Requiring a single memo stops one transfer (to
+  //     a shared recipient wallet) from carrying several receipt hashes and settling
+  //     multiple charges/gates for the price of one (cross-gate double-counting).
+  const receiptMemos = programAttestedMemos(tx).filter((m) => m.startsWith(`${MEMO_PREFIX}:`));
+  if (receiptMemos.length === 0) {
+    return { confirmed: false, reason: "no SPL-Memo receipt found (payment not bound to this charge)" };
+  }
+  if (receiptMemos.length > 1) {
+    return { confirmed: false, reason: "transaction carries multiple receipt memos — not a single-charge payment" };
+  }
+  if (receiptMemos[0] !== `${MEMO_PREFIX}:${expect.receiptHash}`) {
+    return { confirmed: false, reason: "receipt memo does not match this charge" };
+  }
+
+  // (2) Prove money actually moved — the recipient's token balance for the
+  //     expected mint must have increased by at least the required amount. A
+  //     memo alone is forgeable from public values; the balance delta is not.
+  const pre = (tx.meta?.preTokenBalances ?? []) as TokenBal[];
+  const post = (tx.meta?.postTokenBalances ?? []) as TokenBal[];
+  const delta = recipientDelta(pre, post, expect.payTo, expect.asset);
+  if (delta < required) {
+    return {
+      confirmed: false,
+      reason: `payment short or absent: recipient credited ${delta} of required ${required} (mint ${expect.asset})`,
+      receivedAtomic: delta.toString(),
+    };
+  }
+
+  // (3) Enforce the protocol fee leg — the treasury must have been credited at least
+  //     the pinned 5 bps fee of the required amount, in this same atomic tx. Fee +
+  //     treasury are pinned LOCALLY (never from the challenge), so the gate refuses to
+  //     serve a payment that skips or underpays the fee — a greedy buyer/seller cannot
+  //     bypass it. Computed on the REQUIRED amount (the charge), not the credited delta,
+  //     so overpaying the seller never lowers the fee owed.
+  const feeRequired = protocolFeeAtomic(required);
+  if (feeRequired > 0n) {
+    const feeDelta = recipientDelta(pre, post, PROTOCOL_FEE_TREASURY, expect.asset);
+    if (feeDelta < feeRequired) {
+      return {
+        confirmed: false,
+        reason: `protocol fee short or absent: treasury credited ${feeDelta} of required ${feeRequired} (mint ${expect.asset})`,
+        receivedAtomic: delta.toString(),
+        feeReceivedAtomic: feeDelta.toString(),
+      };
+    }
+    return {
+      confirmed: true,
+      slot: tx.slot,
+      receivedAtomic: delta.toString(),
+      feeReceivedAtomic: feeDelta.toString(),
+    };
+  }
+
+  return { confirmed: true, slot: tx.slot, receivedAtomic: delta.toString() };
+}

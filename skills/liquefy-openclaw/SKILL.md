@@ -2,8 +2,10 @@
 name: liquefy-openclaw
 version: 0.1.1
 description: Use this skill when working with Liquefy around OpenClaw, including workspace scan/pack flows, policy explanation, search/restore, guarded runs, context gate, replay blocking, native hook integration, session vaulting, and state/history guard workflows.
+license: MIT
 metadata:
   short-description: Liquefy guardrails for OpenClaw
+  author: Parad0x-Labs
 ---
 
 # Liquefy OpenClaw

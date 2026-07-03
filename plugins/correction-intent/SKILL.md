@@ -1,3 +1,11 @@
+---
+name: correction-intent-tagger
+description: Detects when a user message corrects a prior one, builds an active state where corrections override originals, and injects only the live instruction set into agent context. Prevents model drift when users change their minds mid-session.
+license: MIT
+metadata:
+  author: Parad0x-Labs
+---
+
 # Correction vs Instruction Tagger
 
 Detects when a message corrects a prior one and builds an active state
@@ -34,4 +42,4 @@ receipt = correction_chain_receipt(state, session_id)
 # receipt["chain_root"] anchors to Solana via receipt_anchor
 ```
 
-Part of the Parad0x Labs stack: github.com/Parad0x-Labs/dna-x402
+Part of the Parad0x Labs stack: github.com/Parad0x-Labs/openclaw-skills/tree/main/plugins/correction-intent

@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: python -m pip install -U pip
@@ -40,7 +40,7 @@ jobs:
           --verify-mode fast
           --liquefy-profile ${{ matrix.profile }}
       - name: Upload benchmark outputs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nightly-format-matrix-${{ matrix.os }}-${{ matrix.profile }}
           path: |
@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: python -m pip install -U pip
@@ -78,7 +78,7 @@ jobs:
           python bench/run_bench.py
           --sizes ${{ steps.openclaw_sizes.outputs.sizes }}
           --liquefy-verify-mode fast
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nightly-openclaw-bench-ubuntu
           path: |
