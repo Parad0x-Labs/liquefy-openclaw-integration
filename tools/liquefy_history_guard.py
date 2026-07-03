@@ -27,6 +27,7 @@ import tarfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import secrets
 from getpass import getpass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -114,8 +115,40 @@ def _save_json(path: Path, payload: Dict[str, Any]) -> None:
 
 
 
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+# Approval tokens are human-chosen secrets, so they are stored with a slow, salted KDF rather than a
+# fast unsalted digest — an offline attacker who obtains the config cannot cheaply brute-force the
+# token. PBKDF2-HMAC-SHA256 is used (not scrypt/argon2) because it is present in every Python stdlib
+# build regardless of the OpenSSL variant, so the gate works on any runner. The iteration count is
+# embedded in each record so it can be raised later without breaking records already written.
+_KDF_ITERATIONS = 200_000
+
+
+def _pbkdf2_hex(token: str, salt: bytes, iterations: int = _KDF_ITERATIONS) -> str:
+    return hashlib.pbkdf2_hmac("sha256", token.encode("utf-8"), salt, iterations, dklen=32).hex()
+
+
+def _make_token_record(token: str) -> str:
+    """Salted PBKDF2 record for a secret: 'pbkdf2$<iterations>$<salt_hex>$<hash_hex>' (random salt)."""
+    salt = secrets.token_bytes(16)
+    return f"pbkdf2${_KDF_ITERATIONS}${salt.hex()}${_pbkdf2_hex(token, salt)}"
+
+
+def _verify_token_record(token: str, record: str) -> bool:
+    """Constant-time verify of a token against a stored record. Accepts the PBKDF2 format and, for
+    configs written before the KDF upgrade, a bare 64-char legacy SHA-256 digest (re-run
+    set-approval-token to upgrade those)."""
+    record = (record or "").strip()
+    if record.startswith("pbkdf2$"):
+        try:
+            _, iters_s, salt_hex, want_hex = record.split("$", 3)
+            iterations = int(iters_s)
+            salt = bytes.fromhex(salt_hex)
+        except (ValueError, TypeError):
+            return False
+        return hmac.compare_digest(_pbkdf2_hex(token, salt, iterations), want_hex)
+    if len(record) == 64:  # legacy unsalted SHA-256 fallback (pre-KDF configs)
+        return hmac.compare_digest(hashlib.sha256(token.encode("utf-8")).hexdigest(), record)
+    return False
 
 
 
@@ -635,8 +668,8 @@ def _risk_match(command: str, patterns: List[str]) -> List[str]:
 
 
 def _verify_approval(cfg: Dict[str, Any], env: Dict[str, str]) -> tuple[bool, str]:
-    expected_hash = str(cfg.get("approval_token_sha256", "")).strip()
-    if not expected_hash:
+    record = str(cfg.get("approval_token_kdf") or cfg.get("approval_token_sha256", "")).strip()
+    if not record:
         return False, "LIQUEFY_APPROVAL_CONFIG_MISSING"
 
     env_var = str(cfg.get("approval_env_var", "LIQUEFY_APPROVAL_TOKEN"))
@@ -644,8 +677,7 @@ def _verify_approval(cfg: Dict[str, Any], env: Dict[str, str]) -> tuple[bool, st
     if not provided:
         return False, "LIQUEFY_APPROVAL_REQUIRED"
 
-    provided_hash = _hash_token(provided)
-    if not hmac.compare_digest(expected_hash, provided_hash):
+    if not _verify_token_record(provided, record):
         return False, "LIQUEFY_APPROVAL_INVALID"
 
     return True, ""
@@ -689,7 +721,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         "snapshot_vault_root": "/tmp/liquefy-history-guard-snapshots",
         "export_root": str(workspace / ".liquefy" / "provider_exports"),
         "approval_env_var": "LIQUEFY_APPROVAL_TOKEN",
-        "approval_token_sha256": "",
+        "approval_token_kdf": "",
         "risky_patterns": DEFAULT_RISKY_PATTERNS,
         "auto_recover_to_dir": True,
         "providers": [
@@ -809,14 +841,15 @@ def cmd_set_approval_token(args: argparse.Namespace) -> int:
             print(res["error"], file=sys.stderr)
         return 1
 
-    cfg["approval_token_sha256"] = _hash_token(token)
+    cfg["approval_token_kdf"] = _make_token_record(token)
+    cfg.pop("approval_token_sha256", None)  # drop any legacy unsalted digest
     cfg["approval_token_set_at_utc"] = _utc_now()
     _save_json(cpath, cfg)
 
     res = {
         "config_path": str(cpath),
         "approval_env_var": cfg.get("approval_env_var", "LIQUEFY_APPROVAL_TOKEN"),
-        "hash_prefix": cfg["approval_token_sha256"][:12],
+        "hash_prefix": cfg["approval_token_kdf"].split("$")[-1][:12],
     }
     if args.json:
         _emit("set-approval-token", True, res, Path(args.json_file).expanduser().resolve() if args.json_file else None)
@@ -1192,7 +1225,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         "config_path": str(cpath),
         "state_path": str(state_path),
         "approval_env_var": cfg.get("approval_env_var", "LIQUEFY_APPROVAL_TOKEN"),
-        "approval_configured": bool(str(cfg.get("approval_token_sha256", "")).strip()),
+        "approval_configured": bool(str(cfg.get("approval_token_kdf") or cfg.get("approval_token_sha256", "")).strip()),
         "providers": providers,
         "actions_recorded": len(state.get("actions", [])),
     }
