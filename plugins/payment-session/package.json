@@ -1,0 +1,43 @@
+{
+  "name": "@parad0x_labs/openclaw-payment-session",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin — streaming + recurring agent billing over x402 (metered pay-as-you-go + subscription), settled in batches, with a hard per-session cap. Non-custodial.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": ["src/", "openclaw.plugin.json", "SKILL.md", "README.md"],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "x402",
+    "streaming-payments",
+    "subscription",
+    "metering",
+    "solana",
+    "agent-payments",
+    "parad0x-labs"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "typebox": "1.1.39"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": { "node": ">=22" },
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Parad0x-Labs/openclaw-skills",
+    "directory": "plugins/payment-session"
+  }
+}

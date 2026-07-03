@@ -1,6 +1,6 @@
 #  COMPRESSION CODEC GOLDEN RULES
 
-## Enterprise-Grade Testing Framework
+## Codec Testing Framework
 
 *Last Updated: December 25, 2025*
 
@@ -8,15 +8,15 @@
 
 ##  MISSION STATEMENT
 
-**Golden Rules ensure your compression codec is production-ready:**
+**Golden Rules are the bar a compression codec must clear before it ships:**
 
 -  **Bit-perfect lossless** (not "mostly lossless")
--  **Bulletproof reliability** (no silent corruption)
+-  **No silent corruption** (every round-trip verified)
 -  **Auditable performance** (no marketing hype)
 -  **Cross-platform compatibility** (works everywhere)
--  **Enterprise-grade robustness** (handles edge cases)
+-  **Edge-case robustness** (empty, huge, malformed inputs)
 
-**If your codec fails ANY Golden Rule check, it is NOT production-ready.**
+**If your codec fails ANY Golden Rule check, it does not ship.**
 
 ---
 
@@ -399,7 +399,7 @@ VERIFICATION:  PASSED - ENTERPRISE READY
 
 ##  CONCLUSION
 
-**Golden Rules transform "works on my machine" into "enterprise-grade software".**
+**Golden Rules transform "works on my machine" into "verified, tested software".**
 
 **Follow them religiously. Your users' data depends on it.**
 

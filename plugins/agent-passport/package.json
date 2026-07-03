@@ -1,0 +1,33 @@
+{
+  "name": "@parad0x_labs/openclaw-agent-passport",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin — on-chain agent identity for the web0 stack (.null names, ETH↔Solana binding)",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": ["src/", "openclaw.plugin.json", "SKILL.md", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0",
+    "typebox": "1.1.39"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": { "node": ">=22" },
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Parad0x-Labs/openclaw-skills",
+    "directory": "plugins/agent-passport"
+  }
+}

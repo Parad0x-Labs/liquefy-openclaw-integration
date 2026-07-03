@@ -25,7 +25,7 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 DARK_SECP256K1_AUTH_PROGRAM_ID = "AqwBbV13AoczhoELwP8oxT3nDqB6MsLWXauNzHkssZ9B"
-SOLANA_MAINNET_RPC = "https://api.mainnet-beta.solana.com"
+SOLANA_MAINNET_RPC = "https://solana-rpc.publicnode.com"
 
 
 # ---------------------------------------------------------------------------

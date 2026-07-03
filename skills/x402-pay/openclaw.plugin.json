@@ -1,0 +1,60 @@
+{
+  "id": "x402-pay",
+  "minOpenClawVersion": "2026.6.1",
+  "activation": {
+    "onStartup": false
+  },
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "maxAmountUsdc": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Hard per-payment spend cap. The skill refuses any single 402 payment above this many USDC. An explicit 0 means pay-nothing (refuse all). The 1.0 default applies only when this is left unset."
+      },
+      "allowMainnet": {
+        "type": "boolean",
+        "description": "Authorize real-money payments on solana-mainnet. Default: false (opt-in). Set true to enable; mainnet also requires an explicit rpcUrl."
+      },
+      "maxTotalUsdc": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Cumulative spend cap across this process's lifetime — bounds a malicious endpoint that tries to drain the wallet one under-cap payment at a time. Default: 100x maxAmountUsdc (finite, not off). Raise for higher-volume agents."
+      },
+      "allowedRecipients": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Optional allowlist of recipient (payTo) addresses. If set, the skill refuses to pay any 402 whose recipient is not listed. The strongest defense against fund redirection — recommended on mainnet."
+      },
+      "maxDistinctRecipients": {
+        "type": "number",
+        "minimum": 1,
+        "description": "Max distinct recipient (payTo) addresses funded per process. Bounds SOL spent on recipient ATA rent (the USDC caps do NOT bound SOL). Default: 100."
+      },
+      "rpcUrl": {
+        "type": "string",
+        "description": "Solana RPC URL. REQUIRED on solana-mainnet (the public RPC is a third-party observer and unreliable for real payments). Optional on devnet (defaults to the public devnet endpoint)."
+      },
+      "spendLedgerPath": {
+        "type": "string",
+        "description": "Path to a durable spend-ledger file (JSON). Backs the cumulative cap, the double-pay guard, and the distinct-recipient cap so they survive a process restart. REQUIRED on mainnet (allowMainnet=true): without it, a restart while a payment is pending can broadcast a second real payment. Use a single persistent process per ledger file."
+      },
+      "allowInternalHosts": {
+        "type": "boolean",
+        "description": "Allow fetching internal/loopback/link-local/private hosts (turns OFF the SSRF guard). Default false. Set true ONLY for local-dev testing against a localhost gate — never on a production wallet host."
+      },
+      "requireApproval": {
+        "type": "boolean",
+        "description": "Require explicit host-side approval before any payment. Default false (auto-pay within caps). When true, pay_x402 returns a structured approval_required quote first; the host confirms with the owner and re-invokes with approved:true. See APPROVAL_INTEGRATION.md."
+      }
+    }
+  },
+  "secrets": {
+    "solanaSignerKeypair": {
+      "description": "Solana signing keypair as a JSON byte array. Declared here so the host runtime can manage it via SecretRef without exposing it to the model context. The skill itself uses the host-provided X402Signer interface — this field is for runtimes that supply a raw keypair.",
+      "required": false
+    }
+  }
+}

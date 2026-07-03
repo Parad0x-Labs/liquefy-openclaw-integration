@@ -22,8 +22,8 @@ Status:
 ### 1) Install Liquefy CLI locally (source bootstrap)
 
 ```bash
-git clone https://github.com/Parad0x-Labs/liquefy-openclaw-integration.git && \
-  cd liquefy-openclaw-integration && \
+git clone https://github.com/Parad0x-Labs/openclaw-skills.git && \
+  cd openclaw-skills && \
   ./install.sh
 ```
 

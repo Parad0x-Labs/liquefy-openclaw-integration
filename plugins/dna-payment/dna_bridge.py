@@ -12,7 +12,7 @@ Responsibilities:
 Environment variables:
   SOLANA_KEYPAIR   JSON array of 64 bytes (base-10 ints).  Required for
                    per-receipt anchoring; if absent anchoring is skipped.
-  SOLANA_RPC_URL   Optional override; defaults to mainnet-beta.
+  SOLANA_RPC_URL   Optional override; defaults to https://solana-rpc.publicnode.com.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from typing import Any
 # Constants
 # ---------------------------------------------------------------------------
 
-DEFAULT_RPC_URL = "https://api.mainnet-beta.solana.com"
+DEFAULT_RPC_URL = "https://solana-rpc.publicnode.com"
 EXPLORER_BASE   = "https://explorer.solana.com/tx"
 
 # Path to the vault-level anchor helper that lives next to this plugin.

@@ -311,7 +311,7 @@ def _generate_html_report(
 </div>
 
 <div class="footer">
-    Liquefy Compliance Report &copy; {datetime.now().year} Parad0x Labs — Tamper-Proof Audit Chain
+    Liquefy Compliance Report &copy; {datetime.now().year} Parad0x Labs — Tamper-Evident Audit Chain
 </div>
 
 </div>

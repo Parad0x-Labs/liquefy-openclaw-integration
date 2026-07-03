@@ -47,6 +47,10 @@ dist/
 build/
 *.spec
 
+# Node (TypeScript skill modules under skills/)
+node_modules/
+*.tsbuildinfo
+
 # OS
 .DS_Store
 Thumbs.db
@@ -92,3 +96,7 @@ tests/redteam/tmp/
 /install_parad0x_command.ps1
 /restore_parad0x_command_*.sh
 /docs/parad0x-command-*.md
+
+skills/*/node_modules/
+skills/*/dist/
+skills/*/*.tsbuildinfo
