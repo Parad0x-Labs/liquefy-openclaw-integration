@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn==0.39.0
-pydantic==2.5.2
+pydantic==2.13.4
 zstandard==0.22.0
 xxhash==3.4.1
 cryptography==48.0.0
