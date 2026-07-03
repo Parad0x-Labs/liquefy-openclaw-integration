@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
+import { vaultGuard } from "./vault-scan.js";
 
 export const DEFAULT_RISKY_PHRASE = "I UNDERSTAND THIS MAY LEAK SECRETS";
-export const PLUGIN_VERSION = "0.1.0-alpha";
+export const PLUGIN_VERSION = "0.1.1";
 export const MIN_LIQUEFY_OPENCLAW_VERSION = "1.1.0";
 
 const compatibilityCache = new Map();
@@ -17,29 +18,36 @@ function pushIf(args, flag, value) {
 
 export function buildOpenclawArgs(mode, input = {}, config = {}) {
   const args = ["openclaw"];
-  const workspace = input.workspace || config.workspace || "~/.openclaw";
-  const out = input.out || config.vaultOut;
+  // ── Vault gate ──────────────────────────────────────────────────────────
+  // Scrub PII and secrets from any text fields BEFORE they reach the CLI or
+  // the compression surface.  Matches the canonical pattern set in
+  // tools/liquefy_redact.py.  Values are never logged — only category counts.
+  const workspace = vaultGuard(
+    input.workspace || config.workspace || "~/.openclaw",
+    "workspace path",
+  );
+  const out = vaultGuard(input.out || config.vaultOut || "", "out path");
   if (!out) {
     throw new Error("missing_out");
   }
 
-  args.push("--workspace", String(workspace), "--out", String(out), "--json");
+  args.push("--workspace", workspace, "--out", out, "--json");
 
   const profile = input.profile || config.profile || "default";
   args.push("--profile", String(profile));
 
   if (config.policyFile && !input.policy) {
-    args.push("--policy", String(config.policyFile));
+    args.push("--policy", vaultGuard(String(config.policyFile), "policyFile"));
   }
-  pushIf(args, "--policy", input.policy);
+  if (input.policy) pushIf(args, "--policy", vaultGuard(String(input.policy), "policy"));
   pushIf(args, "--max-bytes-per-run", input.maxBytesPerRun ?? config.maxBytesPerRun);
   pushIf(args, "--list-limit", input.listLimit ?? config.listLimit);
 
   if (Array.isArray(input.allow)) {
-    for (const p of input.allow) args.push("--allow", String(p));
+    for (const p of input.allow) args.push("--allow", vaultGuard(String(p), "allow path"));
   }
   if (Array.isArray(input.deny)) {
-    for (const p of input.deny) args.push("--deny", String(p));
+    for (const p of input.deny) args.push("--deny", vaultGuard(String(p), "deny path"));
   }
   if (Array.isArray(input.allowCategories)) {
     for (const c of input.allowCategories) args.push("--allow-category", String(c));

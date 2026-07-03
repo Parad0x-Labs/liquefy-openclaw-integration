@@ -1,5 +1,6 @@
 ---
 name: liquefy-openclaw
+version: 0.1.1
 description: Use this skill when working with Liquefy around OpenClaw, including workspace scan/pack flows, policy explanation, search/restore, guarded runs, context gate, replay blocking, native hook integration, session vaulting, and state/history guard workflows.
 license: MIT
 metadata:
@@ -8,6 +9,12 @@ metadata:
 ---
 
 # Liquefy OpenClaw
+
+> **Data handling (v0.1.1):** All input values are passed through an inline
+> vault-scan gate (ported from `tools/liquefy_redact.py`) before reaching the
+> Liquefy CLI. The gate strips API keys, tokens, credentials, PII, and card
+> numbers, replacing them with typed placeholders. No matched values are logged.
+> Workspace files are processed locally; nothing is transmitted externally.
 
 Use this skill when the user wants to:
 - scan or pack an OpenClaw workspace with Liquefy
