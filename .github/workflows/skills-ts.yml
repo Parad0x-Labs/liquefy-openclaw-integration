@@ -65,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         if: matrix.changed == 'true'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: matrix.changed == 'true'
         with:
           node-version: 22
