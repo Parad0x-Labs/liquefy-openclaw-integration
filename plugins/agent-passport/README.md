@@ -7,7 +7,7 @@ Give your agent a passport it can present (and check on others) so payments,
 reputation, and audit trails all bind to one verifiable on-chain identity.
 
 ```bash
-npm i @parad0x_labs/openclaw-agent-passport   # from source until published
+npm i @parad0x_labs/openclaw-agent-passport
 ```
 
 > Requires OpenClaw **≥ 2026.6.1**. Read-only. Public RPC only.

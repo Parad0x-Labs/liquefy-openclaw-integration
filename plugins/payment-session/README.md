@@ -6,7 +6,7 @@ settlement, not per tick), with a hard per-session spend cap. Non-custodial — 
 never moves money or holds a key.
 
 ```bash
-npm i @parad0x_labs/openclaw-payment-session   # from source until published
+npm i @parad0x_labs/openclaw-payment-session
 ```
 
 > Requires OpenClaw **≥ 2026.6.1**.
