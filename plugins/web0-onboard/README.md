@@ -5,7 +5,7 @@ anchoring, and a `.null` name-binding plan. Sell services for USDC on Solana; fu
 settle to **your** wallet. Read-only, non-custodial.
 
 ```bash
-npm i @parad0x_labs/openclaw-web0-onboard   # from source until published
+npm i @parad0x_labs/openclaw-web0-onboard
 ```
 
 > Requires OpenClaw **≥ 2026.6.1**. Never signs, never holds a key.
