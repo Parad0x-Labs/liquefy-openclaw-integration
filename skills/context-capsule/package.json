@@ -1,6 +1,6 @@
 {
   "name": "@parad0x_labs/openclaw-context-capsule",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Self-contained OpenClaw context engine that compresses older agent session history into a bounded extractive capsule, preserving decisions, tasks, errors, files, links, and durable facts while keeping recent messages verbatim.",
   "type": "module",
   "main": "./dist/index.js",
@@ -8,7 +8,8 @@
     "dist/",
     "openclaw.plugin.json",
     "README.md",
-    "SKILL.md"
+    "SKILL.md",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "openclaw",
@@ -38,7 +39,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build && npm test",
-    "test": "npm run build && node test/compression-smoke.mjs && node test/quality.test.mjs && node test/supersession-bench.mjs && node test/hardening-bench.mjs && node test/secret-bench.mjs && node test/platform-parity.test.mjs"
+    "test": "npm run build && node test/compression-smoke.mjs && node test/quality.test.mjs && node test/value-survival.test.mjs && node test/supersession-bench.mjs && node test/hardening-bench.mjs && node test/secret-bench.mjs && node test/platform-parity.test.mjs"
   },
   "engines": {
     "node": ">=22"
