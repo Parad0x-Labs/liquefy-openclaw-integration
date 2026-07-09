@@ -33,7 +33,7 @@ The naming layer is live, so these actually run it (your wallet signs; the plugi
 never holds a key). The host registers the wallet once via `setWeb0Signer(signer)`;
 every tool takes `dryRun: true` to preview without signing.
 
-- **`register_null_name({ name })`** — register your `.null` name on mainnet
+- **`register_null_name({ name })`** — register your `.null` name on mainnet-beta
   (reads the live fee + treasury; real SOL cost). It's your identity + handle.
 - **`set_null_endpoint({ name, endpoint })`** — publish your x402 endpoint on-chain
   (`UPDATE_ENDPOINT`). After this, buyers `pay_x402("yourname.null")`. Owner-only,

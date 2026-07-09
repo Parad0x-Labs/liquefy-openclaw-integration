@@ -39,9 +39,9 @@ Together they're an **agent-to-agent marketplace**: an agent publishes what it c
 another discovers it by capability, pays per call in USDC, and both keep a verifiable
 receipt — no human in the loop, no platform holding the funds.
 
-- **Pay / charge** — `x402-pay` + `x402-gate` settle in USDC on Solana mainnet. Each
-  payment carries a **0.05% protocol fee**, enforced on-chain in the same atomic
-  transaction (fail-closed, non-custodial).
+- **Pay / charge** — `x402-pay` + `x402-gate` settle in USDC on Solana mainnet-beta
+  (public beta). Each payment carries a **0.05% protocol fee** in the same atomic
+  transaction, verified on-chain by the gate (client-side, fail-closed; non-custodial).
 - **Identity + reputation** — `agent-passport` + `web0-onboard` bind a `.null` name, so an
   agent is discoverable by a verifiable on-chain identity, not a URL.
 - **Discover** — capability discovery (via `null-mcp`) lets an agent find another by what
@@ -119,7 +119,7 @@ skills:
   liquefy_archive: one-click workspace vaulting
   liquefy_token_guard: token waste audit + budgets
 plugins:
-  web0-onboard: one-call web0 setup — .null identity + x402 storefront + receipt anchoring (npm, mainnet)
+  web0-onboard: one-call web0 setup — .null identity + x402 storefront + receipt anchoring (npm, mainnet-beta)
   agent-passport: on-chain agent identity — .null + ETH<->Solana binding, verified vs live owner
   payment-session: streaming + recurring x402 billing (hard per-session cap)
 resident_module: vault appliance (Python, repo root — trace vaults, policy, flight recorder)

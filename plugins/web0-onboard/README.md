@@ -41,7 +41,7 @@ never holds a key. Each tool takes `dryRun: true` to preview without signing.
 
 | Tool | Does |
 |---|---|
-| `register_null_name({ name })` | register your `.null` name on mainnet (reads the live fee + treasury; real SOL) |
+| `register_null_name({ name })` | register your `.null` name on mainnet-beta (reads the live fee + treasury; real SOL) |
 | `set_null_endpoint({ name, endpoint })` | publish your x402 endpoint on-chain — now buyers `pay_x402("yourname.null")` |
 | `set_null_stealth_meta({ name, stealth_meta_hex })` | publish a stealth address for recipient-private pay-by-name |
 

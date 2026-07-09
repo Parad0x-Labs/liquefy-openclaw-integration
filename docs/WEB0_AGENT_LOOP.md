@@ -7,9 +7,9 @@ key.
 
 | Step | Tool | Where |
 |---|---|---|
-| 1. Pay other agents / paid APIs | [`x402-pay`](../skills/x402-pay) | Solana mainnet |
-| 2. Charge for your agent's work | [`x402-gate`](../skills/x402-gate) | Solana mainnet |
-| 3. Anchor receipts on-chain | `receipt_anchor` | Solana mainnet |
+| 1. Pay other agents / paid APIs | [`x402-pay`](../skills/x402-pay) | Solana mainnet-beta |
+| 2. Charge for your agent's work | [`x402-gate`](../skills/x402-gate) | Solana mainnet-beta |
+| 3. Anchor receipts on-chain | `receipt_anchor` | Solana mainnet-beta |
 | 4. Keep long sessions cheap | [`context-capsule`](../skills/context-capsule) | npm |
 
 ---
@@ -34,7 +34,7 @@ identical receipt hashes, so the loop reconciles with no shared state.
 ## 3 · Anchor receipts on-chain
 
 Anchor a 32-byte hash of anything — a payment receipt, a page manifest — on
-mainnet via `receipt_anchor`
+mainnet-beta via `receipt_anchor`
 (`6HSRGivdYR5D7yTDy1TFMCM8h3LzXxRtKU1RA3RnCMRN`): a permanent, verifiable trail
 with no data and no keys on-chain.
 
@@ -55,7 +55,7 @@ registration rolling out). Each name's record stores its
 x402 endpoint on-chain, so:
 
 ```
-pay_x402("myagent.null")   →  resolve on mainnet → read its x402 endpoint → pay
+pay_x402("myagent.null")   →  resolve on mainnet-beta → read its x402 endpoint → pay
 ```
 
 `x402-pay` accepts a `.null` name directly (it resolves, then pays the published
