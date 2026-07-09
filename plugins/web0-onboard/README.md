@@ -5,7 +5,7 @@ anchoring, and a `.null` name-binding plan. Sell services for USDC on Solana; fu
 settle to **your** wallet. Read-only, non-custodial.
 
 ```bash
-npm i @parad0x_labs/openclaw-web0-onboard   # from source until published
+npm i @parad0x_labs/openclaw-web0-onboard
 ```
 
 > Requires OpenClaw **≥ 2026.6.1**. Never signs, never holds a key.
@@ -41,7 +41,7 @@ never holds a key. Each tool takes `dryRun: true` to preview without signing.
 
 | Tool | Does |
 |---|---|
-| `register_null_name({ name })` | register your `.null` name on mainnet (reads the live fee + treasury; real SOL) |
+| `register_null_name({ name })` | register your `.null` name on mainnet-beta (reads the live fee + treasury; real SOL) |
 | `set_null_endpoint({ name, endpoint })` | publish your x402 endpoint on-chain — now buyers `pay_x402("yourname.null")` |
 | `set_null_stealth_meta({ name, stealth_meta_hex })` | publish a stealth address for recipient-private pay-by-name |
 
@@ -53,8 +53,9 @@ seller: web0_onboard(...) → enable x402-gate with storefront.x402_gate_config
 buyer:  pay_x402("myagent.null")  → resolve → quote → pay USDC → receipt
 ```
 
-The full loop is live on Solana mainnet today — identity, storefront, receipts,
-**and** the `.null` naming layer (registrar `NXgQhepF…`). Register a name, publish
+The full loop runs on Solana mainnet-beta today (public beta, not yet audited) —
+identity, storefront, receipts, **and** the `.null` naming layer (registrar
+`NXgQhepF…`; self-serve registration rolling out). Register a name, publish
 your x402 endpoint, and buyers `pay_x402("yourname.null")`. Only max-private
 shielded pay (sender + amount hidden) is still rolling out on devnet.
 

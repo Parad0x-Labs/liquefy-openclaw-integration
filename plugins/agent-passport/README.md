@@ -7,7 +7,7 @@ Give your agent a passport it can present (and check on others) so payments,
 reputation, and audit trails all bind to one verifiable on-chain identity.
 
 ```bash
-npm i @parad0x_labs/openclaw-agent-passport   # from source until published
+npm i @parad0x_labs/openclaw-agent-passport
 ```
 
 > Requires OpenClaw **≥ 2026.6.1**. Read-only. Public RPC only.
@@ -45,8 +45,9 @@ signer, never here.
 
 ## Status
 
-ETH↔Solana binding and the WebAuthn P-256 vault are live on mainnet. `.null` name
-**resolution** wiring lands with the null-resolver deployment — until then
-`nullName` is surfaced from config as-is.
+ETH↔Solana binding and the WebAuthn P-256 vault (`dark_secp256r1_vault`) run on
+Solana mainnet-beta (public beta, not yet audited). `.null` name **resolution**
+wiring lands with the null-resolver deployment — until then `nullName` is surfaced
+from config as-is.
 
 See [SKILL.md](./SKILL.md) for the full tool reference. MIT licensed.

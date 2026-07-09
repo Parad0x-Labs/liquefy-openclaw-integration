@@ -22,11 +22,17 @@ Claude, GPT, Ollama, Mistral, LM Studio.
   held-out pivot set it cleans 83% of abandoned subjects with **zero** wrongly
   flagged live choices.
 - **High fidelity per token.** Distinctive signals — file paths, IDs, ports,
-  URLs, commands, errors, decisions — are emitted as dense atoms, so the capsule
-  keeps **79% of key signals at ~5× reduction and 93% at ~3.4×** on real
-  sessions (measured, see `test/fidelity-bench.mjs`).
+  URLs, commands, errors, decisions — are emitted as dense atoms. As of **v1.7.0**,
+  a lone value (a bare port `5433`, an issue ref `#4821`, a version `v2.13.0`, an
+  ISO date, a hyphenated code like `NEEDLE-ZX-7742`) is emitted as its **own** atom,
+  so it survives compression even when its surrounding sentence loses the budget
+  race — CI-tested in `test/value-survival.test.mjs`. On the maintainer's own real
+  sessions the capsule kept ~79% of key signals at ~5× reduction and ~93% at ~3.4×;
+  `test/fidelity-bench.mjs` measures this against **your own** `~/.openclaw` sessions
+  (run it on your data to reproduce — the figures are from private sessions, not a
+  repo fixture).
 
-> **Self-contained (v1.6.0):** The compression core is bundled directly in this
+> **Self-contained (v1.7.0):** The compression core is bundled directly in this
 > skill (`src/compression.ts`). There is **no external runtime dependency**, and
 > the plugin makes **no network, file-system, or on-chain calls**. Everything
 > runs locally using only Node's built-in `zlib` and `crypto`, and is fully

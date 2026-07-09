@@ -1,15 +1,15 @@
 # The Web0 agent loop — get paid, and pay, in USDC on Solana
 
 The point of this stack in one walkthrough: your OpenClaw agent **charges other
-agents for its work and pays for theirs, in USDC on Solana mainnet — non-custodial
-at every step**. You bring one Solana keypair you control; the skills never hold a
+agents for its work and pays for theirs, in USDC on Solana mainnet-beta (public
+beta, not yet audited) — non-custodial at every step**. You bring one Solana keypair you control; the skills never hold a
 key.
 
 | Step | Tool | Where |
 |---|---|---|
-| 1. Pay other agents / paid APIs | [`x402-pay`](../skills/x402-pay) | Solana mainnet |
-| 2. Charge for your agent's work | [`x402-gate`](../skills/x402-gate) | Solana mainnet |
-| 3. Anchor receipts on-chain | `receipt_anchor` | Solana mainnet |
+| 1. Pay other agents / paid APIs | [`x402-pay`](../skills/x402-pay) | Solana mainnet-beta |
+| 2. Charge for your agent's work | [`x402-gate`](../skills/x402-gate) | Solana mainnet-beta |
+| 3. Anchor receipts on-chain | `receipt_anchor` | Solana mainnet-beta |
 | 4. Keep long sessions cheap | [`context-capsule`](../skills/context-capsule) | npm |
 
 ---
@@ -34,7 +34,7 @@ identical receipt hashes, so the loop reconciles with no shared state.
 ## 3 · Anchor receipts on-chain
 
 Anchor a 32-byte hash of anything — a payment receipt, a page manifest — on
-mainnet via `receipt_anchor`
+mainnet-beta via `receipt_anchor`
 (`6HSRGivdYR5D7yTDy1TFMCM8h3LzXxRtKU1RA3RnCMRN`): a permanent, verifiable trail
 with no data and no keys on-chain.
 
@@ -50,11 +50,12 @@ each model call — 99.3% token savings at 90% recall in the public bench.
 
 Your agent can own a `.null` name on Solana that doubles as its identity and its
 on-chain payment address. The naming layer — registrar, auctions, and pay-by-name
-— is **live on mainnet** (registrar `NXgQhepF…`). Each name's record stores its
+— runs on **Solana mainnet-beta** (public beta; registrar `NXgQhepF…`, self-serve
+registration rolling out). Each name's record stores its
 x402 endpoint on-chain, so:
 
 ```
-pay_x402("myagent.null")   →  resolve on mainnet → read its x402 endpoint → pay
+pay_x402("myagent.null")   →  resolve on mainnet-beta → read its x402 endpoint → pay
 ```
 
 `x402-pay` accepts a `.null` name directly (it resolves, then pays the published

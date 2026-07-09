@@ -10,8 +10,9 @@ One home for Parad0x Labs' agent skills — payments, context compression, the
 
 ## 🚀 The agent payment loop — install it
 
-Give your agent **the ability to pay and get paid in USDC**, on Solana mainnet —
-non-custodial, with a hard spend cap. Drop these into an OpenClaw agent:
+Give your agent **the ability to pay and get paid in USDC**, on Solana mainnet-beta
+(public beta, mainnet opt-in; not yet audited) — non-custodial, with a hard spend cap.
+Drop these into an OpenClaw agent:
 
 ```bash
 # Pay + charge (OpenClaw plugins — drop into an agent)
@@ -21,7 +22,7 @@ non-custodial, with a hard spend cap. Drop these into an OpenClaw agent:
 # Receipts + status MCP server (any MCP client)
 npx @parad0x_labs/mcp-server                    # → skills/mcp-server
 
-# .null identity + one-call web0 setup (live on mainnet)
+# .null identity + one-call web0 setup (Solana mainnet-beta; self-serve registration rolling out)
 npx @parad0x_labs/null-mcp                      # resolve / verify ownership / pay a .null name (any MCP client)
 npm i @parad0x_labs/openclaw-web0-onboard       # one call: identity + x402 storefront + register your .null name
 
@@ -30,7 +31,7 @@ npm i @parad0x_labs/openclaw-context-capsule
 ```
 
 Walk it end to end: **[The Web0 agent loop →](./docs/WEB0_AGENT_LOOP.md)**.
-Your agent's **`.null` identity + pay-by-name** are live on Solana mainnet — `openclaw-web0-onboard` registers the name and publishes your x402 endpoint, so buyers `pay_x402("yourname.null")`.
+Your agent's **`.null` identity + pay-by-name** run on Solana mainnet-beta (public beta; self-serve registration rolling out) — `openclaw-web0-onboard` registers the name and publishes your x402 endpoint, so buyers `pay_x402("yourname.null")`.
 
 ## agent.null — what these skills add up to
 
@@ -38,9 +39,9 @@ Together they're an **agent-to-agent marketplace**: an agent publishes what it c
 another discovers it by capability, pays per call in USDC, and both keep a verifiable
 receipt — no human in the loop, no platform holding the funds.
 
-- **Pay / charge** — `x402-pay` + `x402-gate` settle in USDC on Solana mainnet. Each
-  payment carries a **0.05% protocol fee**, enforced on-chain in the same atomic
-  transaction (fail-closed, non-custodial).
+- **Pay / charge** — `x402-pay` + `x402-gate` settle in USDC on Solana mainnet-beta
+  (public beta). Each payment carries a **0.05% protocol fee** in the same atomic
+  transaction, verified on-chain by the gate (client-side, fail-closed; non-custodial).
 - **Identity + reputation** — `agent-passport` + `web0-onboard` bind a `.null` name, so an
   agent is discoverable by a verifiable on-chain identity, not a URL.
 - **Discover** — capability discovery (via `null-mcp`) lets an agent find another by what
@@ -52,11 +53,11 @@ Full write-up: **[agent.null — the autonomous agent marketplace](https://githu
 
 | Skill | What it does | Standalone? | Pairs with | Install |
 |---|---|---|---|---|
-| [`x402-pay`](./skills/x402-pay) | Your agent **pays** x402-gated APIs/agents in USDC on Solana mainnet — BYO signer, never holds a key, hard spend cap | ✅ works against any x402 endpoint | `x402-gate` (the selling side) | `npm i @parad0x_labs/openclaw-x402-pay` |
+| [`x402-pay`](./skills/x402-pay) | Your agent **pays** x402-gated APIs/agents in USDC on Solana mainnet-beta (mainnet opt-in; devnet by default) — BYO signer, never holds a key, hard spend cap | ✅ works against any x402 endpoint | `x402-gate` (the selling side) | `npm i @parad0x_labs/openclaw-x402-pay` |
 | [`x402-gate`](./skills/x402-gate) | **Charge** other agents per call — mint a 402 challenge, verify (optionally on-chain-confirmed), serve; funds land in your own wallet | ✅ any x402 client can pay it | `x402-pay` (the buying side) | `npm i @parad0x_labs/openclaw-x402-gate` |
-| [`context-capsule`](./skills/context-capsule) | Compresses long session history before the model call (99.3% token savings / 90% recovery, measured by the [public bench](https://github.com/Parad0x-Labs/dna-x402/tree/main/packages/context-capsule)) — no network, no chain | ✅ fully self-contained | everything — orthogonal | `npm i @parad0x_labs/openclaw-context-capsule` |
-| [`mcp-server`](./skills/mcp-server) | **MCP server** for any MCP client (Claude Desktop/Cursor/Windsurf): x402 quote, receipt anchoring, single-use nullifier checks, agent-identity lookup, live mainnet stack status. Read-only by default; writes need an opt-in keypair + per-call confirm | ✅ standalone MCP server | pairs with `null-mcp` for the full loop | `npx @parad0x_labs/mcp-server` |
-| [`web0-onboard`](./plugins/web0-onboard) | **One call** to stand up a paid `.null` agent: derives your identity, returns an x402 storefront config, wires receipt anchoring, and exposes `register_null_name` / `set_null_endpoint` / `set_null_stealth_meta` so buyers `pay_x402("yourname.null")` — registrar pinned to mainnet, non-custodial | ✅ one-call web0 setup | `null-mcp`, `x402-gate` | `npm i @parad0x_labs/openclaw-web0-onboard` |
+| [`context-capsule`](./skills/context-capsule) | Compresses long session history before the model call — bounded, deterministic, keeps decisions/errors/IDs/ports/values, no network, no chain (fidelity measured on your own `~/.openclaw` sessions via `test/fidelity-bench.mjs`) | ✅ fully self-contained | everything — orthogonal | `npm i @parad0x_labs/openclaw-context-capsule` |
+| [`mcp-server`](./skills/mcp-server) | **MCP server** for any MCP client (Claude Desktop/Cursor/Windsurf): x402 quote, receipt anchoring, single-use nullifier checks, agent-identity lookup, mainnet-beta stack status. Read-only by default; writes need an opt-in keypair + per-call confirm | ✅ standalone MCP server | pairs with `null-mcp` for the full loop | `npx @parad0x_labs/mcp-server` |
+| [`web0-onboard`](./plugins/web0-onboard) | **One call** to stand up a paid `.null` agent: derives your identity, returns an x402 storefront config, wires receipt anchoring, and exposes `register_null_name` / `set_null_endpoint` / `set_null_stealth_meta` so buyers `pay_x402("yourname.null")` — registrar on Solana mainnet-beta, non-custodial | ✅ one-call web0 setup | `null-mcp`, `x402-gate` | `npm i @parad0x_labs/openclaw-web0-onboard` |
 | [`agent-passport`](./plugins/agent-passport) | On-chain **agent identity** — `.null` name + ETH↔Solana wallet binding via `get_agent_passport` / `verify_agent_identity`, verified against the live on-chain owner | ✅ identity lookup + verify | `web0-onboard`, `x402-pay` | `npm i @parad0x_labs/openclaw-agent-passport` |
 | [`payment-session`](./plugins/payment-session) | **Streaming + recurring** x402 billing over `pay_x402` — metered and subscription charges with a hard per-session cap | ✅ wraps any x402 endpoint | `x402-pay`, `x402-gate` | `npm i @parad0x_labs/openclaw-payment-session` |
 | [`liquefy-openclaw`](./skills/liquefy-openclaw) | Skill pack for the vault appliance: scan/pack flows, guarded runs, context gate, replay blocking, restore | needs the vault appliance below | vault appliance | copy skill dir / ClawHub |
@@ -68,8 +69,8 @@ Plus the **resident module**: the [vault appliance](#the-vault-appliance-residen
 state/history guards. The three liquefy skills above are its front-ends.
 
 **Start here →** [**The Web0 agent loop**](./docs/WEB0_AGENT_LOOP.md): pay and get
-paid in USDC on Solana mainnet, anchor receipts, and keep long sessions cheap —
-non-custodial at every step.
+paid in USDC on Solana mainnet-beta (public beta), anchor receipts, and keep long
+sessions cheap — non-custodial at every step.
 
 ## The modularity contract
 
@@ -96,7 +97,7 @@ Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. 
 |---|---|---|
 | 💸 Payments | [dna-x402](https://github.com/Parad0x-Labs/dna-x402) | x402 rail: quote → pay → verify → receipt → anchor |
 | 🛠️ Build | [dna-x402-builders](https://github.com/Parad0x-Labs/dna-x402-builders) | Hosted kit: turn any API/bot into a paid agent |
-| 🕶️ Privacy | [Dark-Null-Protocol](https://github.com/Parad0x-Labs/Dark-Null-Protocol) | Groth16 privacy settlement, published proofs |
+| 🕶️ Privacy | [Dark-Null-Protocol](https://github.com/Parad0x-Labs/Dark-Null-Protocol) | Groth16 privacy settlement — devnet, unaudited (mainnet rolling out); published proofs |
 | 🗜️ Data | [liquefy](https://github.com/Parad0x-Labs/liquefy) | Columnar compression that beats Zstd |
 | 🛡️ Audit | [liquefy-openclaw-integration](https://github.com/Parad0x-Labs/liquefy-openclaw-integration) | Flight recorder: 24 engines + Solana-anchored audit trails |
 | 🎬 Media | [nebula-media](https://github.com/Parad0x-Labs/nebula-media) | Proof-carrying media compression — scene-aware + on-chain receipts |
@@ -110,7 +111,7 @@ Parad0x Labs builds Web0 on Solana — money and agents that settle themselves. 
 product: openclaw-skills
 category: modular agent skills for OpenClaw and *claw-family runtimes
 skills:
-  x402-pay: pay x402-gated APIs on Solana mainnet (BYO signer, capped)
+  x402-pay: pay x402-gated APIs on Solana mainnet-beta (BYO signer, capped)
   x402-gate: charge other agents per call (no custody, on-chain verify option)
   context-capsule: compress long session history (no network, no chain)
   mcp-server: MCP server — x402 quote / receipt anchor / nullifier / stack status (any MCP client)
@@ -118,7 +119,7 @@ skills:
   liquefy_archive: one-click workspace vaulting
   liquefy_token_guard: token waste audit + budgets
 plugins:
-  web0-onboard: one-call web0 setup — .null identity + x402 storefront + receipt anchoring (npm, mainnet)
+  web0-onboard: one-call web0 setup — .null identity + x402 storefront + receipt anchoring (npm, mainnet-beta)
   agent-passport: on-chain agent identity — .null + ETH<->Solana binding, verified vs live owner
   payment-session: streaming + recurring x402 billing (hard per-session cap)
 resident_module: vault appliance (Python, repo root — trace vaults, policy, flight recorder)

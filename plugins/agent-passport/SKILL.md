@@ -71,6 +71,7 @@ Returns whether the ETH binding and/or Solana wallet PDAs are registered on-chai
 ## Current status
 
 ETH↔Solana binding (`dark_secp256k1_auth`) and WebAuthn P-256 vault
-(`dark_secp256r1_vault`) are live on mainnet. .null name resolution wiring comes
-with the null-resolver deployment — `nullName` is surfaced from config as-is
+(`dark_secp256r1_vault`) run on Solana mainnet-beta (public beta, not yet audited).
+.null name resolution wiring comes with the null-resolver deployment — `nullName`
+is surfaced from config as-is
 until then.

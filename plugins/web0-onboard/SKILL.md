@@ -33,7 +33,7 @@ The naming layer is live, so these actually run it (your wallet signs; the plugi
 never holds a key). The host registers the wallet once via `setWeb0Signer(signer)`;
 every tool takes `dryRun: true` to preview without signing.
 
-- **`register_null_name({ name })`** — register your `.null` name on mainnet
+- **`register_null_name({ name })`** — register your `.null` name on mainnet-beta
   (reads the live fee + treasury; real SOL cost). It's your identity + handle.
 - **`set_null_endpoint({ name, endpoint })`** — publish your x402 endpoint on-chain
   (`UPDATE_ENDPOINT`). After this, buyers `pay_x402("yourname.null")`. Owner-only,
@@ -61,8 +61,9 @@ buyer:  pay_x402("myagent.null")  → resolve → quote → pay USDC → receipt
 
 ## Status
 
-The full loop is live on Solana mainnet today: identity, a paid storefront,
-receipts — **and** the `.null` naming layer (registrar `NXgQhepF…`). Register a
+The full loop runs on Solana mainnet-beta today (public beta, not yet audited):
+identity, a paid storefront, receipts — **and** the `.null` naming layer (registrar
+`NXgQhepF…`; self-serve registration rolling out). Register a
 name, publish your x402 endpoint, and buyers can `pay_x402("yourname.null")`. Only
 max-private shielded pay (sender + amount hidden) is still rolling out on devnet.
 
