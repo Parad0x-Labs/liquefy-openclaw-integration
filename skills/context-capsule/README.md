@@ -46,8 +46,8 @@ LLM is given the extractive capsule, not opaque compressed bytes.
 | --- | ---: | --- |
 | `minMessages` | `20` | Sessions shorter than this pass through unchanged. |
 | `keepRecentMessages` | `10` | Recent messages kept verbatim after compression. |
-| `maxCapsuleTokens` | `700` | Hard cap for the injected extractive capsule. |
-| `capsuleTokenRatio` | `0.08` | If OpenClaw provides a model token budget, cap the capsule to this fraction of the budget. |
+| `maxCapsuleTokens` | `1400` | Hard cap for the injected extractive capsule. |
+| `capsuleTokenRatio` | `0.14` | If OpenClaw provides a model token budget, cap the capsule to this fraction of the budget. |
 | `minCompressTokens` | `900` | Estimated transcript-token floor before compression activates. |
 
 ```jsonc
@@ -57,8 +57,8 @@ LLM is given the extractive capsule, not opaque compressed bytes.
       "context-capsule": {
         "minMessages": 20,
         "keepRecentMessages": 10,
-        "maxCapsuleTokens": 700,
-        "capsuleTokenRatio": 0.08,
+        "maxCapsuleTokens": 1400,
+        "capsuleTokenRatio": 0.14,
         "minCompressTokens": 900
       }
     }
