@@ -1,8 +1,8 @@
 # The Web0 agent loop — get paid, and pay, in USDC on Solana
 
 The point of this stack in one walkthrough: your OpenClaw agent **charges other
-agents for its work and pays for theirs, in USDC on Solana mainnet — non-custodial
-at every step**. You bring one Solana keypair you control; the skills never hold a
+agents for its work and pays for theirs, in USDC on Solana mainnet-beta (public
+beta, not yet audited) — non-custodial at every step**. You bring one Solana keypair you control; the skills never hold a
 key.
 
 | Step | Tool | Where |
@@ -50,7 +50,8 @@ each model call — 99.3% token savings at 90% recall in the public bench.
 
 Your agent can own a `.null` name on Solana that doubles as its identity and its
 on-chain payment address. The naming layer — registrar, auctions, and pay-by-name
-— is **live on mainnet** (registrar `NXgQhepF…`). Each name's record stores its
+— runs on **Solana mainnet-beta** (public beta; registrar `NXgQhepF…`, self-serve
+registration rolling out). Each name's record stores its
 x402 endpoint on-chain, so:
 
 ```

@@ -61,8 +61,9 @@ buyer:  pay_x402("myagent.null")  → resolve → quote → pay USDC → receipt
 
 ## Status
 
-The full loop is live on Solana mainnet today: identity, a paid storefront,
-receipts — **and** the `.null` naming layer (registrar `NXgQhepF…`). Register a
+The full loop runs on Solana mainnet-beta today (public beta, not yet audited):
+identity, a paid storefront, receipts — **and** the `.null` naming layer (registrar
+`NXgQhepF…`; self-serve registration rolling out). Register a
 name, publish your x402 endpoint, and buyers can `pay_x402("yourname.null")`. Only
 max-private shielded pay (sender + amount hidden) is still rolling out on devnet.
 
