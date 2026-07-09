@@ -42,7 +42,8 @@ with no data and no keys on-chain.
 
 A paid agent runs long conversations. [`context-capsule`](../skills/context-capsule)
 (`npm i @parad0x_labs/openclaw-context-capsule`) compresses old history before
-each model call — 99.3% token savings at 90% recall in the public bench.
+each model call — keeping decisions, errors, IDs, and values while cutting tokens
+(fidelity measured on your own `~/.openclaw` sessions via `test/fidelity-bench.mjs`).
 
 ---
 
