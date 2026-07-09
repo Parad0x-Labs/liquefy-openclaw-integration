@@ -7,11 +7,11 @@ Exposes the Parad0x Labs stack as MCP tools. Works with Claude Desktop, Cursor, 
 | Tool | Description |
 |---|---|
 | `x402_get_quote` | Get a payment quote for an x402-gated API endpoint |
-| `anchor_receipt` | Anchor a 32-byte receipt hash on Solana mainnet via `receipt_anchor` |
+| `anchor_receipt` | Anchor a 32-byte receipt hash on Solana mainnet-beta via `receipt_anchor` |
 | `lookup_passport` | Check if an ETH address or Solana wallet has a verified Dark Passport binding |
 | `build_outcome_receipt` | Build a signed outcome receipt with PnL, accuracy, or delivery result |
 | `compress_receipts` | Compress a batch of receipts (zlib deflate; Liquefy-format demo — the production columnar codec targets ~83x) |
-| `get_stack_status` | Discover all live Parad0x Labs mainnet program addresses |
+| `get_stack_status` | Discover Parad0x Labs mainnet-beta program addresses |
 
 ## Install
 
@@ -76,13 +76,15 @@ npm start
 | `SOLANA_RPC_URL` | `https://solana-rpc.publicnode.com` | Solana RPC endpoint |
 | `SOLANA_KEYPAIR` | _(unset)_ | JSON array of 64 bytes — enables real transaction submission |
 
-## Programs (mainnet)
+## Programs (Solana mainnet-beta, pre-audit pilot)
 
 | Program | Address |
 |---|---|
 | receipt_anchor | `6HSRGivdYR5D7yTDy1TFMCM8h3LzXxRtKU1RA3RnCMRN` |
 | dark_secp256r1_vault | `3hbbtjeSrTVYXq6eRwjeofDe2DCPh3n8cfN6kZcQfewi` |
 | dark_secp256k1_auth | `AqwBbV13AoczhoELwP8oxT3nDqB6MsLWXauNzHkssZ9B` |
-| dark_bn254_gate | `GCptvBYF8S6eVYoh15B7WAESc54FUHCpN1Ui6aHeQYZd` |
 | dark_semaphore | `Ev7HEFhhKTXk6kS2Y6ssbUcK9C7E6yZ589jJNjUrQV5p` |
 | null_token | `8EeDdvCRmFAzVD4takkBrNNwkeUTUQh4MscRK5Fzpump` |
+
+The Groth16 ZK verifier gate (`dark_bn254_gate`) is **not** in this list: it is a devnet-only,
+unaudited program (dev-only trusted setup) and is not deployed to mainnet-beta.

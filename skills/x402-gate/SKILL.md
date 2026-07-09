@@ -60,7 +60,7 @@ off-chain today; a multi-party ceremony and on-chain trustless verification are 
 ## Pairs with
 
 `x402-pay` — the paying side. Together: the full agent-to-agent payment loop,
-settling in USDC on Solana mainnet.
+settling in USDC on Solana mainnet-beta (public beta, mainnet opt-in).
 
 ## Source
 

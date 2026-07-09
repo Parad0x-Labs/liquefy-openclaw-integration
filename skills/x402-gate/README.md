@@ -12,8 +12,8 @@ Turn any OpenClaw skill or API into a paid endpoint. Mint an HTTP **402 Payment
 Required** challenge, verify the payment, then serve. Funds settle **straight to
 your own wallet** on Solana — the skill holds no keys and takes no custody. Pairs
 with [`x402-pay`](../x402-pay)
-(the paying side) for the full agent-to-agent loop on a rail that's **live on
-Solana mainnet**.
+(the paying side) for the full agent-to-agent loop on a rail that runs on
+Solana mainnet-beta (public beta, not yet audited; devnet by default for testing).
 
 ## Trust model
 
@@ -25,13 +25,14 @@ Solana mainnet**.
   only after its transaction is **confirmed settled on Solana** — not just a
   well-formed header. The check binds to the unique receipt hash in the tx memo,
   so proofs can't be replayed against a different charge.
-- **Enforced protocol fee.** Every settled payment carries a **0.05% (5 bps)**
-  protocol-fee leg to the network treasury (a Squads multisig) in the *same atomic
-  transaction* as your seller payment. `requireOnChain` verifies both legs and
-  refuses to serve if the fee is missing or short — fail-closed. The fee amount and
-  treasury are pinned in code on both the paying and gating sides, never read from
-  the challenge, so it can't be zeroed or redirected. Still non-custodial: the fee
-  settles directly on-chain, no one holds it.
+- **Protocol fee (client-verified).** Every settled payment carries a **0.05% (5 bps)**
+  protocol-fee leg to the protocol treasury (a Squads multisig) in the *same atomic
+  transaction* as your seller payment. `requireOnChain` verifies both legs and refuses to
+  serve if the fee is missing or short — fail-closed on the gating side. This is a
+  client-side on-chain check, not a program-enforced split (program-level fee enforcement
+  is not yet live). The fee amount and treasury are pinned in code on both the paying and
+  gating sides, never read from the challenge, so it can't be zeroed or redirected. Still
+  non-custodial: the fee settles directly on-chain, no one holds it.
 
 > **Non-custodial.** Payments settle straight to your own wallet (less the pinned
 > 0.05% protocol fee, which settles directly to the treasury); the skill holds no
@@ -136,9 +137,6 @@ addon can run install-time code on that host** — use either:
 npm install --ignore-scripts @parad0x_labs/openclaw-x402-gate   # skips ALL install scripts
 npm install --omit=optional  @parad0x_labs/openclaw-x402-gate   # skips the optional native addons
 ```
-
-> Lands on npm with the v1.1 release. Until then, install from source (this repo,
-> `skills/x402-gate`); the commands above resolve once it's published.
 
 This is **required, not optional** for a key-holding host. The only transitive
 native builds are `bufferutil` / `utf-8-validate` — **optional** perf addons of

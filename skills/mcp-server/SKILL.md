@@ -1,6 +1,6 @@
 ---
 name: parad0x-mcp-server
-description: MCP server exposing the full Parad0x Labs stack — x402 payment quotes, on-chain receipt anchoring to Solana mainnet, Dark Passport lookup, outcome receipts, receipt compression, and live program discovery. Runs over stdio, works with Claude Desktop and any MCP client.
+description: MCP server exposing the full Parad0x Labs stack — x402 payment quotes, on-chain receipt anchoring on Solana mainnet-beta, Dark Passport lookup, outcome receipts, receipt compression, and live program discovery. Runs over stdio, works with Claude Desktop and any MCP client.
 license: MIT
 metadata:
   author: Parad0x-Labs
@@ -14,7 +14,7 @@ Cursor, Windsurf, and any MCP-compatible agent runtime.
 ## When to use
 
 - Your agent needs to quote, pay, or verify an x402-gated API call.
-- You want to anchor a receipt hash permanently on Solana mainnet.
+- You want to anchor a receipt hash on Solana mainnet-beta.
 - You need to look up whether a wallet or ETH address has a verified Dark Passport.
 - You want to compress a batch of receipts or check live program addresses.
 
@@ -23,11 +23,11 @@ Cursor, Windsurf, and any MCP-compatible agent runtime.
 | Tool | Does |
 |---|---|
 | `x402_get_quote` | Get a payment quote for an x402-gated API endpoint |
-| `anchor_receipt` | Anchor a 32-byte receipt hash on Solana mainnet via `receipt_anchor` |
+| `anchor_receipt` | Anchor a 32-byte receipt hash on Solana mainnet-beta via `receipt_anchor` |
 | `lookup_passport` | Check if an ETH address or Solana wallet has a verified Dark Passport binding |
 | `build_outcome_receipt` | Build a signed outcome receipt with PnL, accuracy, or delivery result |
 | `compress_receipts` | Compress a batch of receipts (Liquefy format) |
-| `get_stack_status` | Discover all live Parad0x Labs mainnet program addresses |
+| `get_stack_status` | Discover Parad0x Labs mainnet-beta program addresses |
 
 ## Install
 

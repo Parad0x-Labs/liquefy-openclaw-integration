@@ -68,7 +68,7 @@ multi-party ceremony and on-chain trustless verification are coming next.
 ## Pairs with
 
 `x402-gate` — the charging side. Together they're the full agent-to-agent payment
-loop, settling in USDC on Solana mainnet.
+loop, settling in USDC on Solana mainnet-beta (public beta, mainnet opt-in).
 
 ## Source
 

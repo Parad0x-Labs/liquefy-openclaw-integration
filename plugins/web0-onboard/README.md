@@ -53,8 +53,9 @@ seller: web0_onboard(...) → enable x402-gate with storefront.x402_gate_config
 buyer:  pay_x402("myagent.null")  → resolve → quote → pay USDC → receipt
 ```
 
-The full loop is live on Solana mainnet today — identity, storefront, receipts,
-**and** the `.null` naming layer (registrar `NXgQhepF…`). Register a name, publish
+The full loop runs on Solana mainnet-beta today (public beta, not yet audited) —
+identity, storefront, receipts, **and** the `.null` naming layer (registrar
+`NXgQhepF…`; self-serve registration rolling out). Register a name, publish
 your x402 endpoint, and buyers `pay_x402("yourname.null")`. Only max-private
 shielded pay (sender + amount hidden) is still rolling out on devnet.
 

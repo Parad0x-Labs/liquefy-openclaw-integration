@@ -5,8 +5,9 @@
 Give your agent one tool — `pay_x402` — that fetches an x402-gated URL and, if it
 answers HTTP **402 Payment Required**, pays for it on Solana and returns the
 resource. Pairs with [`x402-gate`](../x402-gate)
-(the charging side) to form the full agent-to-agent payment loop on a rail that's
-**live on Solana mainnet** — settlement is a standard SPL USDC transfer (mainnet USDC
+(the charging side) to form the full agent-to-agent payment loop on a rail that runs
+on Solana mainnet-beta (public beta, not yet audited; devnet by default for testing) —
+settlement is a standard SPL USDC transfer (mainnet USDC
 mint `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`) with the receipt hash carried in a
 Memo. There is no custom settlement program to trust — just the SPL Token and Memo programs.
 
