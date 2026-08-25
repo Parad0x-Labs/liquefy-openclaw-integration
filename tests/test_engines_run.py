@@ -41,18 +41,12 @@ class TestEngineExecution:
         if instance is None:
             pytest.skip(f"{engine_id} could not be loaded")
 
-        try:
-            compressed = instance.compress(sample_json)
-        except Exception as e:
-            pytest.skip(f"{engine_id} compress raised: {e}")
+        compressed = instance.compress(sample_json)
 
         assert compressed, f"{engine_id} produced empty output"
         assert len(compressed) > 0
 
-        try:
-            restored = instance.decompress(compressed)
-        except Exception as e:
-            pytest.skip(f"{engine_id} decompress raised: {e}")
+        restored = instance.decompress(compressed)
 
         # Semantic equivalence — some engines may normalize whitespace
         # but byte-level equality is the gold standard

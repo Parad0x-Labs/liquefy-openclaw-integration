@@ -6,30 +6,24 @@ paste-and-go checklist so a publish session is mechanical.
 
 > npm scope: `@parad0x_labs` (public). Log in once: `npm login`.
 
-## State today (verified 2026-06-21)
+## State today (verified 2026-08-25)
+
+All public packages are published and match the local sources:
 
 | Package | On npm | Local / canonical | Action |
 |---|---|---|---|
-| `@parad0x_labs/openclaw-context-capsule` | **1.4.0** ✅ | this repo `skills/context-capsule` | up to date — no action |
-| `@parad0x_labs/null-mcp` | **0.2.0** ⚠️ stale | private packages repo `packages/null-mcp` @ **0.6.0** | **republish 0.6.0** (the 0.2.0 on npm has pre-mainnet wiring) |
-| `@parad0x_labs/mcp-server` | not published | this repo `skills/mcp-server` @ 0.1.0 | **publish** |
-| `@parad0x_labs/openclaw-x402-pay` | not published | this repo `skills/x402-pay` @ 1.1.0 | **publish** |
-| `@parad0x_labs/openclaw-x402-gate` | not published | this repo `skills/x402-gate` @ 1.1.0 | **publish** |
-| `@parad0x_labs/openclaw-agent-passport` | not published | this repo `plugins/agent-passport` @ 0.1.0 | **publish** |
+| `@parad0x_labs/openclaw-context-capsule` | **1.7.0** ✅ | this repo `skills/context-capsule` @ 1.7.0 | up to date — no action |
+| `@parad0x_labs/null-mcp` | **0.10.0** ✅ | private packages repo `packages/null-mcp` | up to date — no action |
+| `@parad0x_labs/mcp-server` | **0.1.1** ✅ | this repo `skills/mcp-server` @ 0.1.1 | up to date — no action |
+| `@parad0x_labs/openclaw-x402-pay` | **2.0.0** ✅ | this repo `skills/x402-pay` @ 2.0.0 | up to date — no action |
+| `@parad0x_labs/openclaw-x402-gate` | **2.0.0** ✅ | this repo `skills/x402-gate` @ 2.0.0 | up to date — no action |
+| `@parad0x_labs/openclaw-agent-passport` | **0.1.0** ✅ | this repo `plugins/agent-passport` @ 0.1.0 | up to date — no action |
 
-## 1. Republish null-mcp 0.6.0 (most urgent — kills the stale 0.2.0)
+Before any future publish, refresh this table against `npm view
+@parad0x_labs/<pkg> version` and each local `package.json`. The publish
+commands below remain the mechanical reference for new versions.
 
-```bash
-cd <private-packages-repo>/packages/null-mcp
-npm version   # confirm package.json says 0.6.0 (NOT 0.2.0)
-npm publish --access public
-npm view @parad0x_labs/null-mcp version   # expect 0.6.0
-```
-
-Agents running `npx @parad0x_labs/null-mcp` currently get 0.2.0. This is the
-single highest-impact publish — do it first.
-
-## 2. Publish mcp-server
+## 1. Publish a new version of mcp-server
 
 ```bash
 cd <openclaw-skills>/skills/mcp-server
@@ -39,7 +33,7 @@ npm publish --access public
 # smoke: npx @parad0x_labs/mcp-server  → should start an MCP stdio server (11 tools: 8 stack + get_scope_status / grant_write_consent / revoke_write_consent)
 ```
 
-## 3. Publish the x402 skills
+## 2. Publish the x402 skills
 
 ```bash
 cd <openclaw-skills>/skills/x402-pay  && npm publish --access public
@@ -50,7 +44,7 @@ cd <openclaw-skills>/skills/x402-gate && npm publish --access public
 no build step, the `files` field ships `src/`. Any local install of these uses
 `npm install --ignore-scripts`, and the published READMEs tell consumers the same.)
 
-## 3b. Publish agent-passport (on-chain identity plugin)
+## 2b. Publish agent-passport (on-chain identity plugin)
 
 ```bash
 cd <openclaw-skills>/plugins/agent-passport
@@ -62,19 +56,19 @@ npm publish --access public
 (Read-only identity plugin: `get_agent_passport` + `verify_agent_identity`, public
 RPC only, no seized program IDs. Ships `src/` like the x402 skills.)
 
-## 4. After publishing — flip the catalog to live
+## 3. After publishing — flip the catalog to live
 
 In this repo's `README.md`, change the affected `Install` cells from
 "from source — npm publish pending" to the `npm i` / `npx` command, and update
 `PUBLISH_RUNBOOK.md`'s state table. (One small docs PR.)
 
-## 5. Optional reach — ClawHub listings
+## 4. Optional reach — ClawHub listings
 
 The three OpenClaw plugins (`x402-pay`, `x402-gate`, `context-capsule`) carry
 ClawHub-format `SKILL.md`. List them on ClawHub so claw-family agents discover
 them in-client.
 
-## Pre-publish checklist (verified 2026-06-21)
+## Pre-publish checklist (verified 2026-08-25)
 - [x] mcp-server: `solana-rpc.publicnode.com` is the default RPC (not api.mainnet-beta.solana.com)
 - [x] mcp-server: consent registry is live — `grant_write_consent` actually gates writes (`canSubmitWrite`), seized program IDs guarded
 - [x] x402-pay / x402-gate / agent-passport: `minOpenClawVersion: 2026.6.1` in openclaw.plugin.json

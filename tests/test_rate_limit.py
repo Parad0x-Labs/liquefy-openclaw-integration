@@ -32,10 +32,8 @@ class TestRateLimiting:
                 blocked = True
                 break
 
-        # At some point it should block (depends on actual limits)
-        # If the implementation has no hard block, this test documents that gap
-        if not blocked:
-            pytest.skip("Rate limiter did not block after 200 calls — review limits")
+        # At some point it should block (byte limit: 200 x 10 MB > 1 GiB default)
+        assert blocked, "Rate limiter did not block after 200 calls — review limits"
 
     def test_different_keys_independent(self, security_instance):
         """Rate limit for key A should not affect key B."""
