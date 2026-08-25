@@ -881,6 +881,37 @@ The decoder CLI/appliance path is built to fail closed rather than guess. To ens
   - `./liquefy_scoreboard_default.png`
   - `./liquefy_vs_zstd_openclaw_50_200.png`
 
+### Post-hardening verification (API auth/traversal fixes)
+
+The API hardening changes (auth enforcement, upload sanitization, raw-blob decompress
+routing) touched only the HTTP boundary and blob routing — **no codec or engine output
+changed**. Verified by:
+
+- `tests/test_roundtrip_byteperfect.py` against `tests/golden/engine_profiles_v1.json`
+  (output byte sizes and hashes identical to golden profiles) — full suite green.
+- Red-team harness (`bash tests/redteam/run_all.sh`) — ALL PASS.
+
+Freshly measured ratios on this repo's own target-format fixtures (agent JSONL traces,
+VPC-flow logs; 1.9 MB across 19 files, strict policy, MRTV on):
+
+| Method | Ratio |
+|---|---|
+| Liquefy (default profile, tracevault pack) | **103.9x** |
+| zstd -19 | 63.8x |
+| zstd -3 | 49.0x |
+
+Honest counterpoint: on dense non-target text (docs/schemas/markdown, ~1 MB) Liquefy
+scored 1.02x vs zstd-19 at 1.06x. The engines are format-specialists — feed them agent
+traces and machine logs, not prose.
+
+Reproduce locally:
+
+```bash
+export LIQUEFY_SECRET="<32+ char secret>"
+python tools/tracevault_pack.py tests/fixtures/golden_inputs --org bench --out ./vault/bench --json
+tar -cf - tests/fixtures/golden_inputs | zstd -19 -c -o /dev/null   # compare baseline
+```
+
 ---
 
 ## 🏢 Contact
