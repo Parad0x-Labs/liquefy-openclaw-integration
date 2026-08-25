@@ -203,11 +203,18 @@ class LiquefyOrchestrator:
         if not self.registry:
             for k in self.engines: self._get_engine(k)
 
-        data = Valve.unseal(compressed_blob, self.registry)
-
-        duration_ms = (time.time() - start_t) * 1000
         meta = audit_meta.get("meta", {})
         engine_key = meta.get("engine", "unknown")
+        try:
+            data = Valve.unseal(compressed_blob, self.registry)
+        except ValueError:
+            # Raw engine output (MRTV success path): route by recorded engine
+            if not engine_key or engine_key == "unknown":
+                raise
+            engine, _ = self._get_engine(engine_key)
+            data = engine.decompress(compressed_blob)
+
+        duration_ms = (time.time() - start_t) * 1000
         Vision.track_op(f"dec_{engine_key}", tenant_id, len(secure_blob), len(data), duration_ms)
 
         return data, audit_meta

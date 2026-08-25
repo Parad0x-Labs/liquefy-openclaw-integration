@@ -114,7 +114,8 @@ class LiquefySafety:
         engine_registry: { b'ENG\x01': decompress_func }
         """
         if not blob.startswith(b'SAFE'):
-            return None
+            # Raw engine output (MRTV success path): caller routes by engine ID
+            raise ValueError("UNRECOGNIZED_BLOB: missing SAFE wrapper")
 
         engine_id = blob[4:8]
         payload = blob[8:]
