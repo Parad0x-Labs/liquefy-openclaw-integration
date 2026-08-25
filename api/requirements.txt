@@ -3,7 +3,7 @@ uvicorn==0.39.0
 pydantic==2.13.4
 zstandard==0.25.0
 xxhash==3.6.0
-cryptography==48.0.0
+cryptography==50.0.0
 python-multipart==0.0.27
 blake3==0.4.1
 python-jose[cryptography]==3.4.0
