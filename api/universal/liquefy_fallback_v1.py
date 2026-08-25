@@ -110,7 +110,7 @@ class LiquefyFallbackV1:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3: print("Usage: [compress|decompress] <in> <out>"); sys.exit(1)
-    codec = NULL_Universal_Repetition_Focused()
+    codec = LiquefyFallbackV1()
     if sys.argv[1] == "compress":
         with open(sys.argv[2], "rb") as f: d=f.read()
         with open(sys.argv[3], "wb") as f: f.write(codec.compress(d))

@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install -U pip
-      - run: pip install -r requirements.txt || true
+      - run: pip install -r requirements.txt
       - uses: github/codeql-action/analyze@v4
 
   pip_audit:

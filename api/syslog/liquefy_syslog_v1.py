@@ -57,7 +57,7 @@ class SmartColumn:
                     delta_blob += pack_varint(zigzag_enc(diff))
                     last = n
                 return pack_varint(MODE_DELTA) + delta_blob
-        except: pass
+        except (ValueError, TypeError, OverflowError): pass
 
         # 4. Raw
         raw_blob = pack_varint(count)
@@ -199,7 +199,7 @@ class LiquefySyslogV1:
             for i in range(len(parts)-1):
                 out.extend(parts[i])
                 try: out.extend(next(col_iters[i]))
-                except: out.extend(b"ERR")
+                except StopIteration: out.extend(b"ERR")
             out.extend(parts[-1])
         return bytes(out)
 
@@ -214,7 +214,7 @@ class LiquefySyslogV1:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3: print("Usage: python NULL_Syslog_Entropy_Focused.py [compress|decompress|grep] <in> <out/query>"); sys.exit(1)
-    codec = NULL_Syslog_Entropy_Focused()
+    codec = LiquefySyslogV1()
     if sys.argv[1] == "compress":
         with open(sys.argv[2], "rb") as f: d=f.read()
         res = codec.compress(d); print(f"Compressed {len(d)} -> {len(res)} bytes ({len(d)/len(res):.2f}x)")

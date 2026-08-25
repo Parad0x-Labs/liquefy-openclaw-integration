@@ -50,7 +50,7 @@ class VpcSmartColumn:
                 if b'.' not in x: # Stricter check: must have dots
                     is_ipv4 = False; break
                 socket.inet_aton(x.decode())
-        except: is_ipv4 = False
+        except (ValueError, UnicodeDecodeError, OSError): is_ipv4 = False
 
         if is_ipv4:
             try:
@@ -58,7 +58,7 @@ class VpcSmartColumn:
                 for x in raw_values:
                     ip_blob.extend(socket.inet_aton(x.decode()))
                 return pack_varint(MODE_IPV4) + pack_varint(count) + ip_blob
-            except: pass
+            except (ValueError, UnicodeDecodeError, OSError): pass
 
         # 3. Dictionary (Ports, ENIs)
         unique_vals = set(raw_values)
@@ -80,7 +80,7 @@ class VpcSmartColumn:
                 if not x.isdigit():
                     is_numeric = False; break
                 nums.append(int(x))
-        except: is_numeric = False
+        except (ValueError, UnicodeDecodeError): is_numeric = False
 
         if is_numeric:
             deltas = []
