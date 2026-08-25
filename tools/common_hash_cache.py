@@ -94,10 +94,13 @@ class HashCache:
             "max_entries": self.max_entries,
             "entries": dict(self._entries),
         }
-        self.path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        # Atomic write (temp + os.replace) so a crash never truncates the cache
+        tmp_path = self.path.parent / f"{self.path.name}.tmp.liquefy"
+        tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         if os.name != "nt":
             try:
-                self.path.chmod(0o600)
+                tmp_path.chmod(0o600)
             except OSError:
                 pass
+        os.replace(tmp_path, self.path)
         self._dirty = False

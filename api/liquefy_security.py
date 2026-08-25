@@ -29,7 +29,11 @@ DEFAULT_PBKDF2_ITERS = 300_000
 MAX_PBKDF2_ITERS = 2_000_000
 MAX_AUDIT_LEN = 1_048_576  # 1 MiB
 
-# No enforced usage limits — MIT-licensed, free for any use.
+# Sliding-window usage limits. In-process (per-instance); not multiprocess-safe.
+# Override via env: LIQUEFY_RATE_LIMIT_CALLS, LIQUEFY_RATE_LIMIT_BYTES.
+RATE_LIMIT_WINDOW_SEC = 3600
+RATE_LIMIT_MAX_CALLS = int(os.getenv("LIQUEFY_RATE_LIMIT_CALLS", "120"))
+RATE_LIMIT_MAX_BYTES = int(os.getenv("LIQUEFY_RATE_LIMIT_BYTES", str(1024**3)))  # 1 GiB
 
 class LiquefySecurity:
     def __init__(self, master_secret: Union[str, bytes, None] = None):
@@ -45,19 +49,37 @@ class LiquefySecurity:
         if len(self.master_secret) < 16:
             raise ValueError("WEAK_SECRET: secret too short; use >=16 bytes (prefer 32+)")
 
-        # usage_store tracks: {key_or_ip: {"calls": int, "bytes": int, "reset_at": float}}
-        self.usage_store = collections.defaultdict(lambda: {"calls": 0, "bytes": 0, "reset_at": time.time() + 86400})
+        # usage_store tracks: {key_or_ip: deque[(timestamp, nbytes)]} — sliding window
+        self.usage_store = collections.defaultdict(collections.deque)
 
     def get_limit(self, api_key: str = None) -> tuple[int, float]:
-        """Compatibility shim: limits are intentionally disabled."""
-        return (2**31 - 1, float("inf"))
+        """(max_calls, window_seconds) for the sliding-window limiter."""
+        return (RATE_LIMIT_MAX_CALLS, float(RATE_LIMIT_WINDOW_SEC))
+
+    @staticmethod
+    def _usage_key(api_key: str = None, ip_address: str = None) -> str:
+        return api_key or ip_address or "anonymous"
+
+    def _prune(self, key: str):
+        dq = self.usage_store[key]
+        cutoff = time.time() - RATE_LIMIT_WINDOW_SEC
+        while dq and dq[0][0] < cutoff:
+            dq.popleft()
 
     def check_rate_limit(self, api_key: str = None, ip_address: str = None) -> bool:
-        """Limits are disabled; always allow."""
-        return True
+        """True while the caller is under both call and byte limits."""
+        key = self._usage_key(api_key, ip_address)
+        self._prune(key)
+        dq = self.usage_store[key]
+        if len(dq) >= RATE_LIMIT_MAX_CALLS:
+            return False
+        return sum(n for _, n in dq) < RATE_LIMIT_MAX_BYTES
 
     def register_usage(self, data_size_bytes: int, api_key: str = None, ip_address: str = None):
-        """No-op when limits are disabled."""
+        """Record one usage event in the sliding window."""
+        self.usage_store[self._usage_key(api_key, ip_address)].append(
+            (time.time(), int(data_size_bytes))
+        )
         return None
 
     def _derive_tenant_key(self, tenant_id: str, salt: bytes, iterations: int) -> bytes:

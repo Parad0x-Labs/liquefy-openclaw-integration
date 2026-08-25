@@ -171,7 +171,11 @@ def _account_exists(pubkey_b58: str) -> bool:
     Return True if the Solana account at pubkey_b58 exists (non-null lamports).
 
     Tries solders/solana-py first; falls back to a raw JSON-RPC request.
+    Network/infrastructure failures are reported on stderr and return False —
+    callers must treat False as "unverified", not "confirmed absent".
     """
+    import sys
+
     try:
         from solders.rpc.api import Client  # type: ignore
 
@@ -180,10 +184,18 @@ def _account_exists(pubkey_b58: str) -> bool:
         return resp.value is not None
     except ImportError:
         pass
+    except Exception as e:
+        print(f"warning: passport RPC check failed ({e}); registered=unknown",
+              file=sys.stderr)
+        return False
 
     try:
         import requests  # type: ignore
+    except ImportError:
+        # No network library available — cannot verify
+        return False
 
+    try:
         payload = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -193,11 +205,10 @@ def _account_exists(pubkey_b58: str) -> bool:
         resp = requests.post(SOLANA_MAINNET_RPC, json=payload, timeout=10)
         data = resp.json()
         return data.get("result", {}).get("value") is not None
-    except Exception:
-        pass
-
-    # No network library available — cannot verify
-    return False
+    except Exception as e:
+        print(f"warning: passport RPC check failed ({e}); registered=unknown",
+              file=sys.stderr)
+        return False
 
 
 # ---------------------------------------------------------------------------

@@ -6,9 +6,9 @@ import os
 import random
 import sys
 
-# Add path to load the champion
-sys.path.append(os.path.abspath("production_engines/aws"))
-from NULL_Aws_VpcFlow_Entropy_Focused import NULL_Aws_VpcFlow_Entropy_Focused
+# Load the in-repo VPC Flow engine
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from liquefy_vpcflow_v1 import LiquefyVpcFlowV1
 
 def gen_vpc_flow_logs(count=20000):
     # version account-id interface-id srcaddr dstaddr srcport dstport protocol packets bytes start end action log-status
@@ -55,7 +55,7 @@ def benchmark_aws():
     results.append(("Zstd -19", len(c), time.time()-t0))
 
     # 3. AWS VPC Liquefy
-    codec_v = VpcFlowLiquefyChampion(level=22)
+    codec_v = LiquefyVpcFlowV1(level=22)
     t0 = time.time()
     c_v = codec_v.compress(data)
     t_v = time.time() - t0
