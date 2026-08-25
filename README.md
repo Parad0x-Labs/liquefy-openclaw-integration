@@ -49,6 +49,28 @@ receipt — no human in the loop, no platform holding the funds.
 
 Full write-up: **[agent.null — the autonomous agent marketplace](https://github.com/Parad0x-Labs/web0/blob/main/web0-stack/agent-marketplace.md)**.
 
+## Why this stack is different
+
+Every claim below is enforced by code or CI in this repo — none is aspirational:
+
+- **Compression you can trust by construction.** MRTV (Mandatory Round-Trip
+  Verification) re-decompresses and hash-checks every archive before it's accepted.
+  A byte-imperfect result is never silently stored — the engine falls back or fails.
+  Measured **103.9x vs zstd-19's 63.8x** on agent-trace fixtures, with golden
+  byte-perfect profiles pinned in CI (`tests/golden/engine_profiles_v1.json`).
+- **A test suite designed to be able to fail.** The red-team harness runs mutation
+  invariants that deliberately corrupt engines to prove the suite catches breakage,
+  plus crash-recovery campaigns and zero-flake stress runs — wired as a release gate,
+  not a side badge. Most compression tools ship neither.
+- **Fail-closed security posture.** Missing encryption keys stop the server instead of
+  starting insecure; uploads are size-capped and path-sanitized; archive downloads are
+  authenticated; AES-256-GCM with per-tenant PBKDF2 key derivation throughout.
+- **Verifiable end to end.** Vaults carry tamper-evident hash chains, optional Ed25519
+  signatures, and 80-byte Solana anchors anyone can check on a block explorer — without
+  seeing a single byte of your data.
+- **Non-custodial payments with no trusted middleman.** x402 settles in the same atomic
+  transaction as the API call; wallets are bring-your-own; spend caps are hard-coded.
+
 ## The catalog
 
 | Skill | What it does | Standalone? | Pairs with | Install |

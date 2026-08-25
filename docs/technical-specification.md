@@ -23,6 +23,8 @@ STATUS: Public Beta
     - Interface Contracts: Stable I/O definitions for automation.
     - Verification Report: self-tested round-trip success (UNAUDITED) across 23 engine paths.
     - Proof-Pack: Hash-locked samples for local validation of bit-for-bit round-trip identity.
+    - API Posture (hardened): Bearer-key enforcement (fail-closed), upload size caps,
+      filename sanitization, authenticated archive downloads, restricted CORS.
 
 --- [ 2. WHAT IS PRIVATE (CLOSED-SOURCE INTELLECTUAL PROPERTY) ] ---
 
