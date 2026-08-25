@@ -11,8 +11,8 @@ import os
 import sys
 import uuid
 import time
-import shutil
 import hashlib
+import hmac
 import urllib.parse
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -20,7 +20,6 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Form, Request, Depends, Response
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Add current directory to path for engine imports
@@ -44,27 +43,63 @@ verifier = LiquefyVerificationSystem()
 
 app = FastAPI(title="Liquefy v1 Enterprise API")
 
-# Enable CORS for Next.js frontend
+# CORS restricted to explicit origins (comma-separated env override; no wildcards)
+_cors_origins = [o.strip() for o in os.environ.get(
+    "LIQUEFY_CORS_ORIGINS", "http://localhost:3000"
+).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Setup Directories
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Mount archive directory for downloads (most reliable way)
-app.mount("/api/archive", StaticFiles(directory=str(UPLOAD_DIR)), name="archive")
+# Upload size cap (default 512 MB, env-overridable)
+MAX_UPLOAD_BYTES = int(os.environ.get("LIQUEFY_MAX_UPLOAD_MB", "512")) * 1024 * 1024
 
 # --- ROUTES ---
 
-def get_auth_key(authorization: Optional[str] = Header(None)) -> Optional[str]:
+def get_auth_key(authorization: Optional[str] = Header(None)) -> str:
+    """Require a Bearer key matching LIQUEFY_API_KEY. Fail-closed: the data
+    endpoints stay disabled until LIQUEFY_API_KEY is configured."""
+    expected = os.environ.get("LIQUEFY_API_KEY")
+    if not expected:
+        raise HTTPException(status_code=503, detail="API disabled: LIQUEFY_API_KEY not configured")
+    provided = None
     if authorization and authorization.startswith("Bearer "):
-        return authorization.split(" ")[1]
-    return None
+        provided = authorization.split(" ", 1)[1]
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return provided
+
+def sanitize_filename(name: Optional[str]) -> str:
+    """Reduce a client-supplied filename to a safe basename."""
+    if not name:
+        return "upload.bin"
+    base = name.replace("\\", "/").split("/")[-1]
+    safe = "".join(c for c in base if c.isalnum() or c in "._- ").strip()
+    return safe or "upload.bin"
+
+def save_upload(file: UploadFile, dest: Path) -> None:
+    """Stream an upload to disk, enforcing MAX_UPLOAD_BYTES."""
+    written = 0
+    try:
+        with open(dest, "wb") as buffer:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Upload exceeds size limit")
+                buffer.write(chunk)
+    except HTTPException:
+        dest.unlink(missing_ok=True)
+        raise
 
 @app.get("/")
 def home():
@@ -113,25 +148,20 @@ async def compress_log(
     api_key: Optional[str] = Depends(get_auth_key)
 ):
     job_id = str(uuid.uuid4())
-    # Sanitize filename for disk
-    safe_filename = "".join([c for c in file.filename if c.isalnum() or c in "._- "]).strip()
-    input_path = UPLOAD_DIR / f"{job_id}_{safe_filename}"
-
-    with open(input_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    input_path = UPLOAD_DIR / f"{job_id}_{sanitize_filename(file.filename)}"
+    save_upload(file, input_path)
 
     try:
         with open(input_path, "rb") as f:
             data = f.read()
 
-        secure_blob, actual_engine = orch.compress(data, engine, tenant_id=tenant, orig_filename=file.filename)
+        secure_blob, actual_engine = orch.compress(data, engine, tenant_id=tenant, orig_filename=sanitize_filename(file.filename))
         output_path = input_path.with_suffix(".null")
         with open(output_path, "wb") as f:
             f.write(secure_blob)
 
         ratio = len(data) / len(secure_blob)
 
-        # Point to the static mount
         return {
             "status": "success",
             "job_id": job_id,
@@ -141,8 +171,13 @@ async def compress_log(
             "ratio": f"{ratio:.2f}x",
             "download_url": f"/api/archive/{output_path.name}"
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        # Do not retain plaintext input after processing
+        input_path.unlink(missing_ok=True)
 
 @app.post("/api/decompress")
 async def decompress_log(
@@ -152,10 +187,8 @@ async def decompress_log(
     api_key: Optional[str] = Depends(get_auth_key)
 ):
     job_id = str(uuid.uuid4())
-    input_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
-
-    with open(input_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    input_path = UPLOAD_DIR / f"{job_id}_{sanitize_filename(file.filename)}"
+    save_upload(file, input_path)
 
     try:
         with open(input_path, "rb") as f:
@@ -168,8 +201,7 @@ async def decompress_log(
 
         if orig_filename:
             # Restore to original name but keep job_id prefix to prevent collisions
-            safe_orig = "".join([c for c in orig_filename if c.isalnum() or c in "._- "]).strip()
-            output_path = UPLOAD_DIR / f"{job_id}_RESTORED_{safe_orig}"
+            output_path = UPLOAD_DIR / f"{job_id}_RESTORED_{sanitize_filename(orig_filename)}"
         else:
             # Fallback if no filename in metadata
             output_path = input_path.with_suffix(".restored")
@@ -183,8 +215,12 @@ async def decompress_log(
             "engine": engine_used,
             "download_url": f"/api/archive/{output_path.name}"
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        input_path.unlink(missing_ok=True)
 
 @app.post("/api/compress/media")
 async def compress_media(
@@ -194,9 +230,8 @@ async def compress_media(
     api_key: Optional[str] = Depends(get_auth_key)
 ):
     job_id = str(uuid.uuid4())
-    input_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
-    with open(input_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    input_path = UPLOAD_DIR / f"{job_id}_{sanitize_filename(file.filename)}"
+    save_upload(file, input_path)
 
     try:
         payload = orch.compress_media(str(input_path), profile=profile)
@@ -209,8 +244,21 @@ async def compress_media(
             "job_id": job_id,
             "download_url": f"/api/archive/{output_path.name}"
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        input_path.unlink(missing_ok=True)
+
+@app.get("/api/archive/{name}")
+def download_archive(name: str, api_key: str = Depends(get_auth_key)):
+    """Authenticated download of processed artifacts (replaces the open static mount)."""
+    safe_name = sanitize_filename(name)
+    target = (UPLOAD_DIR / safe_name).resolve()
+    if not str(target).startswith(str(UPLOAD_DIR.resolve()) + os.sep) or not target.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(str(target))
 
 @app.get("/api/stats")
 def get_stats():
