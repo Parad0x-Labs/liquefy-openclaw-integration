@@ -143,6 +143,7 @@ def _filter_lines(
 
     kept = []
     prev_kept = True
+    last_skip_start = 0
     for i, line in enumerate(lines):
         if keep_mask[i]:
             if not prev_kept:

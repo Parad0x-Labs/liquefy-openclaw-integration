@@ -26,11 +26,11 @@ class StringLifter:
     def lift(self, block: bytes) -> tuple:
         tokens = set()
         for m in self.re_wide.finditer(block):
+            tokens.add(m.group(0))
             try:
-                tokens.add(m.group(0))
                 val = m.group(0).decode('utf-16le')
                 if len(val) < 64: tokens.add(val.encode('utf-8'))
-            except: pass
+            except UnicodeDecodeError: pass
         for m in self.re_ascii.finditer(block):
             val = m.group(0)
             if len(val) < 64: tokens.add(val)
@@ -39,7 +39,7 @@ class StringLifter:
 def zstandard_params(level):
     try:
         return zstd.ZstdCompressionParameters.from_level(level, window_log=27)
-    except:
+    except Exception:
         return None
 
 class LiquefyWindowsV1:
@@ -120,7 +120,7 @@ class LiquefyWindowsV1:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3: print("Usage: python NULL_Windows_Evtx_Entropy_Focused.py [compress|decompress|grep] <in> <out/query>"); sys.exit(1)
-    codec = NULL_Windows_Evtx_Entropy_Focused()
+    codec = LiquefyWindowsV1()
     if sys.argv[1] == "compress":
         with open(sys.argv[2], "rb") as f: data = f.read()
         with open(sys.argv[3], "wb") as f: f.write(codec.compress(data))

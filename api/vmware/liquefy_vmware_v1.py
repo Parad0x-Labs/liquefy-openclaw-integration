@@ -118,7 +118,7 @@ class LiquefyVmwareV1:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3: print("Usage: python NULL_Vmware_Entropy_Focused.py [compress|decompress|grep] <in> <out/query>"); sys.exit(1)
-    codec = NULL_Vmware_Entropy_Focused()
+    codec = LiquefyVmwareV1()
     if sys.argv[1] == "compress":
         with open(sys.argv[2], "rb") as f: data = f.read()
         with open(sys.argv[3], "wb") as f: f.write(codec.compress(data))
