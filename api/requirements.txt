@@ -10,7 +10,7 @@ python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
 python-dotenv==1.2.2
 sqlalchemy==2.0.51
-pandas==2.1.3
+pandas==2.3.3
 scipy==1.15.3
 requests==2.33.0
 pyyaml==6.0.3
