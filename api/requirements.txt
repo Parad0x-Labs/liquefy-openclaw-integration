@@ -1,4 +1,4 @@
-fastapi==0.104.1
+fastapi==0.139.0
 uvicorn==0.39.0
 pydantic==2.13.4
 zstandard==0.25.0
